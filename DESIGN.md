@@ -1,7 +1,6 @@
-# Lanternfall — Design Document
+# Lanternflame — Design Document
 
-> Working title. Rename freely.
-> Status: **draft for review**. No code has been written yet.
+> Status: **approved plan** (open questions answered 2026-10-03).
 
 This document describes *what* we are building and *how the pieces fit
 together*. `MILESTONES.md` describes the *order* we build it in.
@@ -316,7 +315,9 @@ low frustration.
 Your character carries a lantern. The **flame** in it is your class.
 Switching flame = switching class: allowed anywhere **out of combat**,
 takes ~2 s with a visual effect. Each class has its own level (1–30) and
-its own saved hotbar/spec choice. Gear is shared (see open question Q3).
+its own saved hotbar/spec choice. **Armour and accessories are shared by
+all classes; weapons are not** — each class has its own weapon slot, and
+switching flame swaps to that class's weapon automatically.
 
 ### 6.2 First four classes
 
@@ -357,7 +358,8 @@ relevant bonuses (this also makes solo questing pleasant).
   higher secondary-class level gives a small stat bonus to your main
   class. This is the "second source of power" at cap.
 - Gear is the main source of power at cap: item level from dungeons,
-  trials, raids.
+  trials, raids. Armour/accessories are shared across classes; each class
+  has its own weapon (weapons are class-specific items).
 - Duties have **level sync**: if you are over-levelled you are scaled
   down, so friends at different levels can always play together.
 
@@ -424,8 +426,11 @@ and is much simpler than real sliding physics.
 | Trial | 1–4 | 3–8 min | One multi-phase boss in an arena |
 | Raid | 4 | 10–15 min | Harder trial-style bosses; tighter mechanics, enrage timers |
 
-All duties scale by party size (1–4) so you can practise alone or
-with whoever is online. A 5–8 player raid size could come later.
+All duties scale by party size so you can practise alone or with
+whoever is online. **Raids are 4 players for now; 8-player raids are
+planned.** To keep that door open: parties hold up to 8 players, each
+duty's data declares its `max_party` (4 today), scaling formulas accept
+1–8, and the party-list UI and synergy rules work for any size.
 
 ### 8.3 Quests and dialogue
 Quests are lists of steps in data (`talk to NPC`, `kill N`, `enter zone`,
@@ -489,16 +494,14 @@ with one key; quest progress still records.
 
 ---
 
-## 12. Open questions for you
+## 12. Decisions (answered 2026-10-03)
 
-1. **Name.** "Lanternfall" is a placeholder. Any preference?
-2. **Server tick:** 60 Hz simulation / 20 Hz updates. OK? (Fine for
-   8 players on a home PC.)
-3. **Gear across classes:** shared gear that works for every class
-   (simplest, least grindy), or gear per role lean? I recommend shared.
-4. **Jumping:** do you want it? (Adds a little netcode work; FFXIV has it.)
-   I recommend yes, simple jump with no fall damage.
-5. **Camera controls:** FFXIV-style (right-drag rotates camera and turns
-   character, WASD moves, mouse wheel zooms). OK?
-6. **Party size cap:** you said 4–8 players. Duties are 4. Do you want an
-   8-player raid eventually, or always 4?
+1. **Name:** Lanternflame.
+2. **Server tick:** 60 Hz simulation, ~20 Hz network updates.
+3. **Gear:** armour and accessories shared by all classes; weapons are
+   per class.
+4. **Jumping:** yes — simple jump, no fall damage.
+5. **Camera:** FFXIV-style (right-drag rotates camera and turns the
+   character, left-drag orbits the camera only, WASD moves, wheel zooms).
+6. **Party size:** duties are 4 players now; 8-player raids planned later
+   (parties already support 8).

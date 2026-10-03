@@ -87,14 +87,16 @@ I changed your list in three ways (marked **Changed**):
   account (more later if wanted).
 - Save/load position, class levels, XP, gear, hotbar choices.
 - XP from kills and duties; level 1–30 per class; level sync in duties.
-- Basic gear: slots, item level, stats; boss loot; equip UI.
+- Basic gear: slots, item level, stats; boss loot; equip UI. Armour
+  shared by all classes, weapons per class.
 - **Test:** register, play, quit, restart the server, log back in with
   everything intact; copy `world.db` to another folder and run from it.
 
 ## M7 — Secondary classes and party synergy
 - Two secondary ability slots chosen from another class (level-gated).
 - Secondary-class level stat bonus.
-- Party system (invite, leave, party list UI).
+- Party system (invite, leave, party list UI), supporting up to 8
+  players so 8-player raids can come later.
 - Role-coverage calculation and compensating bonuses from `synergy.ron`.
 - **Test:** compare a solo player's bonuses with a full mixed party.
 
@@ -135,7 +137,7 @@ I changed your list in three ways (marked **Changed**):
 ---
 
 ## After M12 (from your "later" list)
-Raids (beyond the trial-style boss), gathering/crafting classes, pets,
+Raids (beyond the trial-style boss), 8-player raids, gathering/crafting classes, pets,
 mounts, cosmetics, trading, duels/PvP, more classes, customizable
 hotbars, fusion abilities. Each becomes its own milestone when we get
 there.

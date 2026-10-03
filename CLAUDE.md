@@ -7,7 +7,7 @@ Guide for working in this repository (for Claude and for humans).
 - Full design: `DESIGN.md`.
 
 ## What this is
-A small online tab-target RPG (FFXIV-style combat) for 4–8 friends,
+Lanternflame: a small online tab-target RPG (FFXIV-style combat) for 4–8 friends,
 written in Rust with Bevy. Server-authoritative; clients send inputs and
 render.
 
