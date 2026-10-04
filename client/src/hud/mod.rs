@@ -2,6 +2,7 @@
 //! floating damage numbers, messages and the controls help.
 
 mod banner;
+pub mod character;
 mod floating;
 mod frames;
 mod hotbar;
@@ -22,6 +23,7 @@ impl Plugin for HudPlugin {
                 floating::FloatingPlugin,
                 lantern::LanternPlugin,
                 options::OptionsPlugin,
+                character::CharacterPanelPlugin,
                 banner::BannerPlugin,
             ));
     }
@@ -116,7 +118,7 @@ fn spawn_help(mut commands: Commands) {
         "Both mouse buttons: run forward",
         "Tab/click target   F1 yourself   Esc clear",
         "1-0 or click hotbar: abilities",
-        "L: lantern (change class)",
+        "L: lantern (change class)   C: character, gear",
         "E: use a portal   M: mute sound",
         "O (or Esc): options, sound volume",
     ];

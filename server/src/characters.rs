@@ -11,11 +11,14 @@ use shared::components::{
 };
 use shared::gamedata::{GameData, Zones};
 use shared::movement::{self, MoveInput, MoveState};
+use shared::progression::ClassLevels;
 use shared::protocol::{Link, ServerEvent};
 use shared::statuses::Statuses;
 use shared::threat::ThreatTable;
 
 use crate::classes::FlameChange;
+use crate::database::CharacterSave;
+use crate::progression::{player_stats, restore, starting_gear};
 
 /// Finds a player's character from their id.
 #[derive(Resource, Default, Debug)]
@@ -55,6 +58,17 @@ pub struct Defeated {
 }
 
 /// Create a player's character, or return the existing one.
+/// The name a character is known (and saved) by.
+pub fn clean_name(name: &str) -> &str {
+    if name.trim().is_empty() {
+        "Adventurer"
+    } else {
+        name.trim()
+    }
+}
+
+/// Bring a player's character into the world: from their save if they
+/// have one, otherwise as a new character in the starting zone.
 pub fn spawn_player(
     commands: &mut Commands,
     index: &mut PlayerIndex,
@@ -63,29 +77,46 @@ pub fn spawn_player(
     zones: &Zones,
     player: PlayerId,
     name: &str,
+    save: Option<&CharacterSave>,
 ) {
     if let Some(&entity) = index.0.get(&player) {
         link.to_client.push(ServerEvent::Joined { player, entity });
         return;
     }
-    let class_id = data.player.start_class.clone();
-    let zone = data.player.start_zone.clone();
+    // A saved class or zone that no longer exists falls back to the start.
+    let class_id = save
+        .map(|s| s.class.clone())
+        .filter(|c| data.classes.contains_key(c))
+        .unwrap_or_else(|| data.player.start_class.clone());
+    let saved_zone = save.filter(|s| zones.get(&s.zone).is_some());
+    let zone = saved_zone.map_or_else(|| data.player.start_zone.clone(), |s| s.zone.clone());
     // Both checked when the data was loaded.
     let (Some(class), Some(level)) = (data.classes.get(&class_id), zones.get(&zone)) else {
         return;
     };
-    let name = if name.trim().is_empty() {
-        "Adventurer"
-    } else {
-        name.trim()
+    let motion = match saved_zone {
+        Some(s) => MoveState {
+            yaw: s.yaw,
+            ..MoveState::spawn_at(s.position)
+        },
+        None => MoveState::spawn_at(level.spawn_point),
     };
-    let stats = class.stats();
+    let (levels, bag, worn) = match save {
+        Some(save) => restore(save, data),
+        None => {
+            let (bag, worn) = starting_gear(data);
+            (ClassLevels::default(), bag, worn)
+        }
+    };
+    let Some(stats) = player_stats(data, zones, &class_id, &zone, &levels, &bag, &worn) else {
+        return;
+    };
     let entity = commands
         .spawn((
             (
                 player,
-                CharacterName(name.to_owned()),
-                Motion(MoveState::spawn_at(level.spawn_point)),
+                CharacterName(clean_name(name).to_owned()),
+                Motion(motion),
                 Zone(zone),
                 PlayerInput::default(),
                 Faction::Player,
@@ -104,6 +135,7 @@ pub fn spawn_player(
                     spec: class.default_spec.clone(),
                 },
             ),
+            (levels, bag, worn),
         ))
         .id();
     index.0.insert(player, entity);

@@ -46,5 +46,7 @@
         "pull":         "pull",    // a boss fight begins
         "victory":      "victory",
         "wipe":         "wipe",
+        "level_up":     "revived", // one of your classes gains a level
+        "loot":         "flame_caught", // you receive an item
     },
 )

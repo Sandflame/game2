@@ -41,6 +41,11 @@
         (enemy: "training_dummy", position: (3.0, 0.0, -4.0), yaw: 0.0),
         // This one hits back.
         (enemy: "sparring_dummy", position: (-9.0, 0.0, 2.0), yaw: 1.2),
+        // Bramble sprouts give experience and grow back.
+        (enemy: "bramble_sprout", position: (-24.0, 0.0, -8.0), yaw: 1.0),
+        (enemy: "bramble_sprout", position: (-30.0, 0.0, -2.0), yaw: 1.4),
+        (enemy: "bramble_sprout", position: (-26.0, 0.0, 6.0), yaw: 2.0),
+        (enemy: "bramble_sprout", position: (-34.0, 0.0, 10.0), yaw: 2.4),
     ],
 
     // Doorways to other zones (stand inside and press E).

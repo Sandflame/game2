@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
-use shared::combat::{ActionState, Health, Reject};
+use shared::combat::{ActionState, Reject};
 use shared::components::{Hotbar, PlayerId};
 use shared::gamedata::GameData;
 use shared::protocol::{Link, ServerEvent};
@@ -70,8 +70,6 @@ pub fn finish_flame_changes(
             Entity,
             &FlameChange,
             &mut CurrentClass,
-            &mut shared::classes::Stats,
-            &mut Health,
             &mut Hotbar,
             &mut ActionState,
             &mut Statuses,
@@ -80,17 +78,7 @@ pub fn finish_flame_changes(
     >,
 ) {
     let now = time.elapsed_secs_f64();
-    for (
-        entity,
-        change,
-        mut current,
-        mut stats,
-        mut health,
-        mut hotbar,
-        mut actions,
-        mut statuses,
-    ) in &mut changing
-    {
+    for (entity, change, mut current, mut hotbar, mut actions, mut statuses) in &mut changing {
         if now < change.ends {
             continue;
         }
@@ -98,12 +86,11 @@ pub fn finish_flame_changes(
         let Some(class) = data.classes.get(&change.class) else {
             continue;
         };
+        // Stats follow in `progression::refresh_stats` (class level, gear).
         *current = CurrentClass {
             class: change.class.clone(),
             spec: class.default_spec.clone(),
         };
-        *stats = class.stats();
-        health.set_max(stats.max_health);
         hotbar.0 = data.hotbar(class, &class.default_spec);
         actions.reset();
         statuses.0.clear();

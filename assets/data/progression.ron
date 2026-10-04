@@ -1,0 +1,22 @@
+// Levels and experience (every class levels separately).
+(
+    max_level: 30,
+    // Experience needed for each next level, starting with level 1 -> 2.
+    xp_to_next: [
+        300, 340, 380, 420, 470,  // from level 1
+        530, 590, 660, 740, 830,  // from level 6
+        930, 1040, 1170, 1310, 1470,  // from level 11
+        1640, 1840, 2060, 2310, 2580,  // from level 16
+        2890, 3240, 3630, 4070, 4550,  // from level 21
+        5100, 5710, 6400, 7170,  // from level 26
+    ],
+    // Each level adds this much health, as a percentage of the class's
+    // level-1 health (so level 30 has about twice the health of level 1).
+    health_per_level: 3.5,
+    // Each level adds this much Power (percentage points) to the class's own.
+    power_per_level: 2.0,
+    // Gear can never reduce damage taken by more than this (percent).
+    max_guard: 30.0,
+    // How many items a character can carry, worn gear included.
+    bag_size: 40,
+)

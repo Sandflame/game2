@@ -191,9 +191,13 @@ With 4–8 players this all fits in one process with plenty of headroom.
 
 - One SQLite file, `world.db`, next to the server program (path
   configurable). Copy the file to move the world to another PC.
+  Until multiplayer (M11) the game keeps it in the player's data folder:
+  `%APPDATA%\Lanternflame\world.db` on Windows,
+  `~/.local/share/lanternflame/world.db` on Linux (`LANTERNFLAME_DB` overrides).
 - Database work runs on a background thread so a slow disk never freezes
   combat.
-- Characters are saved on logout, on zone change, and every 60 seconds.
+- Characters are saved on logout, whenever their progress changes (level,
+  loot, gear, class, zone), and every 60 seconds (for their position).
 - Schema changes are applied automatically at startup using numbered
   migration steps tracked in SQLite's `user_version`. Old `world.db` files
   upgrade themselves; the server makes a backup copy first.

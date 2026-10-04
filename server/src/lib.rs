@@ -13,9 +13,11 @@
 mod actions;
 mod characters;
 mod classes;
+pub mod database;
 mod effects;
 mod encounters;
 mod enemies;
+pub mod progression;
 mod requests;
 
 use bevy::prelude::*;
@@ -24,6 +26,7 @@ use shared::protocol::Link;
 
 pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput};
 pub use classes::FlameChange;
+pub use database::Database;
 pub use encounters::{Encounter, FightState};
 pub use enemies::{EnemyKind, ResetWhenIdle};
 
@@ -64,6 +67,10 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<effects::PendingEffects>()
             .init_resource::<encounters::EncounterChanges>()
             .init_resource::<requests::PendingInteractions>()
+            .init_resource::<requests::PendingJoins>()
+            .init_resource::<progression::PendingRewards>()
+            .init_resource::<progression::PendingGear>()
+            .init_resource::<progression::LastAutosave>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -81,7 +88,12 @@ impl Plugin for AuthorityPlugin {
             .add_systems(
                 FixedUpdate,
                 (
-                    (requests::receive_requests, requests::handle_interactions)
+                    (
+                        requests::receive_requests,
+                        requests::finish_joins,
+                        requests::handle_interactions,
+                        progression::handle_gear,
+                    )
                         .chain()
                         .in_set(AuthoritySystems::Receive),
                     characters::move_characters.in_set(AuthoritySystems::Move),
@@ -101,14 +113,19 @@ impl Plugin for AuthorityPlugin {
                         .in_set(AuthoritySystems::Act),
                     (
                         classes::finish_flame_changes,
+                        progression::kill_rewards,
+                        progression::grant_rewards,
+                        progression::refresh_stats,
                         characters::regenerate,
                         characters::revive,
                         enemies::reset_idle_enemies,
                         characters::forget_absent,
+                        progression::save_players,
                     )
                         .chain()
                         .in_set(AuthoritySystems::Maintain),
                 ),
-            );
+            )
+            .add_systems(Last, progression::save_on_exit);
     }
 }

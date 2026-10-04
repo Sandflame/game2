@@ -5,6 +5,7 @@
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
+use super::character::CharacterPanel;
 use super::lantern::LanternPanel;
 use super::{font, palette};
 use crate::audio::{Muted, SoundVolume};
@@ -22,7 +23,8 @@ impl Plugin for OptionsPlugin {
                 (
                     toggle_menu
                         .before(crate::targeting::TargetingInput)
-                        .before(super::lantern::toggle_panel),
+                        .before(super::lantern::toggle_panel)
+                        .before(super::character::toggle_panel),
                     (drag_volume, press_buttons, update_menu).chain(),
                 ),
             );
@@ -230,6 +232,7 @@ fn toggle_menu(
     keys: Res<ButtonInput<KeyCode>>,
     target: Res<CurrentTarget>,
     lantern: Res<LanternPanel>,
+    character: Res<CharacterPanel>,
     mut menu: ResMut<OptionsMenu>,
 ) {
     if keys.just_pressed(KeyCode::KeyO) {
@@ -238,7 +241,7 @@ fn toggle_menu(
     if keys.just_pressed(KeyCode::Escape) {
         if menu.open {
             menu.open = false;
-        } else if target.0.is_none() && !lantern.open {
+        } else if target.0.is_none() && !lantern.open && !character.open {
             menu.open = true;
         }
     }

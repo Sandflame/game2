@@ -9,6 +9,8 @@
     ambience: "pollen",
     // In trials you need a raise; if everyone falls, the fight resets.
     revive_in_place: false,
+    // Characters above level 5 fight at level 5 here.
+    level_sync: Some(5),
     encounter: Some("rootwarden"),
     obstacles: [
         // Ancient standing stones in the corners (decoration you can't walk through).

@@ -75,6 +75,7 @@ pub const BUILT_IN_LOOKS: &[&str] = &[
     "defeated",
     "revived",
     "victory",
+    "level_up",
 ];
 
 impl VfxLibrary {
@@ -363,6 +364,11 @@ fn looks_for_events(
             ServerEvent::Revived { entity } => {
                 if let Some(at) = here(entity) {
                     looks.play("revived", at, at);
+                }
+            }
+            ServerEvent::LevelUp { entity, .. } => {
+                if let Some(at) = here(entity) {
+                    looks.play("level_up", at, at);
                 }
             }
             ServerEvent::EncounterWon { zone, .. } if current.0.as_deref() == Some(zone) => {

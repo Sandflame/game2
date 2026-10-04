@@ -2,4 +2,7 @@
 (
     // How many times per second the game rules run (movement, combat).
     tick_hz: 60.0,
+    // Characters are saved this often (seconds), and also whenever they level
+    // up, get loot, change gear, class or zone, and when the game closes.
+    autosave_every: 60.0,
 )

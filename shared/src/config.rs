@@ -14,6 +14,14 @@ use crate::movement::MovementConfig;
 pub struct SimulationConfig {
     /// How many times per second the game rules run.
     pub tick_hz: f64,
+    /// Characters are saved this often (seconds), as well as whenever they
+    /// level up, get loot, change gear, class or zone, and when the game closes.
+    #[serde(default = "default_autosave")]
+    pub autosave_every: f32,
+}
+
+fn default_autosave() -> f32 {
+    60.0
 }
 
 impl Validate for SimulationConfig {
@@ -25,6 +33,7 @@ impl Validate for SimulationConfig {
                 self.tick_hz
             ));
         }
+        p.positive("autosave_every", self.autosave_every);
         p.0
     }
 }
@@ -63,7 +72,10 @@ mod tests {
 
     #[test]
     fn rejects_silly_tick_rate() {
-        let config = SimulationConfig { tick_hz: 0.0 };
+        let config = SimulationConfig {
+            tick_hz: 0.0,
+            autosave_every: 60.0,
+        };
         assert_eq!(config.validate().len(), 1);
     }
 }

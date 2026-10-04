@@ -69,4 +69,19 @@
         ability: "verdant_wrath",
         message: Some("The Rootwarden gathers the forest's fury... finish it now!"),
     )),
+    // Experience for everyone in the fight when the Rootwarden falls.
+    xp: 1500,
+    // Each player rolls for each item (chance in percent); everyone gets
+    // at least one.
+    loot: [
+        (item: "bark_helm", chance: 20),
+        (item: "rootwoven_vest", chance: 20),
+        (item: "thornbound_gloves", chance: 20),
+        (item: "mossy_boots", chance: 20),
+        (item: "heartwood_ring", chance: 15),
+        (item: "rootcleaver", chance: 10),
+        (item: "verdant_staff", chance: 10),
+        (item: "barkguard", chance: 10),
+        (item: "blossom_censer", chance: 10),
+    ],
 )

@@ -42,6 +42,22 @@ fn main() -> AppExit {
             return AppExit::error();
         }
     };
+    // The save file. Scripted screenshot demos always start fresh.
+    let database = if devtools::demo_mode() {
+        None
+    } else {
+        match settings::save_file_path().map(|path| server::Database::start(&path)) {
+            Some(Ok(database)) => Some(database),
+            Some(Err(error)) => {
+                eprintln!("Lanternflame could not start: {error}");
+                return AppExit::error();
+            }
+            None => {
+                eprintln!("No place to keep a save file was found; progress won't be saved.");
+                None
+            }
+        }
+    };
     let problems = vfx.check_references(&data, &zones, &particles, &sounds);
     if !problems.is_empty() {
         eprintln!(
@@ -51,45 +67,48 @@ fn main() -> AppExit {
         return AppExit::error();
     }
 
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Lanternflame".into(),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(AssetPlugin {
-                    file_path: assets_dir.to_string_lossy().into_owned(),
+    let mut app = App::new();
+    if let Some(database) = database {
+        app.insert_resource(database);
+    }
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Lanternflame".into(),
                     ..default()
                 }),
-        )
-        .insert_resource(Time::<Fixed>::from_hz(data.config.simulation.tick_hz))
-        .insert_resource(data)
-        .insert_resource(zones)
-        .insert_resource(vfx)
-        .insert_resource(particles)
-        .insert_resource(sounds)
-        // The rules half, running in-process for now.
-        .add_plugins(AuthorityPlugin)
-        // The screen half.
-        .add_plugins((
-            session::SessionPlugin,
-            toon::ToonPlugin,
-            world::WorldPlugin,
-            characters::CharactersPlugin,
-            camera::CameraPlugin,
-            targeting::TargetingPlugin,
-            telegraphs::TelegraphsPlugin,
-            vfx::VfxPlugin,
-            particles::ParticlesPlugin,
-            animation::AnimationPlugin,
-            audio::SoundPlugin,
-            settings::SettingsPlugin,
-            hud::HudPlugin,
-            devtools::DevToolsPlugin,
-        ))
-        .run()
+                ..default()
+            })
+            .set(AssetPlugin {
+                file_path: assets_dir.to_string_lossy().into_owned(),
+                ..default()
+            }),
+    )
+    .insert_resource(Time::<Fixed>::from_hz(data.config.simulation.tick_hz))
+    .insert_resource(data)
+    .insert_resource(zones)
+    .insert_resource(vfx)
+    .insert_resource(particles)
+    .insert_resource(sounds)
+    // The rules half, running in-process for now.
+    .add_plugins(AuthorityPlugin)
+    // The screen half.
+    .add_plugins((
+        session::SessionPlugin,
+        toon::ToonPlugin,
+        world::WorldPlugin,
+        characters::CharactersPlugin,
+        camera::CameraPlugin,
+        targeting::TargetingPlugin,
+        telegraphs::TelegraphsPlugin,
+        vfx::VfxPlugin,
+        particles::ParticlesPlugin,
+        animation::AnimationPlugin,
+        audio::SoundPlugin,
+        settings::SettingsPlugin,
+        hud::HudPlugin,
+        devtools::DevToolsPlugin,
+    ))
+    .run()
 }

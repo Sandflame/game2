@@ -6,6 +6,7 @@ use bevy::math::Vec3;
 use serde::Deserialize;
 
 use crate::data::{Problems, Validate};
+use crate::items::LootEntry;
 
 /// Something the boss does.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -68,6 +69,12 @@ pub struct EncounterDef {
     pub phases: Vec<PhaseDef>,
     #[serde(default)]
     pub enrage: Option<Enrage>,
+    /// Experience for everyone in the fight when it is won.
+    #[serde(default)]
+    pub xp: u32,
+    /// What each player may get for winning (at least one item each).
+    #[serde(default)]
+    pub loot: Vec<LootEntry>,
 }
 
 impl EncounterDef {
@@ -150,6 +157,11 @@ impl Validate for EncounterDef {
         }
         if let Some(enrage) = &self.enrage {
             p.positive("enrage.after", enrage.after);
+        }
+        for (i, entry) in self.loot.iter().enumerate() {
+            if !(0.0..=100.0).contains(&entry.chance) {
+                p.push(format!("loot[{i}].chance must be between 0 and 100"));
+            }
         }
         p.0
     }

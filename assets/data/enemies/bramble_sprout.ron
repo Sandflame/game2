@@ -1,0 +1,12 @@
+// Small thorny sprouts in the meadow: easy experience. Defeated sprouts
+// grow back after a while.
+(
+    name: "Bramble Sprout",
+    max_health: 3000,
+    hit_radius: 0.8,
+    visual: "thornling",
+    // Back on its feet (full health) this long after it was last hit.
+    reset_after: 20.0,
+    actions: [(ability: "thorn_prick", every: 3.0)],
+    xp: 90,
+)

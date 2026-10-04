@@ -8,4 +8,10 @@
     start_zone: "sandbox",
     // Lantern abilities every class has, in hotbar slots 9 and 0.
     shared_abilities: ["second_wind", "rekindle"],
+    // Items new characters start with (from assets/data/items/). They put
+    // on what fits; each class's weapon is worn when that flame burns.
+    start_items: [
+        "travellers_tunic",
+        "training_greatsword", "ember_wand", "oak_shield", "willow_censer",
+    ],
 )

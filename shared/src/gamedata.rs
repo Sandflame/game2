@@ -13,7 +13,9 @@ use crate::classes::ClassDef;
 use crate::config::GameConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
 use crate::encounters::EncounterDef;
+use crate::items::{ItemDef, ItemFile};
 use crate::level::Level;
+use crate::progression::ProgressionDef;
 use crate::statuses::{StatusDef, StatusFile};
 
 /// An enemy type (`assets/data/enemies/<id>.ron`; the id is the file name).
@@ -33,6 +35,9 @@ pub struct EnemyDef {
     /// Abilities the enemy uses on whoever it is most angry at.
     #[serde(default)]
     pub actions: Vec<EnemyAction>,
+    /// Experience for each player who fought it when it is defeated.
+    #[serde(default)]
+    pub xp: u32,
 }
 
 fn normal_power() -> f32 {
@@ -86,6 +91,9 @@ pub struct PlayerConfig {
     /// Abilities every class has, after the class's own (hotbar slots 9 and 0).
     #[serde(default)]
     pub shared_abilities: Vec<String>,
+    /// Items new characters start with; they put on what they can.
+    #[serde(default)]
+    pub start_items: Vec<String>,
 }
 
 impl Validate for PlayerConfig {
@@ -120,6 +128,8 @@ pub struct GameData {
     pub classes: HashMap<String, ClassDef>,
     pub enemies: HashMap<String, EnemyDef>,
     pub encounters: HashMap<String, EncounterDef>,
+    pub progression: ProgressionDef,
+    pub items: HashMap<String, ItemDef>,
 }
 
 impl GameData {
@@ -169,6 +179,17 @@ impl GameData {
                 .map(|(path, encounter)| (file_id(&path), encounter))
                 .collect();
 
+        let progression: ProgressionDef = load_ron(&data.join("progression.ron"))?;
+        let mut items = HashMap::new();
+        for (path, file) in load_dir::<ItemFile>(&data.join("items"))? {
+            for (id, item) in file.0 {
+                if items.contains_key(&id) {
+                    return Err(invalid(&path, format!("item id `{id}` is used twice")));
+                }
+                items.insert(id, item);
+            }
+        }
+
         let game = Self {
             config,
             player,
@@ -177,6 +198,8 @@ impl GameData {
             classes,
             enemies,
             encounters,
+            progression,
+            items,
         };
         game.check_references(&data)?;
         Ok(game)
@@ -247,6 +270,13 @@ impl GameData {
                     .filter(|e| !self.enemies.contains_key(*e))
                     .map(|e| format!("uses unknown enemy `{e}`")),
             );
+            problems.extend(
+                encounter
+                    .loot
+                    .iter()
+                    .filter(|l| !self.items.contains_key(&l.item))
+                    .map(|l| format!("loot names unknown item `{}`", l.item)),
+            );
             if !problems.is_empty() {
                 return Err(DataError::Invalid {
                     path: data.join("encounters").join(format!("{id}.ron")),
@@ -254,7 +284,31 @@ impl GameData {
                 });
             }
         }
+        let mut item_problems: Vec<String> = self
+            .items
+            .iter()
+            .filter_map(|(id, item)| {
+                let class = item.class.as_ref()?;
+                (!self.classes.contains_key(class))
+                    .then(|| format!("`{id}` is for unknown class `{class}`"))
+            })
+            .collect();
+        if !item_problems.is_empty() {
+            item_problems.sort();
+            return Err(DataError::Invalid {
+                path: data.join("items"),
+                problems: item_problems,
+            });
+        }
         let player_path = data.join("config").join("player.ron");
+        for item in &self.player.start_items {
+            if !self.items.contains_key(item) {
+                return Err(invalid(
+                    &player_path,
+                    format!("`start_items` names unknown item `{item}`"),
+                ));
+            }
+        }
         for shared in &self.player.shared_abilities {
             if !ability(shared) {
                 return Err(invalid(

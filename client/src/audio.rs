@@ -42,6 +42,8 @@ pub const EVENTS: &[&str] = &[
     "pull",
     "victory",
     "wipe",
+    "level_up",
+    "loot",
 ];
 
 #[derive(Resource, Debug, Clone, Deserialize)]
@@ -213,6 +215,8 @@ fn sounds_for_events(
             ServerEvent::EncounterStarted { zone, .. } if here(zone) => sounds.event("pull"),
             ServerEvent::EncounterWon { zone, .. } if here(zone) => sounds.event("victory"),
             ServerEvent::EncounterWiped { zone, .. } if here(zone) => sounds.event("wipe"),
+            ServerEvent::LevelUp { entity, .. } if is_me(entity) => sounds.event("level_up"),
+            ServerEvent::ItemReceived { entity, .. } if is_me(entity) => sounds.event("loot"),
             _ => {}
         }
     }

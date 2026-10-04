@@ -84,6 +84,8 @@ pub fn spawn_enemy(
             max_health: def.max_health,
             power: def.power,
             threat_multiplier: 1.0,
+            crit_chance: data.config.combat.crit_chance,
+            guard: 0.0,
         },
         Statuses::default(),
         ThreatTable::default(),

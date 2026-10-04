@@ -82,14 +82,6 @@ impl ClassDef {
         bar.resize(HOTBAR_SLOTS, None);
         bar
     }
-
-    pub fn stats(&self) -> Stats {
-        Stats {
-            max_health: self.max_health,
-            power: self.power,
-            threat_multiplier: self.threat_multiplier,
-        }
-    }
 }
 
 impl Validate for ClassDef {
@@ -130,12 +122,17 @@ pub struct CurrentClass {
     pub spec: String,
 }
 
-/// Numbers that come from the class (and later from gear and levels).
+/// A character's fighting numbers, from their class, level and gear
+/// (see `items::character_stats`).
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub struct Stats {
     pub max_health: u32,
     pub power: f32,
     pub threat_multiplier: f32,
+    /// Chance of a critical hit (0–1).
+    pub crit_chance: f32,
+    /// Less damage taken, in percent.
+    pub guard: f32,
 }
 
 #[cfg(test)]

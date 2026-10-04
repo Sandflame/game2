@@ -25,9 +25,11 @@ pub fn outgoing_damage(
     (base_amount(amount, power) * dealer.damage_dealt * crit_factor).round() as u32
 }
 
-/// Damage after the target's damage-taken modifiers.
-pub fn incoming_damage(amount: u32, target: Modifiers) -> u32 {
-    (amount as f32 * target.damage_taken).round() as u32
+/// Damage after the target's damage-taken modifiers and their gear's
+/// guard (percent less damage taken).
+pub fn incoming_damage(amount: u32, target: Modifiers, guard: f32) -> u32 {
+    let guard = (1.0 - guard / 100.0).clamp(0.0, 1.0);
+    (amount as f32 * target.damage_taken * guard).round() as u32
 }
 
 /// Healing (or shield) amount.
@@ -108,7 +110,9 @@ mod tests {
             damage_taken: 0.7,
             ..Default::default()
         };
-        assert_eq!(incoming_damage(1000, guarded), 700);
+        assert_eq!(incoming_damage(1000, guarded, 0.0), 700);
+        // 20% guard from gear on top.
+        assert_eq!(incoming_damage(1000, guarded, 20.0), 560);
     }
 
     #[test]

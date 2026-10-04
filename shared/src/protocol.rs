@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use crate::combat::Reject;
 use crate::components::PlayerId;
+use crate::items::Slot;
 use crate::movement::MoveInput;
 
 /// Something a player asks the authority to do.
@@ -21,6 +22,12 @@ pub enum ClientRequest {
     ChangeClass { class: String },
     /// Use whatever is here (for now: a portal you are standing in).
     Interact,
+    /// Put on an item from your bag (by its id in the bag).
+    Equip { item: u64 },
+    /// Take off what is worn in a slot (for weapons: your current class's).
+    Unequip { slot: Slot },
+    /// Throw an item away.
+    Discard { item: u64 },
 }
 
 /// Something the authority tells clients about.
@@ -90,6 +97,20 @@ pub enum ServerEvent {
     },
     /// Everyone fell; the fight resets.
     EncounterWiped { zone: String, name: String },
+    /// A character's current class gained experience.
+    XpGained {
+        entity: Entity,
+        class: String,
+        amount: u32,
+    },
+    /// A character's class reached a new level.
+    LevelUp {
+        entity: Entity,
+        class: String,
+        level: u32,
+    },
+    /// A character got an item (e.g. boss loot).
+    ItemReceived { entity: Entity, item: String },
 }
 
 /// The in-process connection between the client and the authority.

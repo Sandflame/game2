@@ -1,5 +1,7 @@
 //! Reading what players asked for this tick.
 
+use std::collections::HashSet;
+
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
 use shared::combat::ActionState;
@@ -9,9 +11,11 @@ use shared::gamedata::Zones;
 use shared::protocol::{ClientRequest, Link};
 
 use crate::actions::{self, Actors, Targets, UseContext};
-use crate::characters::{CombatClock, Defeated, PlayerIndex, interact, spawn_player};
+use crate::characters::{CombatClock, Defeated, PlayerIndex, clean_name, interact, spawn_player};
 use crate::classes;
+use crate::database::Database;
 use crate::effects::PendingEffects;
+use crate::progression::{GearRequest, PendingGear};
 
 pub fn receive_requests(
     mut commands: Commands,
@@ -22,6 +26,9 @@ pub fn receive_requests(
     mut link: ResMut<Link>,
     mut index: ResMut<PlayerIndex>,
     mut effects: ResMut<PendingEffects>,
+    mut gear: ResMut<PendingGear>,
+    mut joining: ResMut<PendingJoins>,
+    database: Option<Res<Database>>,
     mut actors: Actors,
     targets: Targets,
     class_state: Query<(&CurrentClass, &CombatClock, Has<Defeated>)>,
@@ -36,15 +43,24 @@ pub fn receive_requests(
     };
     for (player, request) in requests {
         if let ClientRequest::Join { name } = &request {
-            spawn_player(
-                &mut commands,
-                &mut index,
-                ctx.link,
-                &data,
-                &zones,
-                player,
-                name,
-            );
+            match &database {
+                // Load their save first (the reply arrives in `finish_joins`).
+                Some(database) if !index.0.contains_key(&player) => {
+                    if joining.0.insert(player) {
+                        database.load(player, clean_name(name));
+                    }
+                }
+                _ => spawn_player(
+                    &mut commands,
+                    &mut index,
+                    ctx.link,
+                    &data,
+                    &zones,
+                    player,
+                    name,
+                    None,
+                ),
+            }
             continue;
         }
         let Some(&entity) = index.0.get(&player) else {
@@ -53,6 +69,15 @@ pub fn receive_requests(
         match request {
             ClientRequest::Join { .. } => {}
             ClientRequest::Interact => interactions.0.push((player, entity)),
+            ClientRequest::Equip { item } => {
+                gear.0.push((player, entity, GearRequest::Equip(item)));
+            }
+            ClientRequest::Unequip { slot } => {
+                gear.0.push((player, entity, GearRequest::Unequip(slot)));
+            }
+            ClientRequest::Discard { item } => {
+                gear.0.push((player, entity, GearRequest::Discard(item)));
+            }
             ClientRequest::Move(input) => {
                 if let Ok((.., Some(mut player_input), _, _)) = actors.get_mut(entity) {
                     // A jump stays requested until a movement tick uses it.
@@ -83,6 +108,38 @@ pub fn receive_requests(
                 );
             }
         }
+    }
+}
+
+/// Players whose save is being loaded.
+#[derive(Resource, Default)]
+pub struct PendingJoins(HashSet<PlayerId>);
+
+/// Characters whose save finished loading enter the world.
+pub fn finish_joins(
+    mut commands: Commands,
+    data: Res<GameData>,
+    zones: Res<Zones>,
+    database: Option<Res<Database>>,
+    mut joining: ResMut<PendingJoins>,
+    mut index: ResMut<PlayerIndex>,
+    mut link: ResMut<Link>,
+) {
+    let Some(database) = database else {
+        return;
+    };
+    for loaded in database.take_loaded() {
+        joining.0.remove(&loaded.player);
+        spawn_player(
+            &mut commands,
+            &mut index,
+            &mut link,
+            &data,
+            &zones,
+            loaded.player,
+            &loaded.name,
+            loaded.save.as_ref(),
+        );
     }
 }
 

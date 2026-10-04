@@ -168,6 +168,10 @@ pub struct Level {
     /// fight resets when everyone falls.
     #[serde(default = "yes")]
     pub revive_in_place: bool,
+    /// Level sync: characters above this level fight at it here (so friends
+    /// of any level can play together).
+    #[serde(default)]
+    pub level_sync: Option<u32>,
     /// A boss fight that takes place here (`assets/data/encounters/`).
     #[serde(default)]
     pub encounter: Option<String>,
@@ -195,6 +199,7 @@ impl Level {
             spawns: Vec::new(),
             portals: Vec::new(),
             revive_in_place: true,
+            level_sync: None,
             encounter: None,
         }
     }

@@ -21,6 +21,7 @@ use crate::actions::{Actors, Targets, UseContext, can_act_now, use_ability};
 use crate::characters::{CombatClock, Defeated};
 use crate::effects::PendingEffects;
 use crate::enemies::spawn_enemy;
+use crate::progression::{PendingRewards, Reward};
 
 /// After a wipe, players are brought back to the entrance after this long.
 const WIPE_PAUSE: f64 = 4.0;
@@ -118,6 +119,7 @@ pub fn run_encounters(
     mut link: ResMut<Link>,
     mut effects: ResMut<PendingEffects>,
     mut changes: ResMut<EncounterChanges>,
+    mut rewards: ResMut<PendingRewards>,
     mut encounters: Query<&mut Encounter>,
     players: Query<(Entity, &Zone, Has<Defeated>), With<PlayerId>>,
     bosses: Query<(&Health, &ThreatTable)>,
@@ -189,6 +191,11 @@ pub fn run_encounters(
                 }
                 if boss_health.is_dead() {
                     encounter.state = FightState::Won;
+                    rewards.0.push(Reward {
+                        players: here.iter().map(|(e, _)| *e).collect(),
+                        xp: def.xp,
+                        loot: def.loot.clone(),
+                    });
                     changes
                         .0
                         .push(Change::Despawn(std::mem::take(&mut encounter.adds)));

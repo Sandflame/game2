@@ -90,6 +90,10 @@ pub enum Reject {
     AlreadyThatClass,
     Busy,
     NothingHere,
+    NoSuchItem,
+    LevelTooLow,
+    WrongClass,
+    BagFull,
 }
 
 impl Reject {
@@ -110,6 +114,10 @@ impl Reject {
             Reject::AlreadyThatClass => "That flame is already burning.",
             Reject::Busy => "You're busy.",
             Reject::NothingHere => "There's nothing here to use.",
+            Reject::NoSuchItem => "You don't have that item.",
+            Reject::LevelTooLow => "Your level is too low to wear that.",
+            Reject::WrongClass => "That weapon is for another class.",
+            Reject::BagFull => "Your bag is full.",
         }
     }
 }

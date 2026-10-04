@@ -1,0 +1,17 @@
+// Gear new characters start with (see `start_items` in config/player.ron).
+{
+    "travellers_tunic": (name: "Traveller's Tunic", slot: Body, level: 1, health: 300,
+        description: "Sturdy cloth that has seen a few roads."),
+    "training_greatsword": (name: "Training Greatsword", slot: Weapon, level: 1,
+        class: Some("blademaster"), power: 2,
+        description: "Blunt, heavy, and good for practice."),
+    "ember_wand": (name: "Ember Wand", slot: Weapon, level: 1,
+        class: Some("elementalist"), power: 2,
+        description: "A twig that is always slightly warm."),
+    "oak_shield": (name: "Oak Shield and Blade", slot: Weapon, level: 1,
+        class: Some("shield_knight"), power: 1, guard: 2,
+        description: "A plain shield with a short blade behind it."),
+    "willow_censer": (name: "Willow Censer", slot: Weapon, level: 1,
+        class: Some("priest"), power: 2,
+        description: "Its smoke smells of rain."),
+}

@@ -8,8 +8,9 @@ Guide for working in this repository (for Claude and for humans).
   four classes, threat, sparring dummy, flame switching).
   **M4** (zones + portals, the Rootwarden trial: telegraphs, phases, adds,
   enrage, wipes, raises; particles, marker shader, hit flashes, boss
-  animation, arena dressing, sounds).
-- Next: **M5** (levels, XP, gear, saving). See `MILESTONES.md`.
+  animation, arena dressing, sounds). **M5** (levels 1–30 per class, XP,
+  gear + loot, level sync, SQLite saving, character panel).
+- Next: **M6** (secondary classes and party synergy). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -62,9 +63,13 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   (search order: next to the program, current folder, project folder).
 - `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after 2 s
   of game time and quits (`client/src/devtools.rs`).
+- `LANTERNFLAME_DB=<file>` — use this save file instead of the default
+  (`%APPDATA%\Lanternflame\world.db` / `~/.local/share/lanternflame/world.db`).
+  Screenshot demos never use a save file.
 - `LANTERNFLAME_DEMO=trial` (with the above) — scripted scene: switch to
   Elementalist, walk through the portal, pull the Rootwarden, dodge a marker.
-  `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy. Saves
+  `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy.
+  `LANTERNFLAME_DEMO=progress` — character panel + a bramble sprout. Saves
   `<file>-1.png`, `<file>-2.png`, …
 
 ### Linux build dependencies
@@ -97,7 +102,12 @@ extra beyond the Rust toolchain.
   `GameData::hotbar` (class abilities + shared lantern abilities).
 - `shared/src/telegraphs.rs` — ground marker shapes, placements, `covers()` hit tests,
   the `Telegraph` component.
-- `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage) and `Progress`.
+- `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage, xp, loot) and `Progress`.
+- `shared/src/progression.rs` — `ProgressionDef` (`progression.ron`: XP curve, per-level
+  health/power), `ClassLevels` (per class level + xp), `effective_level` (level sync).
+- `shared/src/items.rs` — `ItemDef` (`items/*.ron`), `Slot`, `Bag`, `Equipment` (shared
+  armour + one weapon per class), `equip`/`unequip`/`discard`, `character_stats`
+  (class + level + gear → `Stats`), `roll_loot`.
 - `server/src/lib.rs` — `AuthorityPlugin`, tick order (`AuthoritySystems`).
 - `server/src/requests.rs` — reads `ClientRequest`s.
 - `server/src/actions.rs` — target validation (same zone only), using/queueing
@@ -108,6 +118,11 @@ extra beyond the Rust toolchain.
   adds, enrage, victory, wipe → reset at the entrance).
 - `server/src/enemies.rs` — enemy spawning, `EnemyBrain` rotations, facing, idle resets.
 - `server/src/classes.rs` — flame changes (class switching).
+- `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
+  gear requests, `refresh_stats` (class/level/gear/zone sync), new-character gear,
+  save ↔ components, saving on change / every `autosave_every` / on exit.
+- `server/src/database.rs` — SQLite (`world.db`): background thread, numbered
+  `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save.
 - `server/src/characters.rs` — players: joining, movement, combat clock, defeat,
   revive (only where `revive_in_place`), regen, portals (`interact`), forgetting
   characters who left a zone.
@@ -119,7 +134,8 @@ extra beyond the Rust toolchain.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
 - `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
   status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L),
-  options menu (O, or Esc with nothing targeted: volume slider, mute, quit).
+  options menu (O, or Esc with nothing targeted: volume slider, mute, quit),
+  character panel (C: levels, stats, worn gear, bag) + XP bar.
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
@@ -170,9 +186,13 @@ extra beyond the Rust toolchain.
   when no combination of existing ones can express it.
 - Server tests (`server/tests/authority.rs`) use their own RON data in the test
   file, so balancing `assets/data` never breaks them.
+- Player stats are only ever set by `progression::refresh_stats` (it reacts to
+  class, level, gear and zone changes); don't assign `Stats` elsewhere.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
-- Database access goes through one module in `server/` and runs off the
-  main game thread.
+- Database access goes through one module in `server/` (`database.rs`) and runs
+  off the main game thread. Schema changes = a new entry in `MIGRATIONS`
+  (never edit a released one). Without a `Database` resource nothing is saved
+  (tests, demos).
 - Errors: `anyhow` in binaries' setup code, typed errors in `shared`.
   No `unwrap()` outside tests except where truly impossible (comment why).
 - Keep milestone scope tight; don't build "later" features early, but

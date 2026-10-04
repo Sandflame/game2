@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use server::{AuthorityPlugin, CombatRng, Defeated, EnemyKind};
-use shared::classes::{ClassDef, CurrentClass};
+use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind};
+use shared::classes::{ClassDef, CurrentClass, Stats};
 use shared::combat::{Health, Reject};
 use shared::components::{CharacterName, Hotbar, Motion, PlayerId, Zone};
 use shared::config::{GameConfig, SimulationConfig};
@@ -18,8 +18,10 @@ use shared::data::{Validate, parse_ron};
 use shared::encounters::EncounterDef;
 use shared::formulas::Rng;
 use shared::gamedata::{AbilityFile, EnemyDef, GameData, PlayerConfig, Zones};
+use shared::items::{Bag, Equipment, ItemFile, Slot};
 use shared::level::{EnemySpawn, Level, Portal};
 use shared::movement::MoveInput;
+use shared::progression::ClassLevels;
 use shared::protocol::{ClientRequest, Link, ServerEvent};
 use shared::statuses::{StatusFile, Statuses};
 use shared::telegraphs::Telegraph;
@@ -100,7 +102,24 @@ const TRIAL: &str = r#"(
          on_start: [Say("Grow!"), Spawn(enemy: "sapling", at: (3.0, 0.0, 0.0))],
          timeline: [(at: 1.0, action: Use("quake"))]),
     ],
+    xp: 250,
+    loot: [(item: "cap", chance: 100)],
 )"#;
+
+const SPROUT: &str = r#"(name: "Sprout", max_health: 100, hit_radius: 0.5, visual: "thornling",
+    reset_after: 10.0, xp: 150)"#;
+
+/// Levels 1-5; each level adds 10% health and 10% power.
+const PROGRESSION: &str = r#"(
+    max_level: 5, xp_to_next: [100, 200, 300, 400],
+    health_per_level: 10.0, power_per_level: 10.0, max_guard: 30.0, bag_size: 6,
+)"#;
+
+const ITEMS: &str = r#"{
+    "cap": (name: "Cap", slot: Head, level: 1, health: 100),
+    "big_cap": (name: "Big Cap", slot: Head, level: 3, health: 300, guard: 10),
+    "club": (name: "Club", slot: Weapon, level: 1, class: Some("fighter"), power: 10),
+}"#;
 
 const STATUSES: &str = r#"[
     (id: "burn", name: "Burn", kind: Debuff, duration: 9.5, tick: Some(Damage(amount: 40))),
@@ -139,7 +158,10 @@ fn test_data() -> GameData {
     let statuses: StatusFile = parse(STATUSES);
     GameData {
         config: GameConfig {
-            simulation: SimulationConfig { tick_hz: 60.0 },
+            simulation: SimulationConfig {
+                tick_hz: 60.0,
+                autosave_every: 60.0,
+            },
             movement: parse(MOVEMENT),
             combat: parse(COMBAT),
         },
@@ -148,6 +170,7 @@ fn test_data() -> GameData {
             start_class: "fighter".into(),
             start_zone: "test".into(),
             shared_abilities: vec!["second_wind".into(), "rekindle".into()],
+            start_items: Vec::new(),
         },
         abilities: abilities.0.into_iter().map(|a| (a.id.clone(), a)).collect(),
         statuses: statuses.0.into_iter().map(|s| (s.id.clone(), s)).collect(),
@@ -160,8 +183,11 @@ fn test_data() -> GameData {
             ("hitter".to_owned(), parse::<EnemyDef>(HITTER)),
             ("warden".to_owned(), parse::<EnemyDef>(WARDEN)),
             ("sapling".to_owned(), parse::<EnemyDef>(SAPLING)),
+            ("sprout".to_owned(), parse::<EnemyDef>(SPROUT)),
         ]),
         encounters: HashMap::from([("trial".to_owned(), parse::<EncounterDef>(TRIAL))]),
+        progression: parse(PROGRESSION),
+        items: parse::<ItemFile>(ITEMS).0,
     }
 }
 
@@ -192,6 +218,7 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
         name: "arena".into(),
         spawn_point: ARENA_ENTRANCE,
         revive_in_place: false,
+        level_sync: Some(2),
         encounter: Some("trial".into()),
         portals: vec![Portal {
             position: Vec3::new(0.0, 0.0, 12.0),
@@ -236,7 +263,19 @@ impl Game {
     }
 
     fn with_enemies(enemies: &[(&str, Vec3)]) -> Self {
+        Self::build(enemies, None)
+    }
+
+    /// A game that saves to (and loads from) a save file.
+    fn with_save_file(path: &Path) -> Self {
+        Self::build(&[], Some(path))
+    }
+
+    fn build(enemies: &[(&str, Vec3)], save_file: Option<&Path>) -> Self {
         let mut app = App::new();
+        if let Some(path) = save_file {
+            app.insert_resource(Database::start(path).unwrap());
+        }
         app.add_plugins(MinimalPlugins)
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
                 TICK,
@@ -254,6 +293,19 @@ impl Game {
             name: "Tester".into(),
         });
         game.run(0.1);
+        // With a save file the character is loaded on another thread:
+        // give it a moment of real time.
+        for _ in 0..200 {
+            let joined = game
+                .events
+                .iter()
+                .any(|e| matches!(e, ServerEvent::Joined { .. }));
+            if joined {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            game.run(TICK);
+        }
         assert!(
             game.events
                 .iter()
@@ -1022,4 +1074,220 @@ fn the_boss_has_more_health_with_more_players() {
     game.enter_arena(FRIEND);
     let boss = pull_boss(&mut game);
     assert_eq!(game.health(boss).max, 1500, "+50% for the second player");
+}
+
+// ---- Levels, gear and saving (Milestone 5) ----
+
+impl Game {
+    fn stats(&mut self) -> Stats {
+        let me = self.me();
+        *self.app.world().get::<Stats>(me).unwrap()
+    }
+
+    fn level(&mut self, class: &str) -> u32 {
+        let me = self.me();
+        self.app
+            .world()
+            .get::<ClassLevels>(me)
+            .unwrap()
+            .get(class)
+            .level
+    }
+
+    fn give(&mut self, item: &str) -> u64 {
+        let me = self.me();
+        let mut bag = self.app.world_mut().get_mut::<Bag>(me).unwrap();
+        bag.add(item, 100).unwrap()
+    }
+
+    fn set_level(&mut self, class: &str, level: u32) {
+        let me = self.me();
+        let mut levels = self.app.world_mut().get_mut::<ClassLevels>(me).unwrap();
+        levels.0.entry(class.to_owned()).or_default().level = level;
+    }
+
+    fn worn(&mut self) -> Equipment {
+        let me = self.me();
+        self.app.world().get::<Equipment>(me).unwrap().clone()
+    }
+}
+
+#[test]
+fn defeating_enemies_gives_experience_and_levels() {
+    let mut game = Game::with_enemies(&[("sprout", Vec3::new(0.0, 0.0, -2.0))]);
+    let sprout = game.enemy("Sprout");
+    game.use_on(STRIKE, Some(sprout));
+    game.run(0.3);
+    assert!(game.events.iter().any(|e| matches!(
+        e,
+        ServerEvent::XpGained { amount: 150, class, .. } if class == "fighter"
+    )));
+    assert!(game.events.iter().any(|e| matches!(
+        e,
+        ServerEvent::LevelUp { level: 2, class, .. } if class == "fighter"
+    )));
+    assert_eq!(game.level("fighter"), 2);
+    assert_eq!(game.level("guardian"), 1, "other classes level separately");
+    let stats = game.stats();
+    assert_eq!(stats.max_health, 1100, "+10% health at level 2");
+    assert!((stats.power - 110.0).abs() < 1e-3);
+    let me = game.me();
+    assert_eq!(game.health(me).current, 1100, "a new level heals");
+}
+
+#[test]
+fn enemies_that_give_nothing_give_nothing() {
+    let mut game = Game::new();
+    let dummy = game.dummy();
+    game.set_health(dummy, 1);
+    game.use_slot(STRIKE);
+    game.run(0.3);
+    assert!(
+        !game
+            .events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::XpGained { .. }))
+    );
+}
+
+#[test]
+fn winning_a_boss_fight_gives_experience_and_loot() {
+    let mut game = Game::new();
+    let boss = pull_boss(&mut game);
+    game.set_health(boss, 1);
+    game.use_on(BURST, Some(boss));
+    game.run(0.3);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::XpGained { amount: 250, .. }))
+    );
+    assert!(game.events.iter().any(|e| matches!(
+        e,
+        ServerEvent::ItemReceived { item, .. } if item == "cap"
+    )));
+    let me = game.me();
+    let bag = game.app.world().get::<Bag>(me).unwrap();
+    assert!(bag.items.iter().any(|i| i.item == "cap"));
+}
+
+#[test]
+fn wearing_gear_changes_your_stats() {
+    let mut game = Game::new();
+    let cap = game.give("cap");
+    let club = game.give("club");
+    game.send(ClientRequest::Equip { item: cap });
+    game.send(ClientRequest::Equip { item: club });
+    game.run(0.1);
+    assert!(game.rejections().is_empty(), "{:?}", game.rejections());
+    let stats = game.stats();
+    assert_eq!(stats.max_health, 1100);
+    assert!((stats.power - 110.0).abs() < 1e-3);
+    game.send(ClientRequest::Unequip { slot: Slot::Head });
+    game.run(0.1);
+    assert_eq!(game.stats().max_health, 1000);
+}
+
+#[test]
+fn gear_needs_the_level_and_the_right_class() {
+    let mut game = Game::new();
+    let big = game.give("big_cap");
+    game.send(ClientRequest::Equip { item: big });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::LevelTooLow]);
+    game.events.clear();
+    game.set_level("fighter", 3);
+    game.send(ClientRequest::Equip { item: big });
+    game.run(0.1);
+    assert!(game.rejections().is_empty());
+    assert_eq!(game.stats().guard, 10.0);
+}
+
+#[test]
+fn each_class_wears_its_own_weapon() {
+    let mut game = Game::new();
+    let club = game.give("club");
+    game.send(ClientRequest::Equip { item: club });
+    game.run(0.1);
+    assert!((game.stats().power - 110.0).abs() < 1e-3);
+    game.send(ClientRequest::ChangeClass {
+        class: "guardian".into(),
+    });
+    game.run(2.2);
+    assert!(
+        (game.stats().power - 100.0).abs() < 1e-3,
+        "the club is the fighter's"
+    );
+    assert!(game.worn().in_slot(Slot::Weapon, "fighter").is_some());
+    game.send(ClientRequest::Equip { item: club });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::WrongClass]);
+}
+
+#[test]
+fn gear_cannot_be_changed_in_combat() {
+    let mut game = Game::new();
+    let cap = game.give("cap");
+    game.use_slot(STRIKE);
+    game.run(0.2);
+    game.send(ClientRequest::Equip { item: cap });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::InCombat]);
+}
+
+#[test]
+fn guard_reduces_damage_taken() {
+    let mut game = Game::with_enemies(&[("hitter", Vec3::new(0.0, 0.0, -2.0))]);
+    game.set_level("fighter", 3);
+    let big = game.give("big_cap");
+    game.send(ClientRequest::Equip { item: big });
+    game.run(0.1);
+    let hitter = game.enemy("Hitter");
+    game.use_on(STRIKE, Some(hitter));
+    // It swings every 2 seconds.
+    game.run(2.5);
+    let me = game.me();
+    assert_eq!(game.damage_from(me, "swat"), vec![90], "100 less 10% guard");
+}
+
+#[test]
+fn level_sync_lowers_you_in_the_trial() {
+    let mut game = Game::new();
+    game.set_level("fighter", 4);
+    game.run(0.1);
+    assert_eq!(game.stats().max_health, 1300);
+    game.enter_arena(ME);
+    game.run(0.1);
+    assert_eq!(game.stats().max_health, 1100, "synced to level 2");
+}
+
+fn temp_save_file(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir()
+        .join(format!(
+            "lanternflame-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+        .join("world.db")
+}
+
+#[test]
+fn characters_are_saved_and_loaded() {
+    let path = temp_save_file("save");
+    {
+        let mut game = Game::with_save_file(&path);
+        game.set_level("fighter", 3);
+        let cap = game.give("cap");
+        game.send(ClientRequest::Equip { item: cap });
+        game.run(0.2);
+        game.app.world().resource::<Database>().flush();
+    }
+    let mut game = Game::with_save_file(&path);
+    assert_eq!(game.level("fighter"), 3);
+    assert_eq!(game.worn().armour.len(), 1, "the cap is still worn");
+    assert_eq!(game.stats().max_health, 1300, "level 3 + cap");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }

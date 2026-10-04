@@ -19,6 +19,8 @@ path = "src/main.rs"
 shared.workspace = true
 bevy = { workspace = true, features = ["std", "bevy_log"] }
 anyhow.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

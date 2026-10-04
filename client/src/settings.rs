@@ -60,6 +60,26 @@ fn settings_path() -> Option<PathBuf> {
     Some(base.join("lanternflame").join(FILE_NAME))
 }
 
+/// Where the game's save file (`world.db`) lives on this computer:
+/// `LANTERNFLAME_DB` if set, otherwise
+/// - Windows: `%APPDATA%\Lanternflame\world.db`
+/// - Linux: `~/.local/share/lanternflame/world.db`
+pub fn save_file_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("LANTERNFLAME_DB") {
+        return Some(PathBuf::from(path));
+    }
+    if cfg!(windows) {
+        let base = std::env::var_os("APPDATA")?;
+        return Some(PathBuf::from(base).join("Lanternflame").join("world.db"));
+    }
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
+        })?;
+    Some(base.join("lanternflame").join("world.db"))
+}
+
 pub fn load() -> SavedSettings {
     settings_path()
         .and_then(|path| std::fs::read_to_string(path).ok())

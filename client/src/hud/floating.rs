@@ -297,6 +297,50 @@ fn show_events(
                 say("You get back on your feet.".to_owned(), palette::HEAL);
                 None
             }
+            ServerEvent::XpGained { entity, amount, .. } if Some(*entity) == my_entity => {
+                Some(Popup {
+                    target: *entity,
+                    text: format!("+{amount} XP"),
+                    color: palette::COMBO,
+                    size: number_size(false, false),
+                })
+            }
+            ServerEvent::LevelUp {
+                entity,
+                class,
+                level,
+            } if Some(*entity) == my_entity => {
+                let name = data
+                    .classes
+                    .get(class)
+                    .map_or(class.as_str(), |c| c.name.as_str());
+                say(
+                    format!("Your {name} is now level {level}!"),
+                    palette::BANNER,
+                );
+                Some(Popup {
+                    target: *entity,
+                    text: format!("Level {level}!"),
+                    color: palette::BANNER,
+                    size: number_size(true, false) * 1.3,
+                })
+            }
+            ServerEvent::ItemReceived { entity, item } if Some(*entity) == my_entity => {
+                let name = data
+                    .items
+                    .get(item)
+                    .map_or(item.as_str(), |i| i.name.as_str());
+                say(
+                    format!("You received: {name}  (C to see your gear)"),
+                    palette::BANNER,
+                );
+                Some(Popup {
+                    target: *entity,
+                    text: name.to_owned(),
+                    color: palette::QUEUED,
+                    size: number_size(true, false),
+                })
+            }
             _ => None,
         };
         let Some(popup) = popup else {

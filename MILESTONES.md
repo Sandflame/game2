@@ -79,12 +79,15 @@ Earlier changes to your original list:
   `tools/make_sounds.py`); M mutes.
 - **Test:** clear the trial solo; deliberately fail mechanics.
 
-## M5 — Levels, XP, gear, saving
-- SQLite (`world.db`) with automatic upgrades and backup-before-upgrade.
+## M5 — Levels, XP, gear, saving ✅
+- SQLite (`world.db`) on a background thread, with numbered upgrades and a
+  backup before upgrading. Saved on every change, every 60 s, and on quit.
 - Save/load your character (no login yet — one local character).
-- XP from kills and duties; level 1–30 per class; level sync in duties.
-- Gear: slots, item level, stats; boss loot; equip UI. Armour shared by
-  all classes, weapons per class.
+- XP from kills (bramble sprouts in the meadow) and the trial; level 1–30
+  per class (`progression.ron`); level sync in the trial (level 5).
+- Gear: 6 slots (weapon per class; head, body, hands, feet, ring shared),
+  item level, plain stats (health, power %, crit %, damage taken %);
+  starter gear; Rootwarden loot; character panel (C) to equip.
 - **Test:** play, quit, relaunch, and everything is still there.
 
 ## M6 — Secondary classes and party synergy

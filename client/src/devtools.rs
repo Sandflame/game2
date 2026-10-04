@@ -18,12 +18,18 @@ use shared::protocol::{ClientRequest, Link};
 
 use crate::camera::FollowCamera;
 use crate::characters::{LocalPlayer, ScriptedMove};
+use crate::hud::character::CharacterPanel;
 use crate::hud::lantern::LanternPanel;
 use crate::hud::options::OptionsMenu;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
 
 const SCREENSHOT_ENV: &str = "LANTERNFLAME_SCREENSHOT";
+
+/// Is the game running a scripted screenshot (which never saves)?
+pub fn demo_mode() -> bool {
+    std::env::var_os(SCREENSHOT_ENV).is_some()
+}
 const DEMO_ENV: &str = "LANTERNFLAME_DEMO";
 
 /// Seconds after the last step before quitting, so the last screenshot is saved.
@@ -37,6 +43,8 @@ const PLAIN_SHOT_AT: f32 = 2.0;
 enum Step {
     OpenLantern,
     OpenOptions,
+    OpenCharacter,
+    CloseCharacter,
     CloseLantern,
     ChangeClass(&'static str),
     /// Target the nearest enemy of this kind and turn the camera to it.
@@ -77,6 +85,21 @@ const TRIAL_DEMO: &[(f32, Step)] = &[
     (20.0, Step::Shot),     // Crushing Bough's cone
 ];
 
+/// The character panel, then a fight with a bramble sprout in the meadow.
+const PROGRESS_DEMO: &[(f32, Step)] = &[
+    (1.0, Step::OpenCharacter),
+    (1.8, Step::Shot), // the character panel and the experience bar
+    (2.0, Step::CloseCharacter),
+    (2.1, Step::Walk(Some((-0.83, -0.56)))),
+    (6.35, Step::Walk(None)),
+    (6.8, Step::Target("bramble_sprout")),
+    (6.9, Step::Camera(0.45, 10.0)),
+    (7.0, Step::Press(0)),
+    (9.0, Step::Press(1)),
+    (11.0, Step::Press(2)),
+    (12.0, Step::Shot), // fighting a sprout
+];
+
 const CLASSES_DEMO: &[(f32, Step)] = &[
     (1.0, Step::OpenLantern),
     (1.6, Step::Shot), // the lantern panel
@@ -102,6 +125,7 @@ impl Plugin for DevToolsPlugin {
         };
         let steps: Vec<(f32, Step)> = match std::env::var(DEMO_ENV).as_deref() {
             Ok("classes") => CLASSES_DEMO.to_vec(),
+            Ok("progress") => PROGRESS_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -156,6 +180,7 @@ fn run_script(
     mut target: ResMut<CurrentTarget>,
     mut lantern: ResMut<LanternPanel>,
     mut options: ResMut<OptionsMenu>,
+    mut character: ResMut<CharacterPanel>,
     player: Option<Single<&Motion, With<LocalPlayer>>>,
     enemies: Query<(Entity, &Motion, &EnemyKind)>,
     mut camera: Single<&mut FollowCamera>,
@@ -173,6 +198,8 @@ fn run_script(
         match step {
             Step::OpenLantern => lantern.open = true,
             Step::OpenOptions => options.open = true,
+            Step::OpenCharacter => character.set_open(true),
+            Step::CloseCharacter => character.set_open(false),
             Step::CloseLantern => lantern.open = false,
             Step::ChangeClass(class) => send(
                 &mut link,

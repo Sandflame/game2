@@ -69,6 +69,7 @@ struct SourceInfo {
     zone: Zone,
     power: f32,
     threat_multiplier: f32,
+    crit_chance: f32,
     modifiers: Modifiers,
 }
 
@@ -80,6 +81,7 @@ fn source_info(living: &Living, data: &GameData, entity: Entity) -> Option<Sourc
         zone: s.zone.clone(),
         power: s.stats.power,
         threat_multiplier: s.stats.threat_multiplier,
+        crit_chance: s.stats.crit_chance,
         modifiers: s.statuses.modifiers(|id| data.statuses.get(id)),
     })
 }
@@ -169,7 +171,8 @@ fn land_damage(
     if c.health.is_dead() {
         return false;
     }
-    let mitigated = incoming_damage(raw, c.statuses.modifiers(|id| data.statuses.get(id)));
+    let modifiers = c.statuses.modifiers(|id| data.statuses.get(id));
+    let mitigated = incoming_damage(raw, modifiers, c.stats.guard);
     let (absorbed, through) = c.statuses.absorb(mitigated);
     c.health.damage(through);
     if let Some(threat) = c.threat.as_mut() {
@@ -271,7 +274,7 @@ pub fn resolve_effects(
                             if matches!(entry.effect, Effect::SharedDamage { .. }) {
                                 amount /= group.len().max(1) as u32;
                             }
-                            let crit = rng.0.chance(combat.crit_chance);
+                            let crit = rng.0.chance(info.crit_chance);
                             let raw =
                                 outgoing_damage(amount, info.power, info.modifiers, crit, combat);
                             hostile |= land_damage(
@@ -292,7 +295,7 @@ pub fn resolve_effects(
                             let Ok(mut c) = living.get_mut(recipient) else {
                                 continue;
                             };
-                            let crit = rng.0.chance(combat.crit_chance);
+                            let crit = rng.0.chance(info.crit_chance);
                             let received = c.statuses.modifiers(|id| data.statuses.get(id));
                             let amount = healing(
                                 *amount,
