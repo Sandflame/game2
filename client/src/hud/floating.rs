@@ -20,6 +20,8 @@ const NAMEPLATE_WIDTH: f32 = 160.0;
 /// How long damage numbers stay up, in seconds.
 const DAMAGE_NUMBER_LIFE: f32 = 1.1;
 const MESSAGE_LIFE: f32 = 1.6;
+/// Matches the shadow alpha set by `text_shadow()`.
+const SHADOW_ALPHA: f32 = 0.85;
 
 pub struct FloatingPlugin;
 
@@ -318,11 +320,12 @@ fn animate_damage_numbers(
         &mut DamageNumber,
         &mut Node,
         &mut TextColor,
+        &mut TextShadow,
         &mut Visibility,
     )>,
 ) {
     let (camera, camera_transform) = *camera;
-    for (entity, mut number, mut node, mut color, mut visibility) in &mut numbers {
+    for (entity, mut number, mut node, mut color, mut shadow, mut visibility) in &mut numbers {
         number.age += time.delta_secs();
         if number.age >= DAMAGE_NUMBER_LIFE {
             commands.entity(entity).despawn();
@@ -339,12 +342,48 @@ fn animate_damage_numbers(
         }
         let fade = 1.0 - (number.age / DAMAGE_NUMBER_LIFE).powi(3);
         color.0.set_alpha(fade);
+        shadow.color.set_alpha(fade * SHADOW_ALPHA);
     }
 }
 
-fn fade_message(time: Res<Time>, mut message: Single<(&mut TextColor, &mut MessageLine)>) {
-    let (color, line) = &mut *message;
+/// Messages stay for a moment, then fade out completely (text and its
+/// shadow) and are hidden until the next one.
+fn fade_message(
+    time: Res<Time>,
+    mut message: Single<(
+        &mut TextColor,
+        &mut TextShadow,
+        &mut Visibility,
+        &mut MessageLine,
+    )>,
+) {
+    let (color, shadow, visibility, line) = &mut *message;
     line.age += time.delta_secs();
-    let alpha = (1.0 - (line.age - MESSAGE_LIFE * 0.6) / (MESSAGE_LIFE * 0.4)).clamp(0.0, 1.0);
+    let alpha = message_alpha(line.age);
     color.0.set_alpha(alpha);
+    shadow.color.set_alpha(alpha * SHADOW_ALPHA);
+    **visibility = if alpha > 0.0 {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+}
+
+/// Fully visible for most of the message's life, then fading to nothing.
+fn message_alpha(age: f32) -> f32 {
+    (1.0 - (age - MESSAGE_LIFE * 0.6) / (MESSAGE_LIFE * 0.4)).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn messages_fade_out_completely() {
+        assert_eq!(message_alpha(0.0), 1.0);
+        assert_eq!(message_alpha(MESSAGE_LIFE * 0.5), 1.0);
+        assert!(message_alpha(MESSAGE_LIFE * 0.8) < 1.0);
+        assert_eq!(message_alpha(MESSAGE_LIFE), 0.0);
+        assert_eq!(message_alpha(MESSAGE_LIFE * 10.0), 0.0);
+    }
 }

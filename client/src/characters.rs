@@ -69,9 +69,14 @@ struct LanternFlame {
 
 /// Where the lantern hangs at the side (when "always show" is on).
 const LANTERN_AT_SIDE: Vec3 = Vec3::new(0.48, 0.75, -0.12);
-/// Where it is held up in both hands while the flame changes: raised
-/// above the head and a little forward, so it shows from behind too.
-const LANTERN_HELD_OUT: Vec3 = Vec3::new(0.0, 2.05, -0.45);
+/// Where it is held up in both hands while the flame changes: in front of
+/// the face, with the bottom of the lantern at about eye level.
+/// (Eyes are at ~1.51 m; the held lantern's bottom is ~0.22 m below its centre.)
+const LANTERN_HELD_OUT: Vec3 = Vec3::new(0.0, 1.74, -0.55);
+/// How far the head tilts up to look at the held lantern (radians).
+const LOOK_UP: f32 = 0.35;
+/// Where the head sits on the body.
+const HEAD_POSITION: Vec3 = Vec3::new(0.0, 1.48, 0.0);
 /// The lantern looks a bit bigger while held up.
 const LANTERN_HELD_SCALE: f32 = 1.5;
 /// How long the lantern stays out after the new flame catches.
@@ -84,6 +89,8 @@ const LANTERN_SPEED: f32 = 4.0;
 struct Lantern {
     owner: Entity,
     hands: Entity,
+    /// The owner's head, which tilts up to look at the held lantern.
+    head: Entity,
     /// 0 = put away, 1 = fully visible.
     shown: f32,
     /// 0 = at the side, 1 = held out in front.
@@ -189,7 +196,7 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
         Sphere::new(0.3).mesh().uv(32, 18),
         skin,
         Outline::Smooth,
-        Transform::from_xyz(0.0, 1.48, 0.0),
+        Transform::from_translation(HEAD_POSITION),
     );
     for side in [-1.0, 1.0] {
         toon.spawn_part(
@@ -228,6 +235,7 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
     commands.entity(lantern).insert(Lantern {
         owner: player,
         hands,
+        head,
         shown: 0.0,
         held: 0.0,
         linger: 0.0,
@@ -487,6 +495,7 @@ fn animate_lantern_holding(
     owners: Query<Has<FlameChange>>,
     mut lanterns: Query<(&mut Lantern, &mut Transform, &mut Visibility)>,
     mut hands: Query<&mut Visibility, Without<Lantern>>,
+    mut heads: Query<&mut Transform, Without<Lantern>>,
 ) {
     let dt = time.delta_secs();
     let step = dt * LANTERN_SPEED;
@@ -508,6 +517,9 @@ fn animate_lantern_holding(
         } else {
             Visibility::Hidden
         };
+        if let Ok(mut head) = heads.get_mut(lantern.head) {
+            head.rotation = Quat::from_rotation_x(LOOK_UP * held);
+        }
         if let Ok(mut hands_visibility) = hands.get_mut(lantern.hands) {
             *hands_visibility = if lantern.held > 0.5 {
                 Visibility::Inherited
