@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
 
 use shared::gamedata::Zones;
+use shared::level::{Level, Shape};
 
 use std::f32::consts::{PI, TAU};
 
@@ -20,7 +21,9 @@ use shared::components::Motion;
 
 use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
 use crate::hud::options::OptionsMenu;
+use crate::session::Received;
 use crate::world::CurrentZone;
+use shared::protocol::ServerEvent;
 
 /// Radians of turn per pixel of mouse movement.
 const MOUSE_SENSITIVITY: f32 = 0.005;
@@ -48,7 +51,12 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 RunFixedMainLoop,
                 (
-                    (track_drag, orbit_camera, grab_cursor_while_dragging)
+                    (
+                        face_forward_on_arrival,
+                        track_drag,
+                        orbit_camera,
+                        grab_cursor_while_dragging,
+                    )
                         .chain()
                         .before(send_movement)
                         .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
@@ -74,7 +82,7 @@ impl CameraShake {
 /// looks down, and how close it stays.
 const RIDE_TURN: f32 = 4.0;
 const RIDE_PITCH: f32 = 0.22;
-const RIDE_DISTANCE: f32 = 6.0;
+const RIDE_DISTANCE: f32 = 4.5;
 
 /// How far the strongest shake moves the camera (metres), and how fast it fades.
 const SHAKE_SIZE: f32 = 0.18;
@@ -166,6 +174,29 @@ fn orbit_camera(
     }
 }
 
+/// Arriving in a zone, look the way the character faces (each portal
+/// sets which way that is).
+fn face_forward_on_arrival(
+    mut received: MessageReader<Received>,
+    player: Option<Single<(Entity, &Motion, Has<Riding>), With<LocalPlayer>>>,
+    mut camera: Single<&mut FollowCamera>,
+) {
+    let Some(player) = player else {
+        received.clear();
+        return;
+    };
+    // On a ride the camera swings round on its own (`follow_player`).
+    let (me, motion, riding) = *player;
+    for Received(event) in received.read() {
+        if let ServerEvent::ZoneChanged { entity, .. } = event
+            && *entity == me
+            && !riding
+        {
+            camera.yaw = motion.0.yaw;
+        }
+    }
+}
+
 /// Hide and hold the mouse pointer while dragging the camera.
 fn grab_cursor_while_dragging(drag: Res<CameraDrag>, mut cursor: Single<&mut CursorOptions>) {
     let dragging = drag.active;
@@ -196,6 +227,56 @@ fn room_before_wall(focus: Vec3, direction: Vec3, distance: f32, limit: f32) -> 
     room.max(CLOSEST_TO_WALL.min(distance))
 }
 
+/// How far the camera can go from `focus` along `direction` (a unit
+/// vector) before hitting a box-shaped obstacle (walls, houses), keeping a
+/// little gap. Round things (trees, pillars) are ignored so the camera
+/// doesn't jump about in a forest.
+fn room_before_boxes(level: &Level, focus: Vec3, direction: Vec3, distance: f32) -> f32 {
+    let mut room = distance;
+    for obstacle in &level.obstacles {
+        let Shape::Box {
+            half_x,
+            half_z,
+            height,
+        } = obstacle.shape
+        else {
+            continue;
+        };
+        let low = obstacle.position - Vec3::new(half_x, 0.0, half_z);
+        let high = obstacle.position + Vec3::new(half_x, height, half_z);
+        if let Some(hit) = ray_box(focus, direction, low, high)
+            && hit < room
+        {
+            room = hit;
+        }
+    }
+    if room < distance {
+        (room - WALL_MARGIN).max(CLOSEST_TO_WALL.min(distance))
+    } else {
+        distance
+    }
+}
+
+/// Where a ray from `from` along `direction` first enters a box, if it
+/// does (ahead of `from`, which must be outside the box).
+fn ray_box(from: Vec3, direction: Vec3, low: Vec3, high: Vec3) -> Option<f32> {
+    let mut enter = 0.0_f32;
+    let mut leave = f32::INFINITY;
+    for axis in 0..3 {
+        let (o, d, lo, hi) = (from[axis], direction[axis], low[axis], high[axis]);
+        if d.abs() < 1e-6 {
+            if o < lo || o > hi {
+                return None;
+            }
+            continue;
+        }
+        let (a, b) = ((lo - o) / d, (hi - o) / d);
+        enter = enter.max(a.min(b));
+        leave = leave.min(a.max(b));
+    }
+    (enter <= leave && enter > 0.0).then_some(enter)
+}
+
 fn follow_player(
     time: Res<Time>,
     current: Res<CurrentZone>,
@@ -223,10 +304,11 @@ fn follow_player(
     let rotation = Quat::from_euler(EulerRot::YXZ, follow.yaw, -pitch, 0.0);
     let direction = rotation * Vec3::Z;
     let level = current.0.as_deref().and_then(|zone| zones.get(zone));
-    if let Some(level) = level
-        && !level.border.is_empty()
-    {
-        distance = room_before_wall(focus, direction, distance, level.half_size - WALL_MARGIN);
+    if let Some(level) = level {
+        if !level.border.is_empty() {
+            distance = room_before_wall(focus, direction, distance, level.half_size - WALL_MARGIN);
+        }
+        distance = room_before_boxes(level, focus, direction, distance);
     }
     let mut position = focus + direction * distance;
     // Never dip below the ground (where there is one).
@@ -247,6 +329,35 @@ fn follow_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::level::Obstacle;
+
+    #[test]
+    fn camera_stops_in_front_of_walls() {
+        let level = Level {
+            obstacles: vec![Obstacle {
+                shape: Shape::Box {
+                    half_x: 5.0,
+                    half_z: 0.5,
+                    height: 6.0,
+                },
+                position: Vec3::new(0.0, 0.0, 4.0),
+                visual: String::new(),
+            }],
+            ..Level::empty()
+        };
+        let focus = Vec3::new(0.0, 1.4, 0.0);
+        // The wall's near face is 3.5 m behind.
+        let room = room_before_boxes(&level, focus, Vec3::Z, 10.0);
+        assert!((room - (3.5 - WALL_MARGIN)).abs() < 1e-4, "{room}");
+        // Looking the other way, nothing is in the way.
+        assert_eq!(room_before_boxes(&level, focus, Vec3::NEG_Z, 10.0), 10.0);
+        // High above the wall, it isn't in the way either.
+        let over = Vec3::new(0.0, 0.5, 1.0).normalize();
+        assert_eq!(
+            room_before_boxes(&level, Vec3::new(0.0, 7.0, 0.0), over, 10.0),
+            10.0
+        );
+    }
 
     #[test]
     fn camera_stops_at_the_wall() {

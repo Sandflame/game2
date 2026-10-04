@@ -15,8 +15,12 @@ use crate::characters::{CombatClock, Defeated, PlayerIndex, clean_name, interact
 use crate::classes;
 use crate::database::Database;
 use crate::effects::PendingEffects;
+use crate::instances::Instances;
 use crate::progression::{GearRequest, PendingGear};
-use crate::travel::{Npc, Riding, busy_riding};
+use crate::travel::{CameFrom, Npc, Riding, Travel, busy_riding, enter_from_board};
+use shared::combat::Reject;
+use shared::components::ExitPortal;
+use shared::protocol::ServerEvent;
 
 pub fn receive_requests(
     mut commands: Commands,
@@ -29,6 +33,7 @@ pub fn receive_requests(
     mut effects: ResMut<PendingEffects>,
     mut gear: ResMut<PendingGear>,
     mut joining: ResMut<PendingJoins>,
+    mut instances: ResMut<Instances>,
     database: Option<Res<Database>>,
     riders: Query<(), With<Riding>>,
     mut actors: Actors,
@@ -58,6 +63,7 @@ pub fn receive_requests(
                     ctx.link,
                     &data,
                     &zones,
+                    &mut instances,
                     player,
                     name,
                     None,
@@ -75,6 +81,7 @@ pub fn receive_requests(
                 ClientRequest::UseAbility { .. }
                     | ClientRequest::ChangeClass { .. }
                     | ClientRequest::Interact
+                    | ClientRequest::EnterFromBoard { .. }
             )
         {
             busy_riding(ctx.link, player);
@@ -82,7 +89,10 @@ pub fn receive_requests(
         }
         match request {
             ClientRequest::Join { .. } => {}
-            ClientRequest::Interact => interactions.0.push((player, entity)),
+            ClientRequest::Interact => interactions.0.push((player, entity, None)),
+            ClientRequest::EnterFromBoard { zone } => {
+                interactions.0.push((player, entity, Some(zone)));
+            }
             ClientRequest::Equip { item } => {
                 gear.0.push((player, entity, GearRequest::Equip(item)));
             }
@@ -141,6 +151,7 @@ pub fn finish_joins(
     database: Option<Res<Database>>,
     mut joining: ResMut<PendingJoins>,
     mut index: ResMut<PlayerIndex>,
+    mut instances: ResMut<Instances>,
     mut link: ResMut<Link>,
 ) {
     let Some(database) = database else {
@@ -154,6 +165,7 @@ pub fn finish_joins(
             &mut link,
             &data,
             &zones,
+            &mut instances,
             loaded.player,
             &loaded.name,
             loaded.save.as_ref(),
@@ -161,35 +173,73 @@ pub fn finish_joins(
     }
 }
 
-/// Interact requests, handled by [`handle_interactions`] (which may move
-/// characters, something `receive_requests` can't do while it reads them).
+/// Interact requests (and dungeon board choices), handled by
+/// [`handle_interactions`] (which may move characters, something
+/// `receive_requests` can't do while it reads them).
 #[derive(Resource, Default)]
-pub struct PendingInteractions(Vec<(PlayerId, Entity)>);
+pub struct PendingInteractions(Vec<(PlayerId, Entity, Option<String>)>);
 
 pub fn handle_interactions(
     mut commands: Commands,
     time: Res<Time>,
     data: Res<GameData>,
     zones: Res<Zones>,
+    mut instances: ResMut<Instances>,
     mut link: ResMut<Link>,
     mut pending: ResMut<PendingInteractions>,
-    mut players: Query<(&Zone, &mut Motion, &CombatClock, Has<Defeated>), With<PlayerId>>,
+    mut players: Query<
+        (
+            &Zone,
+            &mut Motion,
+            &CombatClock,
+            Has<Defeated>,
+            Option<&CameFrom>,
+        ),
+        With<PlayerId>,
+    >,
+    exits: Query<(&ExitPortal, &Zone)>,
     mut npcs: Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
 ) {
     let now = time.elapsed_secs_f64();
-    for (player, entity) in pending.0.drain(..) {
-        if let Ok((zone, mut motion, clock, defeated)) = players.get_mut(entity) {
-            interact(
-                &mut commands,
-                &mut link,
-                &data,
-                &zones,
-                now,
+    for (player, entity, board_choice) in pending.0.drain(..) {
+        let occupied: Vec<String> = players.iter().map(|(z, ..)| z.0.clone()).collect();
+        let mut travel = Travel {
+            commands: &mut commands,
+            link: &mut link,
+            data: &data,
+            zones: &zones,
+            instances: &mut instances,
+            occupied: &occupied,
+            now,
+        };
+        let Ok((zone, mut motion, clock, defeated, came_from)) = players.get_mut(entity) else {
+            continue;
+        };
+        match board_choice {
+            None => interact(
+                &mut travel,
                 player,
                 entity,
-                (zone, &mut motion, clock, defeated),
+                (zone, &mut motion, clock, defeated, came_from),
+                &exits,
                 &mut npcs,
-            );
+            ),
+            Some(to) => {
+                let in_combat = clock.in_combat(now, data.config.combat.combat_timeout);
+                let result = if defeated {
+                    Err(Reject::Dead)
+                } else if in_combat {
+                    Err(Reject::InCombat)
+                } else {
+                    enter_from_board(&mut travel, entity, &mut motion, zone, &to)
+                };
+                if let Err(reason) = result {
+                    travel
+                        .link
+                        .to_client
+                        .push(ServerEvent::Rejected { player, reason });
+                }
+            }
         }
     }
 }

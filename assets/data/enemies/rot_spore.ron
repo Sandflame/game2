@@ -1,0 +1,13 @@
+// A rotting mushroom that spits from a distance.
+(
+    name: "Rot Spore",
+    max_health: 1000,
+    hit_radius: 0.8,
+    visual: "rot_spore",
+    actions: [(ability: "rot_spit", every: 3.0)],
+    xp: 60,
+    move_speed: 3.0,
+    aggro_radius: 10.0,
+    leash_radius: 30.0,
+    assist_radius: 8.0,
+)

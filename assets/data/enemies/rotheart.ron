@@ -1,0 +1,10 @@
+// The last boss of the Tangled Burrow: a rotting heart of roots that
+// poisons the forest above.
+(
+    name: "The Rotheart",
+    max_health: 6500,
+    hit_radius: 3.0,
+    visual: "rotheart",
+    actions: [(ability: "rot_lash", every: 3.0)],
+    aggro_radius: 11.0,
+)

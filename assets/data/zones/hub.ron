@@ -57,6 +57,9 @@
         (visual: "banner", position: (-13.0, 0.0, -14.0), yaw: 0.6),
     ],
     portals: [
+        // The dungeon board: lists the dungeons and trials, and takes you there.
+        (position: (10.5, 0.0, 1.0), radius: 2.0, board: true, visual: "dungeon_board",
+         label: "Dungeon board"),
         // Rootwell: slide down the giant root to the forest.
         (position: (0.0, 0.0, -31.0), radius: 2.4, ride: Some("root_slide"),
          label: "Slide down the giant root (to Whisperwood)", visual: "root_entrance"),
@@ -80,6 +83,7 @@
             "Your lantern holds your flame. Press L to change it - any class, any time out of combat.",
             "Rootwell is to the north. Walk into the giant root and slide all the way down to Whisperwood.",
             "The other districts are still being built. Their gates are closed for now.",
+            "Looking for adventure? The dungeon board by the fountain lists every dungeon and trial.",
          ]),
         (name: "Root Keeper Fen", visual: "townsfolk_keeper", position: (-4.0, 0.0, -26.0), yaw: -0.6,
          lines: [

@@ -1,0 +1,139 @@
+// Abilities of the Tangled Burrow (first dungeon).
+// Telegraph shapes and placements are explained in rootwarden.ron.
+[
+    // ---- Regular enemies ----
+    (
+        id: "pup_bite", name: "Bite",
+        description: "A burrow pup snaps at you.",
+        on_gcd: false, range: 3.0, target: Enemy,
+        effects: [(effect: Damage(amount: 140))],
+        vfx: "slash",
+    ),
+    (
+        id: "rot_spit", name: "Rot Spit",
+        description: "A glob of rotten spores.",
+        on_gcd: false, cast_time: 1.2, range: 18.0, target: Enemy,
+        effects: [(effect: Damage(amount: 200))],
+        vfx: "bolt_rot",
+    ),
+
+    // ---- The Burrow Matriarch ----
+    (
+        id: "matriarch_bite", name: "Savage Bite",
+        description: "The Matriarch's jaws.",
+        on_gcd: false, range: 4.0, target: Enemy,
+        effects: [(effect: Damage(amount: 260))],
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "matriarch_pounce", name: "Pounce",
+        description: "She leaps onto her target. Get out of the circle!",
+        on_gcd: false, cast_time: 2.5, range: 30.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 4.5), placement: Target)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 2600))],
+        vfx: "slam",
+    ),
+    (
+        id: "matriarch_sweep", name: "Tail Sweep",
+        description: "A thorny tail sweeps everything in front of her.",
+        on_gcd: false, cast_time: 2.5, range: 30.0, target: Enemy,
+        telegraph: Some((shape: Cone(radius: 9.0, angle: 110.0), placement: CasterTowardsTarget)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 2800))],
+        vfx: "slam",
+    ),
+    (
+        id: "matriarch_howl", name: "Howl",
+        description: "A deafening howl hits everyone in the den.",
+        on_gcd: false, cast_time: 2.0, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 30.0), effect: Damage(amount: 450))],
+        vfx: "burst_nature",
+    ),
+
+    // ---- Mother Sporecap ----
+    (
+        id: "sporecap_spit", name: "Spore Spit",
+        description: "A stream of spores.",
+        on_gcd: false, range: 30.0, target: Enemy,
+        effects: [(effect: Damage(amount: 220))],
+        vfx: "bolt_rot",
+    ),
+    (
+        id: "sporecap_ring", name: "Spore Ring",
+        description: "Spores burst in a ring around her. Get close to be safe!",
+        on_gcd: false, cast_time: 3.0, target: Myself,
+        telegraph: Some((shape: Donut(inner: 4.5, outer: 22.0), placement: Caster)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 2800))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "sporecap_puff", name: "Spore Puff",
+        description: "A cloud of spores bursts around her. Get away!",
+        on_gcd: false, cast_time: 3.0, target: Myself,
+        telegraph: Some((shape: Circle(radius: 8.0), placement: Caster)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 2800))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "sporecap_rain", name: "Spore Rain",
+        description: "Spores fall around every player. Spread out!",
+        on_gcd: false, cast_time: 3.0, range: 40.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 3.5), placement: SpreadOnEveryone)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 1600))],
+        vfx: "burst_rot",
+    ),
+
+    // ---- The Rotheart ----
+    (
+        id: "rot_lash", name: "Rot Lash",
+        description: "A rotten root lashes out.",
+        on_gcd: false, range: 40.0, target: Enemy,
+        effects: [(effect: Damage(amount: 170))],
+        vfx: "slash",
+    ),
+    (
+        id: "rot_slam", name: "Rot Slam",
+        description: "A rotten root bursts up under its target.",
+        on_gcd: false, cast_time: 2.5, range: 40.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 5.0), placement: Target)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3000))],
+        vfx: "slam",
+    ),
+    (
+        id: "blight_line", name: "Blight Line",
+        description: "A line of blight tears across the chamber towards its target.",
+        on_gcd: false, cast_time: 3.0, range: 40.0, target: Enemy,
+        telegraph: Some((shape: Line(length: 30.0, width: 5.0), placement: CasterTowardsTarget)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3000))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "rot_pulse", name: "Rot Pulse",
+        description: "A wave of rot washes over the whole chamber.",
+        on_gcd: false, cast_time: 2.5, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 40.0), effect: Damage(amount: 600))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "heart_ring", name: "Rotting Ring",
+        description: "Rot erupts all around it. Get close to be safe!",
+        on_gcd: false, cast_time: 4.0, target: Myself,
+        telegraph: Some((shape: Donut(inner: 5.5, outer: 30.0), placement: Caster)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3500))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "rot_spread", name: "Spreading Rot",
+        description: "Rot gathers under every player. Spread out!",
+        on_gcd: false, cast_time: 3.5, range: 40.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 4.0), placement: SpreadOnEveryone)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 1800))],
+        vfx: "burst_rot",
+    ),
+    (
+        id: "rot_overgrowth", name: "Overgrowth",
+        description: "The Rotheart's full fury. Defeat it before this!",
+        on_gcd: false, cast_time: 6.0, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 100.0), effect: Damage(amount: 99999))],
+        vfx: "burst_rot",
+    ),
+]

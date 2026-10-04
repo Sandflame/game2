@@ -3,6 +3,14 @@
     name: "Rootwarden's Hollow",
     half_size: 22.0,
     spawn_point: (0.0, 0.0, 16.0),
+    // Each group gets its own copy of the Hollow.
+    instanced: true,
+    exit: Some((to: "whisperwood", arrive: (-46.0, 0.0, -50.0), arrive_yaw: -2.4)),
+    listing: Some((
+        kind: "Trial",
+        description: "A single great battle against the Rootwarden, the ancient spirit of the forest. Learn its attacks and dodge the markers.",
+        players: (1, 8),
+    )),
     ground: "moss",
     // Looks only: a wall of roots around the edge, and drifting pollen.
     border: "roots",
@@ -11,7 +19,7 @@
     revive_in_place: false,
     // Characters above level 5 fight at level 5 here.
     level_sync: Some(5),
-    encounter: Some("rootwarden"),
+    encounters: ["rootwarden"],
     obstacles: [
         // Ancient standing stones in the corners (decoration you can't walk through).
         (shape: Cylinder(radius: 1.2, height: 5.0), position: (-19.0, 0.0, -19.0), visual: "standing_stone"),
@@ -20,7 +28,6 @@
         (shape: Cylinder(radius: 1.2, height: 5.0), position: (19.0, 0.0, 19.0), visual: "standing_stone"),
     ],
     portals: [
-        (position: (16.0, 0.0, 17.0), radius: 1.8, to: "whisperwood", arrive: (-46.0, 0.0, -50.0),
-         arrive_yaw: -2.4, label: "Leave the Hollow"),
+        (position: (16.0, 0.0, 17.0), radius: 1.8, back: true, label: "Leave the Hollow"),
     ],
 )

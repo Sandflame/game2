@@ -1,0 +1,59 @@
+// The Rotheart: last boss of the Tangled Burrow. When it falls, a way out
+// opens in front of it.
+(
+    name: "The Rotheart",
+    boss: "rotheart",
+    boss_position: (0.0, 0.0, -42.0),
+    boss_yaw: 3.1416,
+    extra_health_per_player: 70,
+    pull_message: Some("The Rotheart shudders, and the roots around you writhe!"),
+    victory_message: Some("The Rotheart crumbles. Fresh air drifts down from above."),
+    phases: [
+        (
+            name: "Festering",
+            until_health: 55,
+            loop_after: 16.0,
+            timeline: [
+                (at: 3.0, action: Use("rot_slam")),
+                (at: 8.0, action: Use("blight_line")),
+                (at: 13.0, action: Use("rot_pulse")),
+            ],
+        ),
+        (
+            name: "Rot Bloom",
+            until_health: 0,
+            on_start: [
+                Say("Rot spores burst from the Rotheart!"),
+                Spawn(enemy: "rot_spore", at: (-10.0, 0.0, -36.0)),
+                Spawn(enemy: "rot_spore", at: (10.0, 0.0, -36.0)),
+                Use("heart_ring"),
+            ],
+            loop_after: 20.0,
+            timeline: [
+                (at: 4.0, action: Use("rot_slam")),
+                (at: 9.0, action: Use("rot_spread")),
+                (at: 14.0, action: Use("blight_line")),
+                (at: 18.0, action: Use("rot_pulse")),
+            ],
+        ),
+    ],
+    enrage: Some((
+        after: 180.0,
+        ability: "rot_overgrowth",
+        message: Some("The Rotheart swells with rot... finish it now!"),
+    )),
+    xp: 900,
+    // The way out, just beside where it stood.
+    exit_portal: Some((position: (6.5, 0.0, -38.5), radius: 1.8, label: "Climb back out of the Burrow")),
+    loot: [
+        (item: "sporecap_hood", chance: 20),
+        (item: "burrowhide_coat", chance: 20),
+        (item: "pupfur_gloves", chance: 20),
+        (item: "tunneler_boots", chance: 20),
+        (item: "rotheart_ring", chance: 15),
+        (item: "matriarch_fang", chance: 10),
+        (item: "glowcap_rod", chance: 10),
+        (item: "rootbark_bulwark", chance: 10),
+        (item: "lantern_of_spores", chance: 10),
+    ],
+)

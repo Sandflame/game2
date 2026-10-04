@@ -96,6 +96,8 @@ pub enum Reject {
     BagFull,
     NotLendable,
     SameClass,
+    NotAtBoard,
+    NoSuchPlace,
 }
 
 impl Reject {
@@ -122,6 +124,8 @@ impl Reject {
             Reject::BagFull => "Your bag is full.",
             Reject::NotLendable => "That ability can't be borrowed.",
             Reject::SameClass => "Your secondary flame must differ from your main one.",
+            Reject::NotAtBoard => "You need to be at a dungeon board.",
+            Reject::NoSuchPlace => "There's no such place.",
         }
     }
 }

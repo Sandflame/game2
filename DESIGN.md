@@ -261,11 +261,11 @@ Planned data files (each arrives in the milestone that needs it):
 | `abilities/*.ron` | Every ability: timing, range, targeting, effects, visuals key |
 | `statuses.ron` | Buffs/debuffs: duration, stacks, stat modifiers, damage-over-time |
 | `classes/*.ron` | Class: role lean, base stats per level, the 5 core abilities, specializations (3 abilities each), which abilities may be lent as secondary |
-| `progression.ron` | XP per level (cap 30), XP from kills/duties/quests |
+| `progression.ron` | XP per level (cap 30), XP from kills/dungeons/trials/quests |
 | `synergy.ron` | Role-coverage rules and compensating bonuses |
 | `items/*.ron` | Gear: slot, item level, stats |
 | `enemies/*.ron` | Mobs and bosses: stats, ability lists, AI timeline |
-| `duties/*.ron` | Dungeons, trials, raids: map, encounters, loot tables, timers |
+| `encounters/*.ron` | Boss fights: phases, timelines, enrage, loot, the way out after victory (dungeons and trials themselves are instanced zones in `zones/`) |
 | `zones/*.ron` | Zones: scene, spawn points, exits/portals, NPCs |
 | `quests/*.ron`, `dialogue/*.ron` | Quest steps and dialogue lines |
 | `client/vfx.ron` *(client only)* | Maps visuals keys to particle/shader effects |
@@ -329,7 +329,7 @@ gives everyone extra mitigation (§6.3).
 
 ### 5.6 Death
 Downed players can be raised by sustain classes (and by any class via a
-long-cooldown emergency ability, so no party mix is required). In a duty,
+long-cooldown emergency ability, so no party mix is required). In a dungeon or trial,
 a full wipe resets the encounter; players return to the arena entrance
 with no penalty other than time. No XP loss, no gear damage —
 low frustration.
@@ -400,7 +400,7 @@ relevant bonuses (this also makes solo questing pleasant).
 - Gear is the main source of power at cap: item level from dungeons,
   trials, raids. Armour/accessories are shared across classes; each class
   has its own weapon (weapons are class-specific items).
-- Duties have **level sync**: if you are over-levelled you are scaled
+- Dungeons and trials have **level sync**: if you are over-levelled you are scaled
   down, so friends at different levels can always play together.
 
 ---
@@ -463,19 +463,24 @@ and is much simpler than real sliding physics.
 ### 8.2 Content types
 | Type | Players | Length | Structure |
 |---|---|---|---|
-| Dungeon | 4 | 5–10 min | Short path, 2 trash pulls, 2 mini-bosses, 1 final boss |
+| Dungeon | 1–4 | about 3 min (the first) | Short path, trash pulls, 2 mini-bosses, 1 final boss |
 | Trial | 1–4 | 3–8 min | One multi-phase boss in an arena |
 | Raid | 4 | 10–15 min | Harder trial-style bosses; tighter mechanics, enrage timers |
 
-All duties scale by party size so you can practise alone or with
+Dungeons and trials are instanced zones: each group gets its own fresh
+copy, entered by walking to its entrance in the world or from the dungeon
+board in Lanternhold; a way out appears when the last boss falls, leading
+back to where you came in.
+
+All dungeons, trials and raids scale by party size so you can practise alone or with
 whoever is online. **Raids are 4 players for now; 8-player raids are
 planned.** To keep that door open: parties hold up to 8 players, each
-duty's data declares its `max_party` (4 today), scaling formulas accept
+one's data declares its `max_party` (4 today), scaling formulas accept
 1–8, and the party-list UI and synergy rules work for any size.
 
 ### 8.3 Quests and dialogue
 Quests are lists of steps in data (`talk to NPC`, `kill N`, `enter zone`,
-`complete duty`, `interact with object`). Dialogue is a list of lines
+`complete dungeon`, `interact with object`). Dialogue is a list of lines
 with speaker names and optional choices. Any player can skip dialogue
 with one key; quest progress still records.
 
@@ -544,5 +549,5 @@ with one key; quest progress still records.
 4. **Jumping:** yes — simple jump, no fall damage.
 5. **Camera:** FFXIV-style (right-drag rotates camera and turns the
    character, left-drag orbits the camera only, WASD moves, wheel zooms).
-6. **Party size:** duties are 4 players now; 8-player raids planned later
+6. **Party size:** dungeons are 4 players now; 8-player raids planned later
    (parties already support 8).

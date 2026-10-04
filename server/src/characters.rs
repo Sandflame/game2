@@ -9,6 +9,7 @@ use shared::combat::{ActionState, Health};
 use shared::components::{
     CharacterName, Faction, HitRadius, Hotbar, Motion, PlayerId, VisualKey, Zone,
 };
+use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
 use shared::movement::{self, MoveInput, MoveState};
 use shared::progression::ClassLevels;
@@ -18,8 +19,12 @@ use shared::threat::ThreatTable;
 
 use crate::classes::FlameChange;
 use crate::database::CharacterSave;
+use crate::encounters::WIPE_PAUSE;
+use crate::instances::Instances;
 use crate::progression::{Build, player_hotbar, player_stats, restore, starting_gear};
-use crate::travel::{Npc, Riding, talk, use_portal};
+use crate::travel::{CameFrom, Npc, Riding, Travel, talk, use_portal};
+use shared::components::ExitPortal;
+use shared::level::Portal;
 
 /// Finds a player's character from their id.
 #[derive(Resource, Default, Debug)]
@@ -76,6 +81,7 @@ pub fn spawn_player(
     link: &mut Link,
     data: &GameData,
     zones: &Zones,
+    instances: &mut Instances,
     player: PlayerId,
     name: &str,
     save: Option<&CharacterSave>,
@@ -92,25 +98,33 @@ pub fn spawn_player(
     // Someone who quit in the middle of a ride arrives at its end.
     let ride_end = save.and_then(|s| data.rides.values().find(|r| r.zone == s.zone));
     let saved_zone = save.filter(|s| zones.get(&s.zone).is_some() && ride_end.is_none());
-    let zone = match (ride_end, saved_zone) {
-        (Some(ride), _) => ride.to.clone(),
-        (None, Some(s)) => s.zone.clone(),
-        (None, None) => data.player.start_zone.clone(),
+    // Someone who quit inside a dungeon or trial comes back outside it
+    // (that copy of it is gone).
+    let left_instance = saved_zone
+        .and_then(|s| zones.get(&s.zone))
+        .filter(|level| level.instanced)
+        .and_then(|level| level.exit.as_ref());
+    let (zone, motion) = match (ride_end, left_instance, saved_zone) {
+        (Some(ride), ..) => (ride.to.clone(), (ride.arrive, ride.arrive_yaw)),
+        (None, Some(exit), _) => (exit.to.clone(), (exit.arrive, exit.arrive_yaw)),
+        (None, None, Some(s)) => (s.zone.clone(), (s.position, s.yaw)),
+        (None, None, None) => {
+            let start = &data.player.start_zone;
+            let at = zones
+                .get(start)
+                .map_or((Vec3::ZERO, 0.0), |l| (l.spawn_point, l.spawn_yaw));
+            (start.clone(), at)
+        }
     };
+    // A start zone that is instanced (only in demos) gets its own copy.
+    let zone = instances.enter(commands, data, zones, &zone, &[]);
     // Both checked when the data was loaded.
-    let (Some(class), Some(level)) = (data.classes.get(&class_id), zones.get(&zone)) else {
+    let Some(class) = data.classes.get(&class_id) else {
         return;
     };
-    let motion = match (ride_end, saved_zone) {
-        (Some(ride), _) => MoveState {
-            yaw: ride.arrive_yaw,
-            ..MoveState::spawn_at(ride.arrive)
-        },
-        (None, Some(s)) => MoveState {
-            yaw: s.yaw,
-            ..MoveState::spawn_at(s.position)
-        },
-        (None, None) => MoveState::spawn_at(level.spawn_point),
+    let motion = MoveState {
+        yaw: motion.1,
+        ..MoveState::spawn_at(motion.0)
     };
     let (levels, bag, worn, secondaries) = match save {
         Some(save) => restore(save, data),
@@ -267,37 +281,118 @@ pub fn revive(
 /// A player pressed the interact key: use the portal they are standing
 /// in, or talk to someone nearby.
 pub fn interact(
-    commands: &mut Commands,
-    link: &mut Link,
-    data: &GameData,
-    zones: &Zones,
-    now: f64,
+    travel: &mut Travel,
     player: PlayerId,
     entity: Entity,
-    state: (&Zone, &mut Motion, &CombatClock, bool),
+    state: (&Zone, &mut Motion, &CombatClock, bool, Option<&CameFrom>),
+    exits: &Query<(&ExitPortal, &Zone)>,
     npcs: &mut Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
 ) {
-    let (zone, motion, clock, defeated) = state;
+    let (zone, motion, clock, defeated, came_from) = state;
     let reject = |link: &mut Link, reason| {
         link.to_client
             .push(ServerEvent::Rejected { player, reason })
     };
-    let portal = zones
+    let here = motion.0.position;
+    let fixed = travel
+        .zones
         .get(&zone.0)
-        .and_then(|level| level.portal_at(motion.0.position));
-    let Some(portal) = portal else {
-        if !talk(link, data, player, zone, motion.0.position, npcs) {
-            reject(link, Reject::NothingHere);
+        .and_then(|level| level.portal_at(here))
+        .cloned();
+    // A way out that appeared after a boss fell.
+    let appeared = exits
+        .iter()
+        .find(|(exit, z)| *z == zone && ground_distance(exit.position, here) <= exit.radius)
+        .map(|(exit, _)| Portal {
+            position: exit.position,
+            radius: exit.radius,
+            to: String::new(),
+            arrive: Vec3::ZERO,
+            arrive_yaw: 0.0,
+            label: exit.label.clone(),
+            ride: None,
+            closed: None,
+            visual: String::new(),
+            back: true,
+            board: false,
+        });
+    let Some(portal) = fixed.or(appeared) else {
+        if !talk(travel.link, travel.data, player, zone, here, npcs) {
+            reject(travel.link, Reject::NothingHere);
         }
         return;
     };
     if defeated {
-        return reject(link, Reject::Dead);
+        return reject(travel.link, Reject::Dead);
     }
-    if portal.closed.is_none() && clock.in_combat(now, data.config.combat.combat_timeout) {
-        return reject(link, Reject::InCombat);
+    let in_combat = clock.in_combat(travel.now, travel.data.config.combat.combat_timeout);
+    if portal.closed.is_none() && !portal.board && in_combat {
+        return reject(travel.link, Reject::InCombat);
     }
-    use_portal(commands, link, data, now, player, entity, motion, portal);
+    use_portal(travel, player, entity, motion, zone, &portal, came_from);
+}
+
+/// In dungeons and trials nobody gets back up alone. If everyone in one
+/// falls outside a boss fight (the boss fight handles its own), they all
+/// get back up at the entrance after a short pause.
+pub fn recover_wipes(
+    mut commands: Commands,
+    time: Res<Time>,
+    zones: Res<Zones>,
+    mut link: ResMut<Link>,
+    mut players: Query<
+        (
+            Entity,
+            &Zone,
+            Option<&Defeated>,
+            &mut Health,
+            &mut Motion,
+            &mut CombatClock,
+        ),
+        With<PlayerId>,
+    >,
+    fights: Query<&crate::Encounter>,
+) {
+    let now = time.elapsed_secs_f64();
+    let mut latest: HashMap<String, Option<f64>> = HashMap::new();
+    for (_, zone, defeated, ..) in &players {
+        let entry = latest.entry(zone.0.clone()).or_insert(Some(f64::MIN));
+        *entry = match (*entry, defeated) {
+            (Some(t), Some(d)) => Some(t.max(d.at)),
+            _ => None,
+        };
+    }
+    for (zone, latest) in latest {
+        let Some(fell) = latest else {
+            continue;
+        };
+        let handled_by_fight = fights.iter().any(|f| {
+            f.zone == zone
+                && matches!(
+                    f.state,
+                    crate::FightState::Fighting | crate::FightState::Wiping { .. }
+                )
+        });
+        let Some(level) = zones.get(&zone) else {
+            continue;
+        };
+        if level.revive_in_place || handled_by_fight || now - fell < WIPE_PAUSE {
+            continue;
+        }
+        for (entity, player_zone, _, mut health, mut motion, mut clock) in &mut players {
+            if player_zone.0 != zone {
+                continue;
+            }
+            *health = Health::full(health.max);
+            motion.0 = MoveState {
+                yaw: level.spawn_yaw,
+                ..MoveState::spawn_at(level.spawn_point)
+            };
+            *clock = CombatClock::default();
+            commands.entity(entity).remove::<Defeated>();
+            link.to_client.push(ServerEvent::Revived { entity });
+        }
+    }
 }
 
 /// Characters who left a zone are forgotten by its enemies.

@@ -75,6 +75,18 @@ pub struct EncounterDef {
     /// What each player may get for winning (at least one item each).
     #[serde(default)]
     pub loot: Vec<LootEntry>,
+    /// A way out that appears when the boss is defeated, leading back to
+    /// wherever each player came in from.
+    #[serde(default)]
+    pub exit_portal: Option<ExitPortalDef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExitPortalDef {
+    pub position: Vec3,
+    /// How close (metres) you must be to use it.
+    pub radius: f32,
+    pub label: String,
 }
 
 impl EncounterDef {
@@ -157,6 +169,9 @@ impl Validate for EncounterDef {
         }
         if let Some(enrage) = &self.enrage {
             p.positive("enrage.after", enrage.after);
+        }
+        if let Some(exit) = &self.exit_portal {
+            p.positive("exit_portal.radius", exit.radius);
         }
         for (i, entry) in self.loot.iter().enumerate() {
             if !(0.0..=100.0).contains(&entry.chance) {

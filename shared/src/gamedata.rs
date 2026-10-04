@@ -145,8 +145,9 @@ impl Validate for PlayerConfig {
 pub struct Zones(pub HashMap<String, Level>);
 
 impl Zones {
+    /// The level of a zone, or of an instanced copy of one (`zone#3`).
     pub fn get(&self, zone: &str) -> Option<&Level> {
-        self.0.get(zone)
+        self.0.get(crate::level::base_zone(zone))
     }
 }
 
@@ -409,14 +410,19 @@ impl GameData {
                     if !self.rides.contains_key(ride) {
                         problems.push(format!("portal uses unknown ride `{ride}`"));
                     }
-                } else if portal.closed.is_none() && !zones.contains_key(&portal.to) {
+                } else if !portal.to.is_empty() && !zones.contains_key(&portal.to) {
                     problems.push(format!("portal leads to unknown zone `{}`", portal.to));
                 }
             }
-            if let Some(encounter) = &level.encounter
-                && !self.encounters.contains_key(encounter)
+            for encounter in &level.encounters {
+                if !self.encounters.contains_key(encounter) {
+                    problems.push(format!("names unknown encounter `{encounter}`"));
+                }
+            }
+            if let Some(exit) = &level.exit
+                && !zones.contains_key(&exit.to)
             {
-                problems.push(format!("names unknown encounter `{encounter}`"));
+                problems.push(format!("`exit` leads to unknown zone `{}`", exit.to));
             }
             if !problems.is_empty() {
                 return Err(DataError::Invalid {

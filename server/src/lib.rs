@@ -17,6 +17,7 @@ pub mod database;
 mod effects;
 mod encounters;
 mod enemies;
+pub mod instances;
 pub mod progression;
 mod requests;
 pub mod travel;
@@ -30,7 +31,8 @@ pub use classes::FlameChange;
 pub use database::Database;
 pub use encounters::{Encounter, FightState};
 pub use enemies::{EnemyHome, EnemyKind, ResetWhenIdle, Returning};
-pub use travel::{Npc, Riding};
+pub use instances::Instances;
+pub use travel::{CameFrom, Npc, Riding};
 
 /// Ordered steps of one authority tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -73,6 +75,7 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<progression::PendingRewards>()
             .init_resource::<progression::PendingGear>()
             .init_resource::<progression::LastAutosave>()
+            .init_resource::<Instances>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -83,14 +86,7 @@ impl Plugin for AuthorityPlugin {
                 )
                     .chain(),
             )
-            .add_systems(
-                Startup,
-                (
-                    enemies::spawn_enemies,
-                    encounters::setup_encounters,
-                    travel::spawn_npcs,
-                ),
-            )
+            .add_systems(Startup, instances::fill_zones)
             .add_systems(
                 FixedUpdate,
                 (
@@ -132,8 +128,10 @@ impl Plugin for AuthorityPlugin {
                         progression::apply_synergy,
                         characters::regenerate,
                         characters::revive,
+                        characters::recover_wipes,
                         enemies::reset_idle_enemies,
                         characters::forget_absent,
+                        instances::close_empty_instances,
                         progression::save_players,
                     )
                         .chain()

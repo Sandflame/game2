@@ -2,6 +2,7 @@
 //! floating damage numbers, messages and the controls help.
 
 mod banner;
+pub mod board;
 pub mod character;
 mod floating;
 mod frames;
@@ -29,6 +30,7 @@ impl Plugin for HudPlugin {
                 secondary::SecondaryPlugin,
                 speech::SpeechPlugin,
                 banner::BannerPlugin,
+                board::BoardPlugin,
             ));
     }
 }

@@ -69,22 +69,6 @@ pub struct BrainAction {
     pub next_at: Option<f64>,
 }
 
-/// Spawn every enemy placed in every zone.
-pub fn spawn_enemies(mut commands: Commands, data: Res<GameData>, zones: Res<Zones>) {
-    for (zone, level) in &zones.0 {
-        for spawn in &level.spawns {
-            spawn_enemy(
-                &mut commands,
-                &data,
-                &spawn.enemy,
-                zone,
-                spawn.position,
-                spawn.yaw,
-            );
-        }
-    }
-}
-
 /// Spawn one enemy of type `id` (file name in `assets/data/enemies/`).
 /// Returns `None` if there is no such enemy (data is checked at load, so
 /// this shouldn't happen).
@@ -355,6 +339,10 @@ pub fn move_enemies(
                     commands.entity(enemy).remove::<Returning>();
                 }
             }
+        } else if threat.is_empty() && ground_distance(here, home.position) > HOME_REACHED {
+            // Nobody left to fight (they fell or left): go home.
+            commands.entity(enemy).insert(Returning);
+            continue;
         } else if let Some(target) = threat.top() {
             if too_far_from_home(home.position, here, roaming.leash_radius) {
                 commands.entity(enemy).insert(Returning);

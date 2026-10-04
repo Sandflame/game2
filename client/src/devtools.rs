@@ -4,15 +4,22 @@
 //! - `LANTERNFLAME_SCREENSHOT=shot.png` saves a screenshot and quits.
 //! - `LANTERNFLAME_DEMO=trial` also plays a scripted scene: switch to
 //!   Elementalist, walk through the portal, pull the Rootwarden, dodge a
-//!   marker. `LANTERNFLAME_DEMO=classes` plays the older lantern/sparring
-//!   dummy scene. Screenshots are saved as `shot-1.png`, `shot-2.png`, …
+//!   marker, then (cheating) see it fall. `classes`, `progress`, `world`
+//!   and `dungeon` (the dungeon board, then a quick tour of the Tangled
+//!   Burrow, cheating past each fight) play other scenes. Screenshots are
+//!   saved as `shot-1.png`, `shot-2.png`, …
+//!
+//! Demos may cheat (move the player, defeat enemies) by writing logic
+//! components directly; normal play never does.
 
+use std::f32::consts::FRAC_PI_2;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use server::EnemyKind;
-use shared::components::Motion;
+use shared::combat::Health;
+use shared::components::{Motion, Zone};
 use shared::movement::yaw_from_direction;
 use shared::protocol::{ClientRequest, Link};
 
@@ -35,7 +42,7 @@ pub fn demo_start_zone() -> Option<&'static str> {
     }
     match std::env::var(DEMO_ENV).as_deref() {
         Ok("classes" | "progress") => Some("sandbox"),
-        Ok("world") | Err(_) => None,
+        Ok("world" | "dungeon") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
 }
@@ -72,6 +79,12 @@ enum Step {
     /// Camera pitch (radians) and distance (metres).
     Camera(f32, f32),
     Shot,
+    /// Cheat: move the player to (x, z), facing this way (radians).
+    Teleport(f32, f32, f32),
+    /// Cheat: defeat every enemy of this kind in the player's zone.
+    Defeat(&'static str),
+    /// Pick a place on the dungeon board.
+    Board(&'static str),
 }
 
 /// Starts in the trial (see `demo_start_zone`).
@@ -93,6 +106,55 @@ const TRIAL_DEMO: &[(f32, Step)] = &[
     (11.8, Step::Target("rootwarden")),
     (11.9, Step::Press(0)), // Firebolt
     (16.5, Step::Shot),     // Crushing Bough's cone
+    (16.8, Step::Camera(0.3, 14.0)),
+    (17.0, Step::Defeat("rootwarden")),
+    (18.6, Step::Shot), // falling backwards, roots drawing into the ground
+    (21.5, Step::Shot), // fallen; the way out has appeared in front of it
+];
+
+/// Starts in Lanternhold at the dungeon board, then a quick (cheating) tour
+/// of the Tangled Burrow.
+const DUNGEON_DEMO: &[(f32, Step)] = &[
+    (0.6, Step::Teleport(8.6, 1.0, -FRAC_PI_2)),
+    (0.7, Step::Camera(0.3, 9.0)),
+    (1.0, Step::Interact),
+    (1.8, Step::Shot), // the dungeon board's list
+    (1.9, Step::Board("tangled_burrow")),
+    (2.0, Step::Camera(0.35, 11.0)),
+    (3.6, Step::Shot), // the entrance hall, pups ahead
+    (3.7, Step::Target("burrow_pup")),
+    (3.8, Step::Press(0)),
+    (5.5, Step::Shot), // the pups come running
+    (5.6, Step::Defeat("burrow_pup")),
+    (6.0, Step::Teleport(0.0, 22.5, 0.0)),
+    (6.1, Step::Camera(0.4, 12.0)),
+    (7.6, Step::Shot), // the Matriarch's den
+    (7.7, Step::Walk(Some((0.0, -1.0)))),
+    (8.3, Step::Walk(None)),
+    (8.4, Step::Target("burrow_matriarch")),
+    (8.5, Step::Press(0)),
+    (12.1, Step::Shot), // her Pounce marker
+    (12.2, Step::Defeat("burrow_matriarch")),
+    (13.0, Step::Defeat("rot_spore")),
+    (13.1, Step::Teleport(4.0, -9.0, 0.6)),
+    (13.2, Step::Camera(0.5, 13.0)),
+    (13.3, Step::Target("mother_sporecap")),
+    (13.4, Step::Press(0)),
+    (16.9, Step::Shot), // Mother Sporecap's ring of spores
+    (17.0, Step::Defeat("mother_sporecap")),
+    (17.1, Step::Defeat("burrow_pup")),
+    (17.2, Step::Defeat("rot_spore")),
+    (17.3, Step::Teleport(0.0, -36.5, 0.0)),
+    (17.4, Step::Camera(0.3, 10.0)),
+    (17.5, Step::Target("rotheart")),
+    (17.6, Step::Press(0)),
+    (19.4, Step::Shot), // the Rotheart, awake
+    (19.5, Step::Defeat("rotheart")),
+    (21.3, Step::Shot), // it topples, roots drawing in
+    (24.0, Step::Shot), // the way out, and loot
+    (24.1, Step::Teleport(6.5, -38.5, 0.0)),
+    (24.3, Step::Interact),
+    (26.0, Step::Shot), // back at the dungeon board, where we came from
 ];
 
 /// Starts in Lanternhold: talk to the lamplighter, walk to the giant root,
@@ -115,6 +177,9 @@ const WORLD_DEMO: &[(f32, Step)] = &[
     (20.7, Step::Walk(Some((0.6, -0.8)))),
     (25.6, Step::Walk(None)),
     (26.4, Step::Shot), // the thornwolf pack notices us and comes running
+    (26.5, Step::Teleport(54.0, -18.0, -FRAC_PI_2)),
+    (26.6, Step::Camera(0.3, 10.0)),
+    (28.0, Step::Shot), // the mouth of the Tangled Burrow
 ];
 
 /// The character panel, then a fight with a bramble sprout in the meadow.
@@ -163,6 +228,7 @@ impl Plugin for DevToolsPlugin {
             Ok("classes") => CLASSES_DEMO.to_vec(),
             Ok("progress") => PROGRESS_DEMO.to_vec(),
             Ok("world") => WORLD_DEMO.to_vec(),
+            Ok("dungeon") => DUNGEON_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -218,8 +284,9 @@ fn run_script(
     mut lantern: ResMut<LanternPanel>,
     mut options: ResMut<OptionsMenu>,
     mut character: ResMut<CharacterPanel>,
-    player: Option<Single<&Motion, With<LocalPlayer>>>,
-    enemies: Query<(Entity, &Motion, &EnemyKind)>,
+    mut player: Option<Single<(&mut Motion, &Zone), With<LocalPlayer>>>,
+    enemies: Query<(Entity, &Motion, &EnemyKind, &Zone), Without<LocalPlayer>>,
+    mut health: Query<&mut Health, With<EnemyKind>>,
     mut camera: Single<&mut FollowCamera>,
     mut scripted: ResMut<ScriptedMove>,
     mut exit: MessageWriter<AppExit>,
@@ -264,13 +331,46 @@ fn run_script(
                 camera.target_distance = distance;
             }
             Step::Target(kind) => {
-                let found = enemies.iter().find(|(_, _, k)| k.0 == kind);
-                if let (Some((entity, motion, _)), Some(player)) = (found, player.as_ref()) {
+                let Some(player) = player.as_ref() else {
+                    continue;
+                };
+                let (me_at, my_zone) = (player.0.0.position, player.1);
+                let found = enemies
+                    .iter()
+                    .find(|(_, _, k, z)| k.0 == kind && *z == my_zone);
+                if let Some((entity, motion, ..)) = found {
                     target.0 = Some(entity);
-                    let offset = motion.0.position - player.0.position;
+                    let offset = motion.0.position - me_at;
                     camera.yaw = yaw_from_direction(Vec2::new(offset.x, offset.z));
                 }
             }
+            Step::Teleport(x, z, yaw) => {
+                if let Some(player) = player.as_mut() {
+                    let motion = &mut player.0;
+                    motion.0.position = Vec3::new(x, 0.0, z);
+                    motion.0.yaw = yaw;
+                    camera.yaw = yaw;
+                }
+            }
+            Step::Defeat(kind) => {
+                let Some(player) = player.as_ref() else {
+                    continue;
+                };
+                let my_zone = player.1;
+                for (entity, _, k, z) in &enemies {
+                    if k.0 == kind
+                        && z == my_zone
+                        && let Ok(mut health) = health.get_mut(entity)
+                    {
+                        health.current = 0;
+                    }
+                }
+            }
+            Step::Board(zone) => send(
+                &mut link,
+                *me,
+                ClientRequest::EnterFromBoard { zone: zone.into() },
+            ),
             Step::Press(slot) => send(
                 &mut link,
                 *me,

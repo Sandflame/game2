@@ -13,7 +13,9 @@ use shared::protocol::{ClientRequest, Link, ServerEvent};
 
 use crate::animation::{BossRig, Hop, NoFlash};
 use crate::camera::FollowCamera;
-use crate::creatures;
+use crate::creatures::{
+    self, BURROW_PUP, MATRIARCH, MOTHER_SPORECAP, ROT_SPORE, SPORE_CAP, THORNWOLF,
+};
 use crate::session::{LocalPlayerId, Received, send};
 use crate::toon::{Outline, ToonAssets, ToonMaterial};
 
@@ -167,8 +169,22 @@ fn spawn_visuals(
             ),
             "rootwarden" => build_rootwarden(&mut commands, &mut toon, entity),
             "thornling" => build_thornling(&mut commands, &mut toon, entity),
-            "thornwolf" => creatures::thornwolf(&mut commands, &mut toon, entity),
-            "spore_cap" => creatures::spore_cap(&mut commands, &mut toon, entity),
+            "thornwolf" => creatures::thornwolf(&mut commands, &mut toon, entity, &THORNWOLF),
+            "spore_cap" => creatures::spore_cap(&mut commands, &mut toon, entity, &SPORE_CAP),
+            "burrow_pup" => {
+                let body = creatures::scaled(&mut commands, entity, 0.75);
+                creatures::thornwolf(&mut commands, &mut toon, body, &BURROW_PUP);
+            }
+            "burrow_matriarch" => {
+                let body = creatures::scaled(&mut commands, entity, 2.2);
+                creatures::thornwolf(&mut commands, &mut toon, body, &MATRIARCH);
+            }
+            "rot_spore" => creatures::spore_cap(&mut commands, &mut toon, entity, &ROT_SPORE),
+            "mother_sporecap" => {
+                let body = creatures::scaled(&mut commands, entity, 2.6);
+                creatures::spore_cap(&mut commands, &mut toon, body, &MOTHER_SPORECAP);
+            }
+            "rotheart" => creatures::rotheart(&mut commands, &mut toon, entity),
             townsfolk if townsfolk.starts_with("townsfolk") => {
                 creatures::townsfolk(&mut commands, &mut toon, entity, townsfolk)
             }
@@ -355,10 +371,11 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
     let eyes = toon.glowing(Color::srgb(1.0, 0.85, 0.4), LinearRgba::rgb(4.0, 2.6, 0.6));
 
     // Roots spreading over the ground (they stay put while the body moves).
+    let mut roots = Vec::new();
     for i in 0..6 {
         let angle = i as f32 * std::f32::consts::TAU / 6.0 + 0.3;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
-        toon.spawn_part(
+        roots.push(toon.spawn_part(
             commands,
             boss,
             Capsule3d::new(0.3, 1.6),
@@ -367,7 +384,7 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
             Transform::from_translation(out * 1.6 + Vec3::Y * 0.3).with_rotation(
                 Quat::from_rotation_arc(Vec3::Y, (out + Vec3::Y * 0.25).normalize()),
             ),
-        );
+        ));
     }
     // Everything above the roots bends at the base, so it can sway, lean
     // back while casting, and slam forwards.
@@ -454,7 +471,9 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
             Transform::from_xyz(0.45 * side, 3.9, -1.2),
         );
     }
-    commands.entity(boss).insert(BossRig::new(torso, arms));
+    commands
+        .entity(boss)
+        .insert(BossRig::new(torso, arms).with_roots(roots));
 }
 
 /// Placeholder Thornling: a small spiky sapling.

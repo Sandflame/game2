@@ -13,7 +13,7 @@
     // Each extra player adds 70% boss health.
     extra_health_per_player: 70,
     pull_message: Some("The Rootwarden stirs, bark groaning awake!"),
-    victory_message: Some("The Rootwarden sinks back into the soil."),
+    victory_message: Some("The Rootwarden topples, and its roots slip back into the soil."),
     phases: [
         (
             name: "Awakening",
@@ -73,6 +73,8 @@
     xp: 1500,
     // Each player rolls for each item (chance in percent); everyone gets
     // at least one.
+    // The way out, just beside where it stood.
+    exit_portal: Some((position: (6.0, 0.0, -4.0), radius: 1.8, label: "Leave the Hollow")),
     loot: [
         (item: "bark_helm", chance: 20),
         (item: "rootwoven_vest", chance: 20),

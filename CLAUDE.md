@@ -13,8 +13,10 @@ Guide for working in this repository (for Claude and for humans).
   class: 2 borrowed abilities + small stat bonus; party synergy bonuses;
   12-slot hotbar). **M7** (Lanternhold hub with closed district gates and
   townsfolk, the root slide ride, Whisperwood forest; enemies that notice,
-  chase, assist, leash and respawn at home).
-- Next: **M8** (first dungeon). See `MILESTONES.md`.
+  chase, assist, leash and respawn at home). **M8** (the Tangled Burrow
+  dungeon: 3 bosses, walls, about 3 minutes; instanced zones; the dungeon
+  board; the way out after a boss falls; bosses topple when defeated).
+- Next: **M9** (quests and skippable dialogue). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -75,8 +77,10 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy.
   `LANTERNFLAME_DEMO=progress` — character panel + a bramble sprout.
   `LANTERNFLAME_DEMO=world` — hub, talk to a townsperson, root slide,
-  Whisperwood, a thornwolf pack. Each demo starts in its own zone
-  (`devtools::demo_start_zone`). Saves
+  Whisperwood, a thornwolf pack, the burrow's mouth.
+  `LANTERNFLAME_DEMO=dungeon` — the dungeon board, then a quick (cheating)
+  tour of the Tangled Burrow and back. Each demo starts in its own zone
+  (`devtools::demo_start_zone`); demos may cheat (teleport, defeat). Saves
   `<file>-1.png`, `<file>-2.png`, …
 
 ### Linux build dependencies
@@ -87,9 +91,11 @@ extra beyond the Rust toolchain.
 ## Code map
 - `shared/src/data.rs` — RON loading, `Validate` trait, `find_assets_dir()`.
 - `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
-- `shared/src/level.rs` — `Level` = one zone: geometry, collision, enemy spawns,
-  portals (`to`/`ride`/`closed` gates, `arrive_yaw`, `visual`), `npcs`,
-  `decorations` (looks only), `revive_in_place`, `level_sync`, optional encounter.
+- `shared/src/level.rs` — `Level` = one zone: geometry, collision (walls are
+  `Box` obstacles), enemy spawns, portals (`to`/`ride`/`closed`/`back`/`board`,
+  `arrive_yaw`, `visual`), `npcs`, `decorations` (looks only), `revive_in_place`,
+  `level_sync`, `encounters`, `instanced` + `exit`, board `listing`.
+  `base_zone()`: instance ids are `zone#n`.
 - `shared/src/enemy_ai.rs` — notice / leash / approach / stop-distance rules.
 - `shared/src/rides.rs` — `RideDef` (`rides/*.ron`): scripted rides along a
   Catmull-Rom path (the root slide).
@@ -118,7 +124,8 @@ extra beyond the Rust toolchain.
   secondary (borrowed), -/= shared lantern abilities (`HOTBAR_SLOTS = 12`).
 - `shared/src/telegraphs.rs` — ground marker shapes, placements, `covers()` hit tests,
   the `Telegraph` component.
-- `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage, xp, loot) and `Progress`.
+- `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage, xp, loot,
+  `exit_portal`) and `Progress`.
 - `shared/src/progression.rs` — `ProgressionDef` (`progression.ron`: XP curve, per-level
   health/power), `ClassLevels` (per class level + xp), `effective_level` (level sync).
 - `shared/src/items.rs` — `ItemDef` (`items/*.ron`), `Slot`, `Bag`, `Equipment` (shared
@@ -131,12 +138,18 @@ extra beyond the Rust toolchain.
 - `server/src/effects.rs` — effects landing (damage, shared damage, heal, shield,
   status, taunt, raise), telegraphs going off/following players, status ticks, threat.
 - `server/src/encounters.rs` — boss fight director (pull, phases, timeline queue,
-  adds, enrage, victory, wipe → reset at the entrance).
+  adds, enrage, victory → `ExitPortal`, wipe → reset at the entrance). A zone can
+  hold several fights (a dungeon's bosses).
 - `server/src/enemies.rs` — enemy spawning (`EnemyHome`, `Roaming`), `notice_players`
   (aggro + assist), `move_enemies` (chase, leash → `Returning` home and heal),
   `EnemyBrain` rotations (waits until in range), facing, idle resets / respawn at home.
-- `server/src/travel.rs` — `use_portal` (closed gates speak, rides, arrive yaw),
-  NPCs (`Npc`, `talk` cycles lines), `Riding` + `advance_rides`.
+- `server/src/travel.rs` — `Travel` (`go_to` a zone or a group's copy of it),
+  `use_portal` (closed gates speak, boards open the list, rides, `back`), `CameFrom`
+  (where to return to), `enter_from_board`, NPCs (`Npc`, `talk` cycles lines),
+  `Riding` + `advance_rides`.
+- `server/src/instances.rs` — `fill_zone` (enemies, boss fights, people), filling
+  ordinary zones at startup, `Instances` (a fresh `zone#n` copy per group,
+  removed when empty; defeated enemies stay down).
 - `server/src/classes.rs` — flame changes (class switching).
 - `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
   gear + secondary requests, `refresh_stats` (stats + hotbar from class/level/gear/
@@ -145,9 +158,11 @@ extra beyond the Rust toolchain.
   `autosave_every` / on exit.
 - `server/src/database.rs` — SQLite (`world.db`): background thread, numbered
   `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save.
-- `server/src/characters.rs` — players: joining, movement, combat clock, defeat,
-  revive (only where `revive_in_place`), regen, portals (`interact`), forgetting
-  characters who left a zone.
+- `server/src/characters.rs` — players: joining (a save inside a dungeon copy
+  loads at its `exit`), movement, combat clock, defeat, revive (only where
+  `revive_in_place`), `recover_wipes` (everyone down outside a boss fight → back
+  to the entrance), regen, `interact` (portals, exit portals, talking),
+  forgetting characters who left a zone.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining, `Received` event messages.
 - `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
@@ -159,16 +174,20 @@ extra beyond the Rust toolchain.
   options menu (O, or Esc with nothing targeted: volume slider, mute, quit),
   character panel (C: levels, stats, secondary, party bonuses, worn gear, bag) + XP
   bar, secondary flame picker (`secondary.rs`, inside the lantern panel), speech box +
-  zone fade (`speech.rs`), `[E]` prompt for portals and people (`banner.rs`).
+  zone fade (`speech.rs`), `[E]` prompt for portals, exit portals and people
+  (`banner.rs`), dungeon board list (`board.rs`).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change (sky/fog
-  per `ground`; `"none"` = no floor), portals, decorations, zone `border` dressing
-  and `ambience` particles, hides things in other zones (`ElsewhereZone`).
+  per `ground`; `"none"` = no floor), portals and exit portals, decorations, zone
+  `border` dressing and `ambience` particles, hides things in other zones
+  (`ElsewhereZone`).
 - `client/src/props.rs` — scenery builders by `visual` key: houses, towers,
   fountain, giant root, ancient tree, pines, rocks, lamps, campfires, city wall,
-  root tunnel (built along the ride path), root entrance, district gates.
-- `client/src/creatures.rs` — thornwolf, spore cap, townsfolk bodies.
+  root tunnel (built along the ride path), root entrance, district gates,
+  dungeon board, burrow walls/glowcaps/entrance.
+- `client/src/creatures.rs` — wolves and walking mushrooms (`WolfLook`/`CapLook`
+  colours, `scaled` for pups and bosses), the Rotheart, townsfolk bodies.
 - `client/src/telegraphs.rs` — ground markers with `MarkerMaterial`
   (`assets/shaders/marker.wgsl`, shape maths in the shader); bursts and a fading
   flash when one goes off.
@@ -180,10 +199,12 @@ extra beyond the Rust toolchain.
   squared for loudness), M to mute.
 - `client/src/settings.rs` — the player's settings file (volume, mute, lantern):
   `%APPDATA%\Lanternflame\settings.ron` or `~/.config/lanternflame/settings.ron`.
-- `client/src/animation.rs` — hit flashes, `BossRig` (sway, wind-up, slam, sink), `Hop`.
+- `client/src/animation.rs` — hit flashes, `BossRig` (sway, wind-up, slam; when
+  defeated it topples backwards while its ground roots draw in), `Hop`.
 - `client/src/hud/banner.rs` — big banners (boss speech, victory, wipes) + portal prompt.
 - `client/src/camera.rs` — FFXIV-style follow camera; stays inside zones with a
-  `border`; swings behind the rider on rides; `CameraShake`.
+  `border` and in front of box walls; faces the arrival direction on entering a
+  zone; swings behind the rider on rides; `CameraShake`.
 - `server/src/main.rs` — placeholder until M11: validates data and exits.
 
 ## Conventions
@@ -223,6 +244,12 @@ extra beyond the Rust toolchain.
   defeat; alive, they leash instead.
 - New characters start in `hub` (Lanternhold); "party" (synergy) is still
   everyone in the same zone until M11.
+- Say **dungeon** and **trial**, never "duty" (user request, 2026-10-04).
+- Dungeons and trials are `instanced` zones with an `exit`, a `back` portal at
+  the entrance and an `exit_portal` on the last boss, so you always return to
+  where you came in. Each must be enterable by walking to it in the world as
+  well as from the dungeon board (`listing`). Use `Zones::get` (it understands
+  `zone#n` ids), never the map directly.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
 - Database access goes through one module in `server/` (`database.rs`) and runs
   off the main game thread. Schema changes = a new entry in `MIGRATIONS`

@@ -55,6 +55,8 @@
                      radius: 0.3, gravity: 0.8, drag: 0.6, size: (0.08, 0.0), glow: 2.5),
     "lantern_motes": (rate: 24.0, lifetime: (5.0, 8.0), speed: (0.15, 0.5), shape: Up,
                      radius: 30.0, gravity: 0.05, drag: 0.1, size: (0.06, 0.03), glow: 1.6),
+    "burrow_motes": (rate: 26.0, lifetime: (5.0, 8.0), speed: (0.1, 0.35), shape: Up,
+                     radius: 40.0, gravity: 0.04, drag: 0.1, size: (0.05, 0.03), glow: 1.8),
     "pollen":       (rate: 30.0, lifetime: (5.0, 8.0), speed: (0.1, 0.4), shape: Up,
                      radius: 20.0, gravity: 0.05, drag: 0.1, size: (0.045, 0.03), glow: 1.2),
 }

@@ -31,10 +31,11 @@ fn main() -> anyhow::Result<()> {
             level.obstacles.len(),
             level.spawns.len(),
             level.portals.len(),
-            level
-                .encounter
-                .as_ref()
-                .map_or(String::new(), |e| format!(", encounter `{e}`"))
+            if level.encounters.is_empty() {
+                String::new()
+            } else {
+                format!(", encounters {:?}", level.encounters)
+            }
         );
     }
     println!("All game data loaded and valid.");

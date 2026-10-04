@@ -1,0 +1,13 @@
+// A young thornwolf of the Tangled Burrow. Weaker than its forest kin.
+(
+    name: "Burrow Pup",
+    max_health: 1000,
+    hit_radius: 0.7,
+    visual: "burrow_pup",
+    actions: [(ability: "pup_bite", every: 2.0)],
+    xp: 60,
+    move_speed: 5.0,
+    aggro_radius: 8.0,
+    leash_radius: 30.0,
+    assist_radius: 8.0,
+)

@@ -12,14 +12,14 @@ use bevy::time::TimeUpdateStrategy;
 use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind, Returning, Riding};
 use shared::classes::{ClassDef, CurrentClass, SecondaryChoice, Stats};
 use shared::combat::{Health, Reject};
-use shared::components::{CharacterName, Hotbar, Motion, PlayerId, Zone};
+use shared::components::{CharacterName, ExitPortal, Hotbar, Motion, PlayerId, Zone};
 use shared::config::{GameConfig, SimulationConfig};
 use shared::data::{Validate, parse_ron};
 use shared::encounters::EncounterDef;
 use shared::formulas::Rng;
 use shared::gamedata::{AbilityFile, EnemyDef, GameData, PlayerConfig, Zones};
 use shared::items::{Bag, Equipment, ItemFile, Slot};
-use shared::level::{EnemySpawn, Level, NpcDef, Portal};
+use shared::level::{EnemySpawn, Exit, Level, Listing, NpcDef, Portal};
 use shared::movement::MoveInput;
 use shared::progression::ClassLevels;
 use shared::protocol::{ClientRequest, Link, ServerEvent};
@@ -118,6 +118,15 @@ const WOLF: &str = r#"(name: "Wolf", max_health: 500, hit_radius: 0.5, visual: "
 const RIDE: &str = r#"(zone: "tunnel", path: [(0.0, 0.0, 0.0), (0.0, -10.0, -10.0)], duration: 2.0,
     to: "test", arrive: (10.0, 0.0, 10.0), arrive_yaw: 1.0)"#;
 
+/// The boss of the test dungeon: a way out appears 4 m from it when it falls.
+const LORD: &str =
+    r#"(name: "Cave Lord", max_health: 1000, hit_radius: 1.0, visual: "rootwarden")"#;
+const CAVE_FIGHT: &str = r#"(
+    name: "The Cave Lord", boss: "lord", boss_position: (0.0, 0.0, -20.0),
+    phases: [(name: "Only", until_health: 0, loop_after: 30.0, timeline: [])],
+    exit_portal: Some((position: (4.0, 0.0, -20.0), radius: 1.5, label: "Leave")),
+)"#;
+
 const SPROUT: &str = r#"(name: "Sprout", max_health: 100, hit_radius: 0.5, visual: "thornling",
     reset_after: 10.0, xp: 150)"#;
 
@@ -208,8 +217,12 @@ fn test_data() -> GameData {
             ("sapling".to_owned(), parse::<EnemyDef>(SAPLING)),
             ("sprout".to_owned(), parse::<EnemyDef>(SPROUT)),
             ("wolf".to_owned(), parse::<EnemyDef>(WOLF)),
+            ("lord".to_owned(), parse::<EnemyDef>(LORD)),
         ]),
-        encounters: HashMap::from([("trial".to_owned(), parse::<EncounterDef>(TRIAL))]),
+        encounters: HashMap::from([
+            ("trial".to_owned(), parse::<EncounterDef>(TRIAL)),
+            ("cave_fight".to_owned(), parse::<EncounterDef>(CAVE_FIGHT)),
+        ]),
         progression: parse(PROGRESSION),
         items: parse::<ItemFile>(ITEMS).0,
         synergy: parse("(covered_at: 0.5, missing: {})"),
@@ -254,6 +267,21 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
                 ride: Some("slide".into()),
                 ..portal()
             },
+            Portal {
+                position: CAVE_DOOR,
+                radius: 1.5,
+                to: "cave".into(),
+                arrive: CAVE_ENTRANCE,
+                label: "Into the cave".into(),
+                ..portal()
+            },
+            Portal {
+                position: BOARD,
+                radius: 1.5,
+                label: "Dungeon board".into(),
+                board: true,
+                ..portal()
+            },
         ],
         npcs: vec![NpcDef {
             name: "Ilsa".into(),
@@ -273,7 +301,7 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
         spawn_point: ARENA_ENTRANCE,
         revive_in_place: false,
         level_sync: Some(2),
-        encounter: Some("trial".into()),
+        encounters: vec!["trial".into()],
         portals: vec![Portal {
             position: Vec3::new(0.0, 0.0, 12.0),
             radius: 1.5,
@@ -284,7 +312,39 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
         }],
         ..Level::empty()
     };
+    // A dungeon: everyone gets their own copy.
+    let cave = Level {
+        name: "cave".into(),
+        spawn_point: CAVE_ENTRANCE,
+        revive_in_place: false,
+        instanced: true,
+        exit: Some(Exit {
+            to: "test".into(),
+            arrive: Vec3::new(20.0, 0.0, 0.0),
+            arrive_yaw: 0.0,
+        }),
+        listing: Some(Listing {
+            kind: "Dungeon".into(),
+            description: "A cave.".into(),
+            players: (1, 4),
+        }),
+        spawns: vec![EnemySpawn {
+            enemy: "sprout".into(),
+            position: Vec3::new(0.0, 0.0, -5.0),
+            yaw: 0.0,
+        }],
+        encounters: vec!["cave_fight".into()],
+        portals: vec![Portal {
+            position: CAVE_BACK,
+            radius: 1.5,
+            label: "Leave".into(),
+            back: true,
+            ..portal()
+        }],
+        ..Level::empty()
+    };
     Zones(HashMap::from([
+        ("cave".to_owned(), cave),
         ("test".to_owned(), field),
         ("arena".to_owned(), arena),
         ("tunnel".to_owned(), tunnel),
@@ -303,10 +363,16 @@ fn portal() -> Portal {
         ride: None,
         closed: None,
         visual: String::new(),
+        back: false,
+        board: false,
     }
 }
 
 const GATE: Vec3 = Vec3::new(-6.0, 0.0, 6.0);
+const CAVE_DOOR: Vec3 = Vec3::new(-6.0, 0.0, -30.0);
+const BOARD: Vec3 = Vec3::new(12.0, 0.0, 30.0);
+const CAVE_ENTRANCE: Vec3 = Vec3::new(0.0, 0.0, 10.0);
+const CAVE_BACK: Vec3 = Vec3::new(0.0, 0.0, 13.0);
 const SLIDE: Vec3 = Vec3::new(6.0, 0.0, 6.0);
 const NPC_AT: Vec3 = Vec3::new(30.0, 0.0, 30.0);
 
@@ -1722,4 +1788,150 @@ fn rides_carry_you_to_their_destination() {
     assert_eq!(game.zone_of(me), "test");
     assert!(game.position(me).distance(Vec3::new(10.0, 0.0, 10.0)) < 0.1);
     assert!(game.app.world().get::<Riding>(me).is_none());
+}
+
+impl Game {
+    fn put(&mut self, entity: Entity, at: Vec3) {
+        self.app
+            .world_mut()
+            .get_mut::<Motion>(entity)
+            .unwrap()
+            .0
+            .position = at;
+    }
+
+    /// Stand somewhere and press the interact key.
+    fn interact_at(&mut self, at: Vec3) {
+        let me = self.me();
+        self.put(me, at);
+        self.send(ClientRequest::Interact);
+        self.run(0.1);
+    }
+
+    /// How many things (not players) are in a zone.
+    fn things_in(&mut self, zone: &str) -> usize {
+        let world = self.app.world_mut();
+        world
+            .query_filtered::<&Zone, Without<PlayerId>>()
+            .iter(world)
+            .filter(|z| z.0 == zone)
+            .count()
+    }
+
+    fn enemy_in(&mut self, name: &str, zone: &str) -> Entity {
+        let world = self.app.world_mut();
+        let mut query = world.query_filtered::<(Entity, &CharacterName, &Zone), With<EnemyKind>>();
+        query
+            .iter(world)
+            .find(|(_, n, z)| n.0 == name && z.0 == zone)
+            .unwrap()
+            .0
+    }
+}
+
+#[test]
+fn each_visit_to_a_dungeon_gets_a_fresh_copy() {
+    let mut game = Game::with_enemies(&[]);
+    let me = game.me();
+    game.interact_at(CAVE_DOOR);
+    assert_eq!(game.zone_of(me), "cave#1");
+    assert_eq!(game.position(me), CAVE_ENTRANCE);
+    assert!(game.things_in("cave#1") >= 2, "the sprout and the boss");
+
+    // The way back leads to where you came in, just outside the door.
+    game.interact_at(CAVE_BACK);
+    assert_eq!(game.zone_of(me), "test");
+    let back = game.position(me);
+    let distance = Vec2::new(back.x - CAVE_DOOR.x, back.z - CAVE_DOOR.z).length();
+    assert!(distance > 1.5 && distance < 3.5, "{back}");
+    assert_eq!(game.things_in("cave#1"), 0, "the empty copy is removed");
+
+    game.interact_at(CAVE_DOOR);
+    assert_eq!(game.zone_of(me), "cave#2");
+}
+
+#[test]
+fn defeated_dungeon_enemies_stay_down() {
+    let mut game = Game::with_enemies(&[]);
+    game.interact_at(CAVE_DOOR);
+    let sprout = game.enemy_in("Sprout", "cave#1");
+    game.set_health(sprout, 0);
+    game.run(15.0);
+    assert!(game.app.world().get::<Defeated>(sprout).is_some());
+}
+
+#[test]
+fn a_way_out_appears_where_the_boss_fell() {
+    let mut game = Game::with_enemies(&[]);
+    let me = game.me();
+    game.interact_at(CAVE_DOOR);
+    let lord = game.enemy_in("Cave Lord", "cave#1");
+    game.put(me, Vec3::new(0.0, 0.0, -17.5));
+    game.use_on(STRIKE, Some(lord));
+    game.run(0.5);
+    game.set_health(lord, 0);
+    game.run(0.5);
+    let exits: Vec<ExitPortal> = {
+        let world = game.app.world_mut();
+        world.query::<&ExitPortal>().iter(world).cloned().collect()
+    };
+    assert_eq!(exits.len(), 1);
+    assert_eq!(exits[0].position, Vec3::new(4.0, 0.0, -20.0));
+
+    // After the fight it leads back outside the cave door.
+    game.run(7.0);
+    game.interact_at(Vec3::new(4.0, 0.0, -20.0));
+    assert_eq!(game.zone_of(me), "test");
+    let back = game.position(me);
+    assert!(Vec2::new(back.x - CAVE_DOOR.x, back.z - CAVE_DOOR.z).length() < 3.5);
+}
+
+#[test]
+fn the_dungeon_board_takes_you_there_and_back() {
+    let mut game = Game::with_enemies(&[]);
+    let me = game.me();
+    game.interact_at(BOARD);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::OpenBoard { player } if *player == ME))
+    );
+    game.put(me, Vec3::ZERO);
+    game.send(ClientRequest::EnterFromBoard {
+        zone: "cave".into(),
+    });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::NotAtBoard]);
+
+    game.put(me, BOARD);
+    game.send(ClientRequest::EnterFromBoard {
+        zone: "test".into(),
+    });
+    game.run(0.1);
+    assert_eq!(game.rejections().last(), Some(&Reject::NoSuchPlace));
+    game.send(ClientRequest::EnterFromBoard {
+        zone: "cave".into(),
+    });
+    game.run(0.1);
+    assert_eq!(game.zone_of(me), "cave#1");
+
+    game.interact_at(CAVE_BACK);
+    assert_eq!(game.zone_of(me), "test");
+    let back = game.position(me);
+    assert!(Vec2::new(back.x - BOARD.x, back.z - BOARD.z).length() < 3.5);
+}
+
+#[test]
+fn falling_in_a_dungeon_brings_you_back_to_the_entrance() {
+    let mut game = Game::with_enemies(&[]);
+    let me = game.me();
+    game.interact_at(CAVE_DOOR);
+    game.put(me, Vec3::new(5.0, 0.0, 0.0));
+    game.set_health(me, 0);
+    game.run(1.0);
+    assert!(game.app.world().get::<Defeated>(me).is_some());
+    game.run(5.0);
+    assert!(game.app.world().get::<Defeated>(me).is_none());
+    assert_eq!(game.position(me), CAVE_ENTRANCE);
+    assert_eq!(game.health(me).current, game.health(me).max);
 }

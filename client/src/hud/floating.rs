@@ -21,7 +21,11 @@ fn nameplate_height(visual: &str) -> f32 {
         "rootwarden" => 8.0,
         "thornling" => 1.8,
         "thornwolf" => 1.9,
-        "spore_cap" => 2.2,
+        "spore_cap" | "rot_spore" => 2.2,
+        "burrow_pup" => 1.6,
+        "burrow_matriarch" => 3.8,
+        "mother_sporecap" => 5.2,
+        "rotheart" => 7.4,
         _ => 2.4,
     }
 }

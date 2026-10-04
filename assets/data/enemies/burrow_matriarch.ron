@@ -1,0 +1,13 @@
+// The first boss of the Tangled Burrow: a huge old thornwolf. She chases
+// whoever she is angriest at. Her big attacks are in
+// assets/data/encounters/burrow_matriarch.ron.
+(
+    name: "Burrow Matriarch",
+    max_health: 3600,
+    hit_radius: 1.8,
+    visual: "burrow_matriarch",
+    actions: [(ability: "matriarch_bite", every: 2.5)],
+    move_speed: 4.5,
+    // Wakes when someone comes into her den.
+    aggro_radius: 9.0,
+)

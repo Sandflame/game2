@@ -1,0 +1,106 @@
+// The Tangled Burrow: the first dungeon, a short (about 3 minute) crawl
+// through the roots under Whisperwood. Entered by the burrow mouth in the
+// forest or from the dungeon board in Lanternhold.
+//
+// Layout, from the entrance (north) to the end (south):
+//   Entrance hall (pups) -> the Matriarch's den -> a side tunnel (rot spores)
+//   -> Mother Sporecap's grotto -> a tunnel (pups and a rot spore)
+//   -> the Rotheart's chamber.
+// The walls are solid boxes around each room and tunnel.
+(
+    name: "The Tangled Burrow",
+    half_size: 52.0,
+    spawn_point: (0.0, 0.0, 42.0),
+    spawn_yaw: 0.0,
+    ground: "burrow",
+    ambience: "burrow_motes",
+    // Each group gets its own copy; defeated enemies stay down.
+    instanced: true,
+    // Nobody gets back up alone: be raised, or everyone returns to the
+    // entrance when the whole group falls.
+    revive_in_place: false,
+    level_sync: Some(8),
+    exit: Some((to: "whisperwood", arrive: (57.5, 0.0, -18.0), arrive_yaw: 1.5708)),
+    listing: Some((
+        kind: "Dungeon",
+        description: "A short crawl through the roots under Whisperwood. Three foes wait below: the Burrow Matriarch, Mother Sporecap and the Rotheart.",
+        players: (1, 4),
+    )),
+    encounters: ["burrow_matriarch", "mother_sporecap", "rotheart"],
+    obstacles: [
+        (shape: Box(half_x: 10.0, half_z: 0.5, height: 6.0), position: (0.0, 0.0, 48.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 3.5, half_z: 0.5, height: 6.0), position: (-6.5, 0.0, 29.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 3.5, half_z: 0.5, height: 6.0), position: (6.5, 0.0, 29.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 9.0, height: 6.0), position: (-9.5, 0.0, 39.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 9.0, height: 6.0), position: (9.5, 0.0, 39.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 4.0, height: 6.0), position: (-3.5, 0.0, 26.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 4.0, height: 6.0), position: (3.5, 0.0, 26.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 5.0, half_z: 0.5, height: 6.0), position: (-8.0, 0.0, 22.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 5.0, half_z: 0.5, height: 6.0), position: (8.0, 0.0, 22.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 9.0, half_z: 0.5, height: 6.0), position: (-4.0, 0.0, 3.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 1.0, half_z: 0.5, height: 6.0), position: (12.0, 0.0, 3.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 9.0, height: 6.0), position: (-12.5, 0.0, 13.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 9.0, height: 6.0), position: (12.5, 0.0, 13.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 5.0, height: 6.0), position: (4.5, 0.0, -1.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 5.0, height: 6.0), position: (11.5, 0.0, -1.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 9.0, half_z: 0.5, height: 6.0), position: (-4.0, 0.0, -5.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 1.0, half_z: 0.5, height: 6.0), position: (12.0, 0.0, -5.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 1.0, half_z: 0.5, height: 6.0), position: (-12.0, 0.0, -22.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 9.0, half_z: 0.5, height: 6.0), position: (4.0, 0.0, -22.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 8.0, height: 6.0), position: (-12.5, 0.0, -14.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 8.0, height: 6.0), position: (12.5, 0.0, -14.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 4.0, height: 6.0), position: (-11.5, 0.0, -26.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 4.0, height: 6.0), position: (-4.5, 0.0, -26.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 2.0, half_z: 0.5, height: 6.0), position: (-13.0, 0.0, -29.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 10.0, half_z: 0.5, height: 6.0), position: (5.0, 0.0, -29.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 15.0, half_z: 0.5, height: 6.0), position: (0.0, 0.0, -50.5), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 10.0, height: 6.0), position: (-14.5, 0.0, -40.0), visual: "burrow_wall"),
+        (shape: Box(half_x: 0.5, half_z: 10.0, height: 6.0), position: (14.5, 0.0, -40.0), visual: "burrow_wall"),
+    ],
+    spawns: [
+        // Entrance hall.
+        (enemy: "burrow_pup", position: (-3.0, 0.0, 32.0)),
+        (enemy: "burrow_pup", position: (3.0, 0.0, 32.0)),
+        // Side tunnel.
+        (enemy: "rot_spore", position: (6.5, 0.0, -2.0)),
+        (enemy: "rot_spore", position: (9.5, 0.0, -2.0)),
+        // Tunnel to the Rotheart.
+        (enemy: "burrow_pup", position: (-9.5, 0.0, -25.0)),
+        (enemy: "burrow_pup", position: (-6.5, 0.0, -25.0)),
+        (enemy: "rot_spore", position: (-8.0, 0.0, -28.5)),
+    ],
+    portals: [
+        (position: (0.0, 0.0, 45.5), radius: 1.6, back: true, visual: "burrow_light",
+         label: "Climb back out of the Burrow"),
+    ],
+    decorations: [
+        (visual: "glowcap", position: (-8.0, 0.0, 46.5)),
+        (visual: "glowcap", position: (8.0, 0.0, 45.0), yaw: 1.0),
+        (visual: "glowcap", position: (-8.0, 0.0, 31.0), yaw: 2.0),
+        (visual: "glowcap", position: (8.0, 0.0, 31.5), scale: 0.8),
+        (visual: "glowcap", position: (-11.0, 0.0, 20.5)),
+        (visual: "glowcap", position: (11.0, 0.0, 20.0), yaw: 2.4),
+        (visual: "glowcap", position: (-11.0, 0.0, 5.0), yaw: 0.6, scale: 1.2),
+        (visual: "glowcap", position: (4.0, 0.0, 5.0), scale: 0.8),
+        (visual: "glowcap", position: (10.5, 0.0, -4.0), scale: 0.7),
+        (visual: "glowcap", position: (-11.0, 0.0, -7.0), yaw: 1.4),
+        (visual: "glowcap", position: (11.0, 0.0, -21.0), yaw: 0.3, scale: 1.3),
+        (visual: "glowcap", position: (-4.0, 0.0, -21.0), scale: 0.8),
+        (visual: "glowcap", position: (-13.0, 0.0, -31.0), scale: 1.2),
+        (visual: "glowcap", position: (13.0, 0.0, -31.0), yaw: 2.2, scale: 1.2),
+        (visual: "glowcap", position: (-13.0, 0.0, -49.0), yaw: 0.8, scale: 1.4),
+        (visual: "glowcap", position: (13.0, 0.0, -49.0), yaw: 1.8, scale: 1.4),
+        (visual: "fern", position: (-7.0, 0.0, 40.0)),
+        (visual: "fern", position: (7.5, 0.0, 39.0), yaw: 1.2),
+        (visual: "fern", position: (-10.5, 0.0, 12.0)),
+        (visual: "fern", position: (10.5, 0.0, 14.0), yaw: 2.0),
+        (visual: "fern", position: (-10.5, 0.0, -14.0), yaw: 0.4),
+        (visual: "fern", position: (10.5, 0.0, -12.0), yaw: 1.4),
+        (visual: "mushrooms", position: (-9.0, 0.0, 9.0)),
+        (visual: "mushrooms", position: (9.0, 0.0, 17.0), yaw: 1.0),
+        (visual: "mushrooms", position: (-9.0, 0.0, -19.0), yaw: 2.0),
+        (visual: "mushrooms", position: (6.0, 0.0, -9.0)),
+        (visual: "mushrooms", position: (-12.0, 0.0, -40.0), yaw: 0.5),
+        (visual: "mushrooms", position: (12.0, 0.0, -42.0), yaw: 2.5),
+    ],
+)

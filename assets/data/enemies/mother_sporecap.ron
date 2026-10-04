@@ -1,0 +1,9 @@
+// The second boss: an enormous mushroom rooted to the spot.
+(
+    name: "Mother Sporecap",
+    max_health: 3600,
+    hit_radius: 2.2,
+    visual: "mother_sporecap",
+    actions: [(ability: "sporecap_spit", every: 2.8)],
+    aggro_radius: 9.0,
+)

@@ -6,8 +6,10 @@ use shared::combat::Reject;
 use shared::components::{CharacterName, Faction, HitRadius, Motion, PlayerId, VisualKey, Zone};
 use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
-use shared::level::Portal;
-use shared::movement::MoveState;
+use shared::level::{NpcDef, Portal};
+use shared::movement::{MoveState, yaw_from_direction};
+
+use crate::instances::Instances;
 use shared::protocol::{Link, ServerEvent};
 
 /// Someone to talk to. Each time a player talks to them they say their
@@ -26,27 +28,32 @@ pub struct Riding {
     pub started: f64,
 }
 
-/// Put every zone's people in place.
-pub fn spawn_npcs(mut commands: Commands, data: Res<GameData>, zones: Res<Zones>) {
-    for (zone, level) in &zones.0 {
-        for npc in &level.npcs {
-            commands.spawn((
-                Npc {
-                    lines: npc.lines.clone(),
-                    next: 0,
-                },
-                CharacterName(npc.name.clone()),
-                Motion(MoveState {
-                    yaw: npc.yaw,
-                    ..MoveState::spawn_at(npc.position)
-                }),
-                Zone(zone.clone()),
-                Faction::Neutral,
-                HitRadius(data.player.hit_radius),
-                VisualKey(npc.visual.clone()),
-            ));
-        }
-    }
+/// Where a character came into a dungeon or trial from: "back" portals
+/// (and the way out after the boss) take them there.
+#[derive(Component, Debug, Clone)]
+pub struct CameFrom {
+    pub zone: String,
+    pub position: Vec3,
+    pub yaw: f32,
+}
+
+/// Put one person in place.
+pub fn spawn_npc(commands: &mut Commands, data: &GameData, npc: &NpcDef, zone: &str) {
+    commands.spawn((
+        Npc {
+            lines: npc.lines.clone(),
+            next: 0,
+        },
+        CharacterName(npc.name.clone()),
+        Motion(MoveState {
+            yaw: npc.yaw,
+            ..MoveState::spawn_at(npc.position)
+        }),
+        Zone(zone.to_owned()),
+        Faction::Neutral,
+        HitRadius(data.player.hit_radius),
+        VisualKey(npc.visual.clone()),
+    ));
 }
 
 /// What using a portal did.
@@ -55,58 +62,187 @@ pub enum PortalUse {
     Travelled,
     /// A closed gate: says why.
     Closed,
+    /// A dungeon board: the player was shown the list.
+    Board,
+}
+
+/// Everything needed to move characters between zones.
+pub struct Travel<'a, 'w, 's> {
+    pub commands: &'a mut Commands<'w, 's>,
+    pub link: &'a mut Link,
+    pub data: &'a GameData,
+    pub zones: &'a Zones,
+    pub instances: &'a mut Instances,
+    /// The zones players are in right now (to join a group's dungeon copy).
+    pub occupied: &'a [String],
+    pub now: f64,
+}
+
+impl Travel<'_, '_, '_> {
+    /// Move a character to `zone` (for an instanced zone: their group's
+    /// copy of it) at `position`, facing `yaw`.
+    pub fn go_to(
+        &mut self,
+        entity: Entity,
+        motion: &mut Motion,
+        zone: &str,
+        position: Vec3,
+        yaw: f32,
+    ) {
+        let zone = self
+            .instances
+            .enter(self.commands, self.data, self.zones, zone, self.occupied);
+        motion.0 = MoveState {
+            yaw,
+            ..MoveState::spawn_at(position)
+        };
+        self.commands.entity(entity).insert(Zone(zone.clone()));
+        self.link
+            .to_client
+            .push(ServerEvent::ZoneChanged { entity, zone });
+    }
+
+    /// Go to a dungeon or trial, remembering where to come back to.
+    fn enter_from(
+        &mut self,
+        entity: Entity,
+        motion: &mut Motion,
+        here: &Zone,
+        doorway: (Vec3, f32),
+        to: &str,
+        arrive: Vec3,
+        arrive_yaw: f32,
+    ) {
+        if self.zones.get(to).is_some_and(|l| l.instanced) {
+            let (position, yaw) = step_away(doorway.0, doorway.1, motion.0.position);
+            self.commands.entity(entity).insert(CameFrom {
+                zone: here.0.clone(),
+                position,
+                yaw,
+            });
+        }
+        self.go_to(entity, motion, to, arrive, arrive_yaw);
+    }
+
+    /// Leave by a "back" portal: to where the character came from, or the
+    /// zone's `exit` if that isn't known.
+    fn go_back(
+        &mut self,
+        entity: Entity,
+        motion: &mut Motion,
+        here: &Zone,
+        came_from: Option<&CameFrom>,
+    ) {
+        let known = came_from.filter(|c| {
+            let instanced = self.zones.get(&c.zone).is_some_and(|l| l.instanced);
+            self.zones.get(&c.zone).is_some()
+                && (!instanced || self.instances.open.contains(&c.zone))
+        });
+        let (zone, position, yaw) =
+            match (known, self.zones.get(&here.0).and_then(|l| l.exit.as_ref())) {
+                (Some(c), _) => (c.zone.clone(), c.position, c.yaw),
+                (None, Some(exit)) => (exit.to.clone(), exit.arrive, exit.arrive_yaw),
+                (None, None) => {
+                    let start = &self.data.player.start_zone;
+                    let level = self.zones.get(start);
+                    (
+                        start.clone(),
+                        level.map_or(Vec3::ZERO, |l| l.spawn_point),
+                        level.map_or(0.0, |l| l.spawn_yaw),
+                    )
+                }
+            };
+        self.commands.entity(entity).remove::<CameFrom>();
+        self.go_to(entity, motion, &zone, position, yaw);
+    }
+}
+
+/// Just outside a doorway of this radius, on the side `from` is on, facing
+/// away from it (so you don't arrive standing in it again).
+pub fn step_away(centre: Vec3, radius: f32, from: Vec3) -> (Vec3, f32) {
+    const OUTSIDE: f32 = 1.5;
+    let offset = Vec2::new(from.x - centre.x, from.z - centre.z);
+    let direction = offset.try_normalize().unwrap_or(Vec2::Y);
+    let position = centre + Vec3::new(direction.x, 0.0, direction.y) * (radius + OUTSIDE);
+    (position, yaw_from_direction(direction))
 }
 
 /// Use a portal the player is standing in.
 pub fn use_portal(
-    commands: &mut Commands,
-    link: &mut Link,
-    data: &GameData,
-    now: f64,
+    travel: &mut Travel,
     player: PlayerId,
     entity: Entity,
     motion: &mut Motion,
+    here: &Zone,
     portal: &Portal,
+    came_from: Option<&CameFrom>,
 ) -> PortalUse {
     if let Some(message) = &portal.closed {
-        link.to_client.push(ServerEvent::Speech {
+        travel.link.to_client.push(ServerEvent::Speech {
             player,
             speaker: portal.label.clone(),
             text: message.clone(),
         });
         return PortalUse::Closed;
     }
+    if portal.board {
+        travel
+            .link
+            .to_client
+            .push(ServerEvent::OpenBoard { player });
+        return PortalUse::Board;
+    }
+    if portal.back {
+        travel.go_back(entity, motion, here, came_from);
+        return PortalUse::Travelled;
+    }
     if let Some(ride_id) = &portal.ride
-        && let Some(ride) = data.rides.get(ride_id)
+        && let Some(ride) = travel.data.rides.get(ride_id)
     {
         let (start, yaw) = ride.at(0.0);
-        motion.0 = MoveState {
-            yaw,
-            ..MoveState::spawn_at(start)
-        };
-        commands.entity(entity).insert((
-            Zone(ride.zone.clone()),
-            Riding {
-                ride: ride_id.clone(),
-                started: now,
-            },
-        ));
-        link.to_client.push(ServerEvent::ZoneChanged {
-            entity,
-            zone: ride.zone.clone(),
+        travel.go_to(entity, motion, &ride.zone, start, yaw);
+        travel.commands.entity(entity).insert(Riding {
+            ride: ride_id.clone(),
+            started: travel.now,
         });
         return PortalUse::Travelled;
     }
-    motion.0 = MoveState {
-        yaw: portal.arrive_yaw,
-        ..MoveState::spawn_at(portal.arrive)
-    };
-    commands.entity(entity).insert(Zone(portal.to.clone()));
-    link.to_client.push(ServerEvent::ZoneChanged {
+    travel.enter_from(
         entity,
-        zone: portal.to.clone(),
-    });
+        motion,
+        here,
+        (portal.position, portal.radius),
+        &portal.to,
+        portal.arrive,
+        portal.arrive_yaw,
+    );
     PortalUse::Travelled
+}
+
+/// At a dungeon board, the player picked a dungeon or trial.
+pub fn enter_from_board(
+    travel: &mut Travel,
+    entity: Entity,
+    motion: &mut Motion,
+    here: &Zone,
+    to: &str,
+) -> Result<(), Reject> {
+    let board = travel
+        .zones
+        .get(&here.0)
+        .and_then(|level| level.portal_at(motion.0.position))
+        .filter(|portal| portal.board)
+        .ok_or(Reject::NotAtBoard)?;
+    let level = travel
+        .zones
+        .0
+        .get(to)
+        .filter(|level| level.listing.is_some())
+        .ok_or(Reject::NoSuchPlace)?;
+    let (position, yaw) = (level.spawn_point, level.spawn_yaw);
+    let doorway = (board.position, board.radius);
+    travel.enter_from(entity, motion, here, doorway, to, position, yaw);
+    Ok(())
 }
 
 /// Talk to the nearest person in reach, if any. Returns whether someone
@@ -149,10 +285,14 @@ pub fn advance_rides(
     mut commands: Commands,
     time: Res<Time>,
     data: Res<GameData>,
+    zones: Res<Zones>,
+    mut instances: ResMut<Instances>,
     mut link: ResMut<Link>,
     mut riders: Query<(Entity, &Riding, &mut Motion)>,
+    players: Query<&Zone, With<PlayerId>>,
 ) {
     let now = time.elapsed_secs_f64();
+    let occupied: Vec<String> = players.iter().map(|z| z.0.clone()).collect();
     for (entity, riding, mut motion) in &mut riders {
         let Some(ride) = data.rides.get(&riding.ride) else {
             commands.entity(entity).remove::<Riding>();
@@ -168,18 +308,17 @@ pub fn advance_rides(
             };
             continue;
         }
-        motion.0 = MoveState {
-            yaw: ride.arrive_yaw,
-            ..MoveState::spawn_at(ride.arrive)
+        commands.entity(entity).remove::<Riding>();
+        let mut travel = Travel {
+            commands: &mut commands,
+            link: &mut link,
+            data: &data,
+            zones: &zones,
+            instances: &mut instances,
+            occupied: &occupied,
+            now,
         };
-        commands
-            .entity(entity)
-            .remove::<Riding>()
-            .insert(Zone(ride.to.clone()));
-        link.to_client.push(ServerEvent::ZoneChanged {
-            entity,
-            zone: ride.to.clone(),
-        });
+        travel.go_to(entity, &mut motion, &ride.to, ride.arrive, ride.arrive_yaw);
     }
 }
 

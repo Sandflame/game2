@@ -150,7 +150,45 @@ pub struct Portal {
     /// Look of the doorway (client only): "" for the glowing ring.
     #[serde(default)]
     pub visual: String,
+    /// Leads back to wherever you came in from (the way out of dungeons
+    /// and trials, which can be entered from several places).
+    #[serde(default)]
+    pub back: bool,
+    /// A board listing dungeons and trials: using it opens the list, and
+    /// choosing one takes you there.
+    #[serde(default)]
+    pub board: bool,
 }
+
+/// Where you end up when leaving an instanced zone (dungeon, trial) and
+/// the game doesn't know where you came from, e.g. after logging back in.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Exit {
+    pub to: String,
+    pub arrive: Vec3,
+    #[serde(default)]
+    pub arrive_yaw: f32,
+}
+
+/// How a dungeon or trial appears on the board.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Listing {
+    /// "Dungeon" or "Trial".
+    pub kind: String,
+    pub description: String,
+    /// Shown as "for 1–4 players".
+    pub players: (u32, u32),
+}
+
+/// Zone ids of instanced zones look like `tangled_burrow#3`: the zone's
+/// file name, `#`, then which copy. This returns the file name part.
+pub fn base_zone(zone: &str) -> &str {
+    zone.split_once(INSTANCE_MARK)
+        .map_or(zone, |(base, _)| base)
+}
+
+/// Separates a zone's file name from the copy number.
+pub const INSTANCE_MARK: char = '#';
 
 /// Someone to talk to (press E nearby).
 #[derive(Debug, Clone, Deserialize)]
@@ -187,8 +225,10 @@ pub struct Level {
     pub name: String,
     /// Characters are kept inside a square of this half-size around the origin.
     pub half_size: f32,
-    /// Where characters appear when they first enter.
+    /// Where characters appear when they first enter, and which way they face.
     pub spawn_point: Vec3,
+    #[serde(default)]
+    pub spawn_yaw: f32,
     /// Look of the ground (client only), e.g. "grass" or "stone".
     #[serde(default = "default_ground")]
     pub ground: String,
@@ -220,9 +260,21 @@ pub struct Level {
     /// of any level can play together).
     #[serde(default)]
     pub level_sync: Option<u32>,
-    /// A boss fight that takes place here (`assets/data/encounters/`).
+    /// Boss fights that take place here (`assets/data/encounters/`).
     #[serde(default)]
-    pub encounter: Option<String>,
+    pub encounters: Vec<String>,
+    /// Each group gets its own copy (dungeons, trials). A copy is made when
+    /// the first player enters and removed when the last one leaves, so it
+    /// is always fresh. Enemies in it don't come back once defeated.
+    #[serde(default)]
+    pub instanced: bool,
+    /// Where you leave to if the game doesn't know where you came from
+    /// (needed for instanced zones).
+    #[serde(default)]
+    pub exit: Option<Exit>,
+    /// Shown on the dungeon board.
+    #[serde(default)]
+    pub listing: Option<Listing>,
 }
 
 fn default_ground() -> String {
@@ -240,6 +292,7 @@ impl Level {
             name: String::new(),
             half_size: 100.0,
             spawn_point: Vec3::ZERO,
+            spawn_yaw: 0.0,
             ground: default_ground(),
             border: String::new(),
             ambience: String::new(),
@@ -250,7 +303,10 @@ impl Level {
             npcs: Vec::new(),
             decorations: Vec::new(),
             level_sync: None,
-            encounter: None,
+            encounters: Vec::new(),
+            instanced: false,
+            exit: None,
+            listing: None,
         }
     }
 
@@ -337,10 +393,26 @@ impl Validate for Level {
                 p.push(format!("portals[{i}] is outside the level"));
             }
             p.positive(&format!("portals[{i}].radius"), portal.radius);
-            if portal.to.is_empty() && portal.ride.is_none() && portal.closed.is_none() {
+            let ways = [
+                !portal.to.is_empty(),
+                portal.ride.is_some(),
+                portal.closed.is_some(),
+                portal.back,
+                portal.board,
+            ];
+            if ways.iter().filter(|w| **w).count() != 1 {
                 p.push(format!(
-                    "portals[{i}] needs a `to` zone, a `ride`, or a `closed` message"
+                    "portals[{i}] needs exactly one of: a `to` zone, a `ride`, a `closed` message, `back: true` or `board: true`"
                 ));
+            }
+        }
+        if self.instanced && self.exit.is_none() {
+            p.push("an `instanced` zone needs an `exit`");
+        }
+        if let Some(listing) = &self.listing {
+            let (min, max) = listing.players;
+            if min == 0 || max < min {
+                p.push("`listing.players` must be (smallest, largest) with 1 or more");
             }
         }
         for (i, npc) in self.npcs.iter().enumerate() {
@@ -457,6 +529,12 @@ mod tests {
         assert_eq!(level.ground_height(Vec2::new(5.0, 0.0), 0.4, 0.0, 0.4), 0.0);
         // …but it is ground once you are on top of it.
         assert_eq!(level.ground_height(Vec2::new(5.0, 0.0), 0.4, 2.0, 0.4), 2.0);
+    }
+
+    #[test]
+    fn instance_ids_name_their_zone() {
+        assert_eq!(base_zone("burrow#12"), "burrow");
+        assert_eq!(base_zone("hub"), "hub");
     }
 
     #[test]

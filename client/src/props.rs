@@ -1,6 +1,7 @@
 //! Placeholder scenery for the hub city, the giant root and the forest:
 //! buildings, towers, the fountain, trees, rocks, lamps, campfires, the city
-//! wall, the root tunnel and district gates. All built from simple shapes
+//! wall, the root tunnel, district gates, the dungeon board and the
+//! Tangled Burrow's walls. All built from simple shapes
 //! with the toon look; zone data picks them by `visual` name.
 
 use std::f32::consts::{FRAC_PI_2, TAU};
@@ -29,6 +30,9 @@ fn anchor(commands: &mut Commands, root: Entity, transform: Transform) -> Entity
         .id()
 }
 
+/// Roots don't spread within this angle (radians) of a doorway.
+const DOORWAY_CLEAR: f32 = 0.75;
+
 const WARM_GLOW: LinearRgba = LinearRgba::rgb(3.0, 1.9, 0.6);
 const CRYSTAL_GLOW: LinearRgba = LinearRgba::rgb(0.6, 2.2, 3.0);
 
@@ -48,8 +52,10 @@ pub fn obstacle(
         "house" => house(commands, toon, root, base, size),
         "tower" => tower(commands, toon, root, base, size.x, size.y),
         "fountain" => fountain(commands, toon, root, base, size.x, size.y),
-        "giant_root" => giant_root(commands, toon, root, base, size.x, size.y),
+        // Its entrance faces the plaza (+Z), so no roots spread that way.
+        "giant_root" => giant_root(commands, toon, root, base, size.x, size.y, Some(Vec3::Z)),
         "ancient_tree" => ancient_tree(commands, toon, root, base, size.x, size.y),
+        "burrow_wall" => burrow_wall(commands, toon, root, base, size),
         "pine" => pine(commands, toon, root, base, size.x, size.y),
         "rock" => rock(commands, toon, root, base, size),
         _ => return false,
@@ -76,6 +82,7 @@ pub fn decoration(
         "mushrooms" => mushrooms(commands, toon, at),
         "flowers" => flowers(commands, toon, at),
         "campfire" => campfire(commands, toon, at),
+        "glowcap" => glowcap(commands, toon, at),
         _ => {
             commands.entity(at).despawn();
             return false;
@@ -283,6 +290,7 @@ fn fountain(
 }
 
 /// A thick, twisting root rising out of sight, built from leaning capsules.
+/// No roots spread over the ground towards `clear` (where its doorway is).
 fn giant_root(
     commands: &mut Commands,
     toon: &mut ToonAssets,
@@ -290,6 +298,7 @@ fn giant_root(
     base: Transform,
     radius: f32,
     height: f32,
+    clear: Option<Vec3>,
 ) {
     let bark = toon.material(Color::srgb(0.44, 0.32, 0.23));
     let dark = toon.material(Color::srgb(0.32, 0.23, 0.17));
@@ -310,14 +319,22 @@ fn giant_root(
                 dark.clone()
             },
             Outline::Smooth,
-            Transform::from_translation(out + Vec3::Y * height / 2.0)
-                .with_rotation(Quat::from_rotation_z(lean) * Quat::from_rotation_x(-lean)),
+            // Leaning from the base, so the foot stays inside the trunk's
+            // footprint (and never pokes out in front of a doorway).
+            {
+                let rotation = Quat::from_rotation_z(lean) * Quat::from_rotation_x(-lean);
+                Transform::from_translation(out + rotation * Vec3::Y * (height / 2.0))
+                    .with_rotation(rotation)
+            },
         );
     }
-    // Roots spreading over the ground.
+    // Roots spreading over the ground (none in front of a doorway).
     for i in 0..8 {
         let angle = i as f32 * TAU / 8.0 + 0.2;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
+        if clear.is_some_and(|c| out.angle_between(c) < DOORWAY_CLEAR) {
+            continue;
+        }
         toon.spawn_part(
             commands,
             at,
@@ -356,7 +373,7 @@ fn ancient_tree(
     radius: f32,
     height: f32,
 ) {
-    giant_root(commands, toon, root, base, radius, height * 0.7);
+    giant_root(commands, toon, root, base, radius, height * 0.7, None);
     let leaves = toon.material(Color::srgb(0.24, 0.50, 0.28));
     let at = anchor(commands, root, base);
     for (offset, size) in [
@@ -632,6 +649,112 @@ fn campfire(commands: &mut Commands, toon: &mut ToonAssets, at: Entity) {
     );
 }
 
+/// A wall of packed earth in the Tangled Burrow, with roots growing over
+/// it and glowing moss. `size` is (width, height, depth).
+fn burrow_wall(
+    commands: &mut Commands,
+    toon: &mut ToonAssets,
+    root: Entity,
+    base: Transform,
+    size: Vec3,
+) {
+    let earth = toon.material(Color::srgb(0.30, 0.23, 0.17));
+    let top = toon.material(Color::srgb(0.20, 0.16, 0.12));
+    let bark = toon.material(Color::srgb(0.40, 0.29, 0.21));
+    let moss = toon.glowing(Color::srgb(0.35, 0.8, 0.5), LinearRgba::rgb(0.2, 0.9, 0.45));
+    let at = anchor(commands, root, base);
+    toon.spawn_part(
+        commands,
+        at,
+        Cuboid::new(size.x, size.y, size.z),
+        earth,
+        Outline::Box,
+        Transform::from_xyz(0.0, size.y / 2.0, 0.0),
+    );
+    // A dark lip on top, so the wall reads as solid ground from above.
+    toon.spawn_part(
+        commands,
+        at,
+        Cuboid::new(size.x + 0.3, 0.4, size.z + 0.3),
+        top,
+        Outline::Box,
+        Transform::from_xyz(0.0, size.y, 0.0),
+    );
+    // Roots snaking along the wall, about one every 3 metres.
+    let long = size.x.max(size.z);
+    let along = if size.x >= size.z { Vec3::X } else { Vec3::Z };
+    let across = Vec3::Y.cross(along);
+    let seed = (base.translation.x * 7.0 + base.translation.z * 13.0).abs() as u32;
+    let count = (long / 3.0).ceil() as u32;
+    for i in 0..count {
+        let t = (i as f32 + 0.5) / count as f32 - 0.5;
+        let k = seed.wrapping_add(i);
+        let height = 1.0 + scatter(k, 61) * (size.y - 1.5);
+        let tilt = (scatter(k, 62) - 0.5) * 1.2;
+        for side in [-1.0, 1.0] {
+            let face = across * side * (size.x.min(size.z) / 2.0 + 0.05);
+            toon.spawn_part(
+                commands,
+                at,
+                Capsule3d::new(0.18 + 0.1 * scatter(k, 63), 2.4),
+                bark.clone(),
+                Outline::Smooth,
+                Transform::from_translation(along * t * long + face + Vec3::Y * height)
+                    .with_rotation(Quat::from_axis_angle(across, FRAC_PI_2 + tilt)),
+            );
+            if scatter(k, 64 + side as u32) > 0.55 {
+                toon.spawn_part(
+                    commands,
+                    at,
+                    Sphere::new(0.28).mesh().uv(10, 6),
+                    moss.clone(),
+                    Outline::None,
+                    Transform::from_translation(
+                        along * (t * long + 0.8) + face + Vec3::Y * (height * 0.6),
+                    )
+                    .with_scale(Vec3::new(1.0, 0.6, 1.0)),
+                );
+            }
+        }
+    }
+}
+
+/// A cluster of big glowing mushrooms (lights the Tangled Burrow).
+fn glowcap(commands: &mut Commands, toon: &mut ToonAssets, at: Entity) {
+    let stem = toon.material(Color::srgb(0.85, 0.85, 0.78));
+    let caps = [
+        toon.glowing(Color::srgb(0.4, 0.95, 0.8), LinearRgba::rgb(0.4, 2.4, 1.6)),
+        toon.glowing(Color::srgb(0.6, 0.85, 1.0), LinearRgba::rgb(0.6, 1.6, 2.6)),
+    ];
+    for (i, (offset, size)) in [
+        (Vec3::ZERO, 0.7),
+        (Vec3::new(0.8, 0.0, 0.35), 0.45),
+        (Vec3::new(-0.55, 0.0, 0.6), 0.35),
+        (Vec3::new(0.2, 0.0, -0.7), 0.3),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let height = size * 2.2;
+        let part = toon.spawn_part(
+            commands,
+            at,
+            Cylinder::new(size * 0.2, height),
+            stem.clone(),
+            Outline::Cylinder,
+            Transform::from_translation(offset + Vec3::Y * height / 2.0),
+        );
+        toon.spawn_part(
+            commands,
+            part,
+            Sphere::new(size).mesh().uv(16, 8),
+            caps[i % 2].clone(),
+            Outline::Smooth,
+            Transform::from_xyz(0.0, height / 2.0, 0.0).with_scale(Vec3::new(1.0, 0.45, 1.0)),
+        );
+    }
+}
+
 /// The city wall around Lanternhold, with towers, and far-off spires beyond.
 pub fn city_wall(commands: &mut Commands, toon: &mut ToonAssets, root: Entity, h: f32) {
     let stone = toon.material(Color::srgb(0.66, 0.63, 0.60));
@@ -763,7 +886,7 @@ pub fn portal(
                 Cylinder::new(2.2, 0.1),
                 hole,
                 Outline::None,
-                Transform::from_xyz(0.0, 2.2, -0.4)
+                Transform::from_xyz(0.0, 2.2, -0.55)
                     .with_rotation(Quat::from_rotation_x(FRAC_PI_2))
                     .with_scale(Vec3::new(1.0, 1.0, 1.25)),
             );
@@ -773,10 +896,156 @@ pub fn portal(
                 Torus::new(2.1, 2.4),
                 rim,
                 Outline::None,
-                Transform::from_xyz(0.0, 2.2, -0.3)
+                Transform::from_xyz(0.0, 2.2, -0.5)
                     .with_rotation(Quat::from_rotation_x(FRAC_PI_2))
                     .with_scale(Vec3::new(1.0, 1.0, 1.25)),
             );
+            true
+        }
+        "burrow_entrance" => {
+            // An earthen mound with a dark hole into the roots, facing west
+            // (the way into the forest).
+            let earth = toon.material(Color::srgb(0.38, 0.30, 0.21));
+            let hole = toon.material(Color::srgb(0.03, 0.02, 0.02));
+            let bark = toon.material(Color::srgb(0.40, 0.29, 0.21));
+            let glow = toon.glowing(Color::srgb(0.8, 0.5, 1.0), LinearRgba::rgb(1.4, 0.6, 2.2));
+            let at = anchor(
+                commands,
+                root,
+                Transform::from_translation(position)
+                    .with_rotation(Quat::from_rotation_y(FRAC_PI_2)),
+            );
+            toon.spawn_part(
+                commands,
+                at,
+                Sphere::new(4.0).mesh().uv(24, 12),
+                earth,
+                Outline::Smooth,
+                Transform::from_xyz(0.0, 0.0, 2.6).with_scale(Vec3::new(1.2, 0.8, 1.0)),
+            );
+            toon.spawn_part(
+                commands,
+                at,
+                Cylinder::new(1.8, 0.1),
+                hole,
+                Outline::None,
+                Transform::from_xyz(0.0, 1.5, -0.95)
+                    .with_rotation(Quat::from_rotation_x(1.2))
+                    .with_scale(Vec3::new(1.0, 1.0, 1.1)),
+            );
+            toon.spawn_part(
+                commands,
+                at,
+                Torus::new(1.75, 2.15),
+                bark,
+                Outline::Smooth,
+                Transform::from_xyz(0.0, 1.5, -1.0).with_rotation(Quat::from_rotation_x(1.2)),
+            );
+            for x in [-2.6, 2.6] {
+                toon.spawn_part(
+                    commands,
+                    at,
+                    Sphere::new(0.3).mesh().uv(10, 6),
+                    glow.clone(),
+                    Outline::None,
+                    Transform::from_xyz(x, 0.25, -1.4).with_scale(Vec3::new(1.0, 0.5, 1.0)),
+                );
+            }
+            true
+        }
+        "burrow_light" => {
+            // Daylight falling down the shaft back to the forest, with a
+            // root to climb.
+            let light = toon.glowing(
+                Color::srgb(0.9, 0.85, 0.7),
+                LinearRgba::rgb(0.35, 0.33, 0.25),
+            );
+            let bark = toon.material(Color::srgb(0.40, 0.29, 0.21));
+            let at = anchor(commands, root, Transform::from_translation(position));
+            toon.spawn_part(
+                commands,
+                at,
+                Cylinder::new(1.4, 0.05),
+                light,
+                Outline::None,
+                Transform::from_xyz(0.0, 0.03, 0.0),
+            );
+            for (x, tilt) in [(-1.1, 0.15), (1.0, -0.2)] {
+                toon.spawn_part(
+                    commands,
+                    at,
+                    Capsule3d::new(0.22, 7.0),
+                    bark.clone(),
+                    Outline::Smooth,
+                    Transform::from_xyz(x, 3.5, 1.2).with_rotation(Quat::from_rotation_z(tilt)),
+                );
+            }
+            true
+        }
+        "dungeon_board" => {
+            // A notice board on two posts, covered in glowing notes, facing
+            // the fountain.
+            let wood = toon.material(Color::srgb(0.45, 0.32, 0.22));
+            let board = toon.material(Color::srgb(0.62, 0.48, 0.32));
+            let brass = toon.material(Color::srgb(0.82, 0.64, 0.30));
+            let notes = [
+                toon.glowing(Color::srgb(1.0, 0.95, 0.8), LinearRgba::rgb(1.0, 0.9, 0.6)),
+                toon.glowing(Color::srgb(0.8, 0.6, 1.0), LinearRgba::rgb(1.0, 0.5, 1.6)),
+                toon.glowing(Color::srgb(0.6, 1.0, 0.7), LinearRgba::rgb(0.5, 1.6, 0.7)),
+            ];
+            let facing =
+                Quat::from_rotation_arc(Vec3::NEG_Z, (-position).with_y(0.0).normalize_or(Vec3::Z));
+            let at = anchor(
+                commands,
+                root,
+                Transform::from_translation(position).with_rotation(facing),
+            );
+            for x in [-1.4, 1.4] {
+                toon.spawn_part(
+                    commands,
+                    at,
+                    Cylinder::new(0.12, 3.0),
+                    wood.clone(),
+                    Outline::Cylinder,
+                    Transform::from_xyz(x, 1.5, 0.6),
+                );
+            }
+            toon.spawn_part(
+                commands,
+                at,
+                Cuboid::new(3.0, 1.8, 0.15),
+                board,
+                Outline::Box,
+                Transform::from_xyz(0.0, 2.0, 0.6),
+            );
+            toon.spawn_part(
+                commands,
+                at,
+                Cuboid::new(3.4, 0.2, 0.4),
+                brass,
+                Outline::Box,
+                Transform::from_xyz(0.0, 3.0, 0.6),
+            );
+            for (i, (x, y)) in [
+                (-0.9, 2.3),
+                (0.0, 2.4),
+                (0.9, 2.25),
+                (-0.5, 1.6),
+                (0.6, 1.55),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                toon.spawn_part(
+                    commands,
+                    at,
+                    Cuboid::new(0.6, 0.5, 0.04),
+                    notes[i % notes.len()].clone(),
+                    Outline::None,
+                    Transform::from_xyz(x, y, 0.5)
+                        .with_rotation(Quat::from_rotation_z((i as f32 - 2.0) * 0.06)),
+                );
+            }
             true
         }
         "district_gate" => {

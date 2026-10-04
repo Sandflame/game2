@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use shared::classes::Stats;
 use shared::combat::{ActionState, Health};
-use shared::components::{Motion, PlayerId, Zone};
+use shared::components::{ExitPortal, Motion, PlayerId, Zone};
 use shared::encounters::{EncounterAction, Progress};
 use shared::gamedata::{GameData, Zones};
 use shared::movement::MoveState;
@@ -24,7 +24,7 @@ use crate::enemies::spawn_enemy;
 use crate::progression::{PendingRewards, Reward};
 
 /// After a wipe, players are brought back to the entrance after this long.
-const WIPE_PAUSE: f64 = 4.0;
+pub const WIPE_PAUSE: f64 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FightState {
@@ -47,6 +47,8 @@ pub struct Encounter {
     pub zone: String,
     pub boss: Entity,
     pub adds: Vec<Entity>,
+    /// The way out that appeared when the boss fell.
+    pub exit: Option<Entity>,
     pub state: FightState,
     pub progress: Progress,
     /// Actions waiting for the boss to be free.
@@ -80,35 +82,31 @@ enum Change {
     },
 }
 
-/// Create the boss and director for every zone with an encounter.
-pub fn setup_encounters(mut commands: Commands, data: Res<GameData>, zones: Res<Zones>) {
-    for (zone, level) in &zones.0 {
-        let Some(id) = &level.encounter else {
-            continue;
-        };
-        let Some(def) = data.encounters.get(id) else {
-            continue;
-        };
-        let Some(boss) = spawn_enemy(
-            &mut commands,
-            &data,
-            &def.boss,
-            zone,
-            def.boss_position,
-            def.boss_yaw,
-        ) else {
-            continue;
-        };
-        commands.spawn(Encounter {
-            id: id.clone(),
-            zone: zone.clone(),
-            boss,
-            adds: Vec::new(),
-            state: FightState::Waiting,
-            progress: Progress::new(0.0),
-            pending: VecDeque::new(),
-        });
-    }
+/// Create the boss and director of one boss fight in a zone.
+pub fn spawn_encounter(commands: &mut Commands, data: &GameData, id: &str, zone: &str) {
+    let Some(def) = data.encounters.get(id) else {
+        return;
+    };
+    let Some(boss) = spawn_enemy(
+        commands,
+        data,
+        &def.boss,
+        zone,
+        def.boss_position,
+        def.boss_yaw,
+    ) else {
+        return;
+    };
+    commands.spawn(Encounter {
+        id: id.to_owned(),
+        zone: zone.to_owned(),
+        boss,
+        adds: Vec::new(),
+        exit: None,
+        state: FightState::Waiting,
+        progress: Progress::new(0.0),
+        pending: VecDeque::new(),
+    });
 }
 
 /// Run every boss fight for one tick.
@@ -200,8 +198,23 @@ pub fn run_encounters(
                         .0
                         .push(Change::Despawn(std::mem::take(&mut encounter.adds)));
                     changes.0.push(Change::ClearMarkers(zone.clone()));
+                    if let Some(exit) = &def.exit_portal {
+                        encounter.exit = Some(
+                            commands
+                                .spawn((
+                                    ExitPortal {
+                                        position: exit.position,
+                                        radius: exit.radius,
+                                        label: exit.label.clone(),
+                                    },
+                                    Zone(zone.clone()),
+                                ))
+                                .id(),
+                        );
+                    }
                     link.to_client.push(ServerEvent::EncounterWon {
                         zone: zone.clone(),
+                        encounter: encounter.id.clone(),
                         name: def.name.clone(),
                         seconds: (now - encounter.progress.started) as f32,
                     });
@@ -306,9 +319,9 @@ pub fn run_encounters(
 fn reset(encounter: &mut Encounter, changes: &mut EncounterChanges) {
     encounter.state = FightState::Waiting;
     encounter.pending.clear();
-    changes
-        .0
-        .push(Change::Despawn(std::mem::take(&mut encounter.adds)));
+    let mut gone = std::mem::take(&mut encounter.adds);
+    gone.extend(encounter.exit.take());
+    changes.0.push(Change::Despawn(gone));
     changes.0.push(Change::ClearMarkers(encounter.zone.clone()));
     changes.0.push(Change::Reset {
         encounter: encounter.id.clone(),
@@ -410,7 +423,9 @@ pub fn apply_encounter_changes(
                     commands.entity(boss).remove::<Defeated>();
                 }
                 // The players: back on their feet at the entrance.
-                let entrance = zones.get(&zone).map_or(Vec3::ZERO, |z| z.spawn_point);
+                let (entrance, facing) = zones
+                    .get(&zone)
+                    .map_or((Vec3::ZERO, 0.0), |z| (z.spawn_point, z.spawn_yaw));
                 for (player, player_zone) in &players {
                     if player_zone.0 != zone {
                         continue;
@@ -421,7 +436,10 @@ pub fn apply_encounter_changes(
                         *health = Health::full(health.max);
                         statuses.0.clear();
                         actions.reset();
-                        motion.0 = MoveState::spawn_at(entrance);
+                        motion.0 = MoveState {
+                            yaw: facing,
+                            ..MoveState::spawn_at(entrance)
+                        };
                         if let Some(mut clock) = clock {
                             *clock = CombatClock::default();
                         }

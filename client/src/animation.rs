@@ -1,7 +1,8 @@
 //! Small animations that make fights read better:
 //! - characters flash white when hit,
-//! - the Rootwarden sways, leans back while casting, slams forwards when
-//!   its attack lands, and sinks into its roots when defeated,
+//! - big bosses (the Rootwarden, the Rotheart) sway, lean back while
+//!   casting, slam forwards when an attack lands, and when defeated topple
+//!   over backwards while their roots draw down into the ground,
 //! - Thornlings hop.
 
 use bevy::prelude::*;
@@ -66,10 +67,13 @@ pub struct BossRig {
     torso: Entity,
     /// Shoulders the arms hang from.
     arms: [Entity; 2],
+    /// Roots on the ground, with their resting place. They draw into the
+    /// ground when the boss falls, so they never hide its body.
+    roots: Vec<(Entity, Option<Transform>)>,
     /// 1 right after an attack lands, falling to 0.
     slam: f32,
-    /// How far it has sunk into the ground after defeat (0–1).
-    sunk: f32,
+    /// How far through falling over after defeat (0–1).
+    fallen: f32,
 }
 
 impl BossRig {
@@ -77,9 +81,17 @@ impl BossRig {
         Self {
             torso,
             arms,
+            roots: Vec::new(),
             slam: 0.0,
-            sunk: 0.0,
+            fallen: 0.0,
         }
+    }
+
+    /// Roots on the ground (their resting place is read the first time
+    /// the rig is animated).
+    pub fn with_roots(mut self, roots: Vec<Entity>) -> Self {
+        self.roots = roots.into_iter().map(|r| (r, None)).collect();
+        self
     }
 }
 
@@ -158,9 +170,14 @@ const WIND_UP_ARMS: f32 = 0.7;
 const SLAM_LEAN: f32 = 0.3;
 /// How quickly a slam recovers (per second).
 const SLAM_RECOVERY: f32 = 2.5;
-/// How deep a defeated boss sinks (metres) and how fast (per second).
-const SINK_DEPTH: f32 = 3.5;
-const SINK_SPEED: f32 = 0.4;
+/// A defeated boss topples over backwards this far (radians), lifted this
+/// much (metres) so it lies on the ground rather than in it, over
+/// `1 / FALL_SPEED` seconds. Its roots sink this deep as they draw in.
+const FALL_ANGLE: f32 = 1.25;
+const FALL_TWIST: f32 = 0.45;
+const FALL_LIFT: f32 = 0.9;
+const FALL_SPEED: f32 = 0.6;
+const ROOT_SINK: f32 = 1.2;
 
 fn animate_bosses(
     time: Res<Time>,
@@ -181,11 +198,12 @@ fn animate_bosses(
     let dt = time.delta_secs();
     for (_, mut rig, actions, defeated) in &mut bosses {
         rig.slam = (rig.slam - dt * SLAM_RECOVERY).max(0.0);
-        rig.sunk = if defeated {
-            (rig.sunk + dt * SINK_SPEED).min(1.0)
+        rig.fallen = if defeated {
+            (rig.fallen + dt * FALL_SPEED).min(1.0)
         } else {
             0.0
         };
+        let fall = smooth(rig.fallen);
         let casting = smooth(actions.cast_progress(now).unwrap_or(0.0));
         // A quick snap forwards that eases back.
         let slam = rig.slam * rig.slam;
@@ -194,10 +212,22 @@ fn animate_bosses(
             let sway = Quat::from_rotation_z(0.035 * (t * 0.8).sin())
                 * Quat::from_rotation_x(0.02 * (t * 0.6).sin());
             let lean = WIND_UP_LEAN * casting - SLAM_LEAN * slam;
-            let breathe = 1.0 + 0.015 * (t * 1.6).sin();
-            torso.rotation = sway * Quat::from_rotation_x(lean + 0.25 * rig.sunk);
+            let breathe = 1.0 + 0.015 * (t * 1.6).sin() * (1.0 - fall);
+            let still = Quat::IDENTITY.slerp(sway, 1.0 - fall);
+            // Backwards and a little to one side, so it reads clearly.
+            torso.rotation = still
+                * Quat::from_rotation_z(FALL_TWIST * fall)
+                * Quat::from_rotation_x(lean * (1.0 - fall) + FALL_ANGLE * fall);
             torso.scale = Vec3::new(1.0, breathe, 1.0);
-            torso.translation.y = -SINK_DEPTH * smooth(rig.sunk);
+            torso.translation.y = FALL_LIFT * fall;
+        }
+        for (root, rest) in &mut rig.roots {
+            if let Ok(mut part) = parts.get_mut(*root) {
+                let rest = *rest.get_or_insert(*part);
+                let shrink = (1.0 - fall).max(0.01);
+                part.scale = rest.scale * shrink;
+                part.translation = rest.translation - Vec3::Y * ROOT_SINK * fall;
+            }
         }
         for (shoulder, side) in rig.arms.into_iter().zip([-1.0, 1.0]) {
             if let Ok(mut arm) = parts.get_mut(shoulder) {

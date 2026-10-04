@@ -3,7 +3,7 @@
 //! Also the "E: Enter …" prompt when standing in a portal.
 
 use bevy::prelude::*;
-use shared::components::{CharacterName, Faction, Motion, Zone};
+use shared::components::{CharacterName, ExitPortal, Faction, Motion, Zone};
 use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
 use shared::protocol::ServerEvent;
@@ -101,6 +101,7 @@ fn show_banners(
                 zone,
                 name,
                 seconds,
+                ..
             } if here(zone) => {
                 let total = seconds.round() as u32;
                 Some((
@@ -184,6 +185,7 @@ fn update_prompt(
     data: Res<GameData>,
     player: Option<Single<(&Motion, &Zone), With<LocalPlayer>>>,
     people: Query<(&CharacterName, &Faction, &Motion, &Zone), Without<LocalPlayer>>,
+    exits: Query<(&ExitPortal, &Zone)>,
     mut prompt: Single<(&mut Text, &mut Visibility), With<Prompt>>,
 ) {
     let label = player.and_then(|player| {
@@ -191,6 +193,13 @@ fn update_prompt(
         let here = motion.0.position;
         if let Some(portal) = zones.get(&zone.0)?.portal_at(here) {
             return Some(format!("[E]  {}", portal.label));
+        }
+        // A way out that appeared after a boss fell?
+        if let Some((exit, _)) = exits
+            .iter()
+            .find(|(exit, z)| *z == zone && ground_distance(exit.position, here) <= exit.radius)
+        {
+            return Some(format!("[E]  {}", exit.label));
         }
         // Someone to talk to?
         people

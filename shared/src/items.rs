@@ -72,7 +72,7 @@ pub struct ItemDef {
     pub description: String,
     pub slot: Slot,
     /// The level your class needs to wear it. Also its strength: in a
-    /// level-synced duty, gear above the sync level is scaled down.
+    /// level-synced dungeon or trial, gear above the sync level is scaled down.
     pub level: u32,
     /// Weapons belong to one class (a file name in `assets/data/classes/`).
     #[serde(default)]

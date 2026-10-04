@@ -337,7 +337,6 @@ fn start_effects(
 fn looks_for_events(
     mut received: MessageReader<Received>,
     data: Res<GameData>,
-    zones: Res<Zones>,
     current: Res<CurrentZone>,
     characters: Query<(&Transform, &Zone)>,
     mut looks: Looks,
@@ -372,12 +371,16 @@ fn looks_for_events(
                     looks.play("level_up", at, at);
                 }
             }
-            ServerEvent::EncounterWon { zone, .. } if current.0.as_deref() == Some(zone) => {
-                let boss_at = zones
-                    .get(zone)
-                    .and_then(|level| level.encounter.as_ref())
-                    .and_then(|id| data.encounters.get(id))
-                    .map(|encounter| encounter.boss_position);
+            ServerEvent::EncounterWon {
+                zone, encounter, ..
+            } if current.0.as_deref() == Some(zone) => {
+                // The sparkle comes up where the way out appears (or where
+                // the boss stood).
+                let boss_at = data.encounters.get(encounter).map(|e| {
+                    e.exit_portal
+                        .as_ref()
+                        .map_or(e.boss_position, |exit| exit.position)
+                });
                 if let Some(at) = boss_at {
                     looks.play("victory", at, at);
                 }

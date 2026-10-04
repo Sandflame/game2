@@ -185,6 +185,9 @@
         // The Rootwarden's trial.
         (position: (-50.0, 0.0, -55.0), radius: 2.0, to: "trial_rootwarden", arrive: (0.0, 0.0, 16.0),
          label: "Enter the Rootwarden's Hollow (trial, level 5)"),
+        // The first dungeon, down among the roots.
+        (position: (62.0, 0.0, -18.0), radius: 2.2, to: "tangled_burrow", arrive: (0.0, 0.0, 42.0),
+         visual: "burrow_entrance", label: "Enter the Tangled Burrow (dungeon, level 8)"),
     ],
     npcs: [
         (name: "Ranger Oak", visual: "townsfolk_ranger", position: (-5.0, 0.0, 52.0), yaw: 0.9,
@@ -193,6 +196,7 @@
             "Bramble sprouts to the west, spore caps to the south. Good practice.",
             "The Rootwarden sleeps in a hollow to the far south-west. Wake it when you're ready.",
             "Run far enough and most creatures will give up and go home.",
+            "Something is rotting in the burrow to the east. Take friends if you go down there.",
          ]),
     ],
 )

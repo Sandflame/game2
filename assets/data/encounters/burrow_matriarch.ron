@@ -1,0 +1,39 @@
+// The Burrow Matriarch: first boss of the Tangled Burrow. She chases her
+// target, pounces, and sweeps her tail; at half health she calls her pups.
+// (Format explained in rootwarden.ron.)
+(
+    name: "Burrow Matriarch",
+    boss: "burrow_matriarch",
+    boss_position: (0.0, 0.0, 12.0),
+    boss_yaw: 3.1416,
+    extra_health_per_player: 70,
+    pull_message: Some("The Burrow Matriarch bares her thorns!"),
+    victory_message: Some("The Matriarch slinks into the dark, beaten."),
+    phases: [
+        (
+            name: "Hunt",
+            until_health: 50,
+            loop_after: 12.0,
+            timeline: [
+                (at: 3.0, action: Use("matriarch_pounce")),
+                (at: 8.0, action: Use("matriarch_sweep")),
+            ],
+        ),
+        (
+            name: "Pack",
+            until_health: 0,
+            on_start: [
+                Say("The Matriarch howls for her pups!"),
+                Use("matriarch_howl"),
+                Spawn(enemy: "burrow_pup", at: (-9.0, 0.0, 6.0)),
+                Spawn(enemy: "burrow_pup", at: (9.0, 0.0, 6.0)),
+            ],
+            loop_after: 14.0,
+            timeline: [
+                (at: 4.0, action: Use("matriarch_sweep")),
+                (at: 9.0, action: Use("matriarch_pounce")),
+            ],
+        ),
+    ],
+    xp: 300,
+)

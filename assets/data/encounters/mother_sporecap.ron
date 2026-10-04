@@ -1,0 +1,24 @@
+// Mother Sporecap: second boss of the Tangled Burrow. She can't move, but
+// fills her grotto with spores: get close, get away, spread out.
+(
+    name: "Mother Sporecap",
+    boss: "mother_sporecap",
+    boss_position: (0.0, 0.0, -14.0),
+    boss_yaw: 3.1416,
+    extra_health_per_player: 70,
+    pull_message: Some("Mother Sporecap puffs up, furious!"),
+    victory_message: Some("Mother Sporecap wilts with a sad little sigh."),
+    phases: [
+        (
+            name: "Bloom",
+            until_health: 0,
+            loop_after: 18.0,
+            timeline: [
+                (at: 2.0, action: Use("sporecap_ring")),
+                (at: 7.0, action: Use("sporecap_puff")),
+                (at: 12.5, action: Use("sporecap_rain")),
+            ],
+        ),
+    ],
+    xp: 300,
+)

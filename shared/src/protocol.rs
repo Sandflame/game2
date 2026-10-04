@@ -33,6 +33,8 @@ pub enum ClientRequest {
     SetSecondary {
         choice: Option<crate::classes::SecondaryChoice>,
     },
+    /// At a dungeon board: go to this dungeon or trial (zone file name).
+    EnterFromBoard { zone: String },
 }
 
 /// Something the authority tells clients about.
@@ -97,6 +99,8 @@ pub enum ServerEvent {
     /// A boss was defeated, `seconds` after the fight began.
     EncounterWon {
         zone: String,
+        /// Encounter id (file name in `assets/data/encounters/`).
+        encounter: String,
         name: String,
         seconds: f32,
     },
@@ -122,6 +126,8 @@ pub enum ServerEvent {
         speaker: String,
         text: String,
     },
+    /// The player is at a dungeon board: show the list.
+    OpenBoard { player: PlayerId },
 }
 
 /// The in-process connection between the client and the authority.

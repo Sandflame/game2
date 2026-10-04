@@ -114,11 +114,24 @@ Earlier changes to your original list:
   far, and get back up at home after being defeated; Ranger Oak; the
   Rootwarden's Hollow moved here. The training meadow is reached from the hub.
 
-## M8 — First dungeon
-- Duty board to enter a dungeon (scaled 1–4).
-- 5–10 minute dungeon: trash, two mini-bosses, final boss, loot.
-- Collision against level geometry (`avian3d` for collision queries,
-  only if the levels need it).
+## M8 — First dungeon ✅
+- The Tangled Burrow, under Whisperwood (about 3 minutes, level 8, 1–4
+  players: bosses gain health per extra player): pups and rot spores, the
+  Burrow Matriarch (chases, pounces, sweeps, calls her pups), Mother
+  Sporecap (ring / puff / spread), the Rotheart (two phases, adds, enrage),
+  loot from the last boss.
+- Entered by walking into the burrow's mouth in Whisperwood, or from the
+  dungeon board in Lanternhold (which lists every dungeon and trial).
+- Instanced zones: each group gets a fresh copy (`zone#n`), removed when
+  empty; defeated enemies stay down; everyone falling outside a boss fight
+  returns to the entrance. The Rootwarden's Hollow is instanced too.
+- When the last boss falls (and the Rootwarden), a way out appears beside it
+  that leads back to wherever you came in from.
+- Walls are box obstacles (no physics library needed); the camera stays in
+  front of them.
+- Fixes: bosses topple over when defeated, their roots drawing into the
+  ground (no longer hiding the body); the giant root no longer has a root
+  across the slide entrance.
 
 ## M9 — Quests and skippable dialogue
 - Quest and dialogue data files; quest log and tracker UI.

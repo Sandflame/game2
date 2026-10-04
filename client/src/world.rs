@@ -5,7 +5,7 @@
 
 use bevy::light::{CascadeShadowConfigBuilder, NotShadowCaster};
 use bevy::prelude::*;
-use shared::components::Zone;
+use shared::components::{ExitPortal, Zone};
 use std::collections::HashMap;
 
 use bevy::pbr::DistanceFog;
@@ -32,6 +32,7 @@ impl Plugin for WorldPlugin {
                     rebuild_scenery,
                     hide_other_zones,
                     animate_portals,
+                    show_exit_portals,
                     add_lasting_particles,
                 )
                     .chain(),
@@ -134,6 +135,11 @@ fn sky_colors(ground: &str) -> (Color, Color) {
             Color::srgb(0.08, 0.05, 0.03),
         ),
         "forest" | "moss" => (Color::srgb(0.55, 0.75, 0.80), Color::srgb(0.55, 0.70, 0.66)),
+        // Underground: nearly black, with a faint green haze.
+        "burrow" => (
+            Color::srgb(0.03, 0.035, 0.03),
+            Color::srgb(0.06, 0.08, 0.06),
+        ),
         _ => (
             Color::srgb(0.55, 0.78, 0.95),
             Color::srgba(0.70, 0.85, 0.97, 1.0),
@@ -240,6 +246,7 @@ fn ground_color(key: &str) -> Color {
         "stone" => Color::srgb(0.62, 0.60, 0.58),
         "plaza" => Color::srgb(0.74, 0.70, 0.64),
         "forest" => Color::srgb(0.32, 0.52, 0.30),
+        "burrow" => Color::srgb(0.34, 0.27, 0.20),
         _ => Color::srgb(0.45, 0.72, 0.36),
     }
 }
@@ -265,7 +272,6 @@ fn spawn_portal(
         }
         return;
     }
-    let glow = toon.glowing(Color::srgb(0.5, 0.9, 1.0), LinearRgba::rgb(0.8, 2.6, 3.4));
     let base = commands
         .spawn((
             Transform::from_translation(portal.position),
@@ -274,10 +280,41 @@ fn spawn_portal(
             ChildOf(root),
         ))
         .id();
+    portal_ring(commands, toon, standard, base, portal.radius);
+}
+
+/// The way out that appears when a boss falls: the same glowing ring as
+/// other portals (the victory sparkle plays from `vfx.rs`).
+fn show_exit_portals(
+    mut commands: Commands,
+    new: Query<(Entity, &ExitPortal), Added<ExitPortal>>,
+    mut toon: ToonAssets,
+    mut standard: ResMut<Assets<StandardMaterial>>,
+) {
+    for (entity, exit) in &new {
+        commands.entity(entity).insert((
+            Transform::from_translation(exit.position),
+            Visibility::default(),
+            LastingParticles("portal".to_owned(), 0.1),
+        ));
+        portal_ring(&mut commands, &mut toon, &mut standard, entity, exit.radius);
+    }
+}
+
+/// A glowing ring on the ground with a soft column of light and circling
+/// runes, on `base`.
+fn portal_ring(
+    commands: &mut Commands,
+    toon: &mut ToonAssets,
+    standard: &mut Assets<StandardMaterial>,
+    base: Entity,
+    radius: f32,
+) {
+    let glow = toon.glowing(Color::srgb(0.5, 0.9, 1.0), LinearRgba::rgb(0.8, 2.6, 3.4));
     toon.spawn_part(
         commands,
         base,
-        Torus::new(portal.radius - 0.12, portal.radius)
+        Torus::new(radius - 0.12, radius)
             .mesh()
             .minor_resolution(8)
             .major_resolution(48),
@@ -293,7 +330,7 @@ fn spawn_portal(
         cull_mode: None,
         ..default()
     });
-    let column_mesh = toon.meshes.add(Cylinder::new(portal.radius * 0.9, 3.5));
+    let column_mesh = toon.meshes.add(Cylinder::new(radius * 0.9, 3.5));
     commands.spawn((
         Mesh3d(column_mesh),
         MeshMaterial3d(column),
@@ -318,11 +355,7 @@ fn spawn_portal(
             Sphere::new(0.14).mesh().uv(12, 8),
             glow.clone(),
             Outline::None,
-            Transform::from_xyz(
-                angle.cos() * portal.radius * 0.7,
-                0.0,
-                angle.sin() * portal.radius * 0.7,
-            ),
+            Transform::from_xyz(angle.cos() * radius * 0.7, 0.0, angle.sin() * radius * 0.7),
         );
     }
 }

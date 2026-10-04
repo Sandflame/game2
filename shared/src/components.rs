@@ -24,6 +24,15 @@ pub struct Motion(pub MoveState);
 #[derive(Component, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Zone(pub String);
 
+/// A doorway that appeared during play (e.g. the way out after a boss
+/// falls). Leads back to wherever each player came in from.
+#[derive(Component, Debug, Clone, PartialEq)]
+pub struct ExitPortal {
+    pub position: Vec3,
+    pub radius: f32,
+    pub label: String,
+}
+
 /// Which side a character is on.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Faction {
