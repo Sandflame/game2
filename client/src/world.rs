@@ -1,10 +1,15 @@
-//! Builds the visible level from the shared level data: ground, sky,
-//! sunlight and placeholder props for every obstacle.
+//! Builds the visible zone from the shared zone data: ground, sky,
+//! sunlight, placeholder props for every obstacle, and portals. When the
+//! player moves to another zone the scenery is rebuilt, and characters
+//! and markers in other zones are hidden.
 
-use bevy::light::CascadeShadowConfigBuilder;
+use bevy::light::{CascadeShadowConfigBuilder, NotShadowCaster};
 use bevy::prelude::*;
-use shared::level::{Level, Obstacle, Shape};
+use shared::components::Zone;
+use shared::gamedata::Zones;
+use shared::level::{Level, Obstacle, Portal, Shape};
 
+use crate::characters::LocalPlayer;
 use crate::toon::{Outline, ToonAssets};
 
 pub struct WorldPlugin;
@@ -12,9 +17,37 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClearColor(Color::srgb(0.55, 0.78, 0.95)))
-            .add_systems(Startup, (spawn_lighting, spawn_level));
+            .init_resource::<CurrentZone>()
+            .add_systems(Startup, spawn_lighting)
+            .add_systems(
+                Update,
+                (
+                    track_current_zone,
+                    rebuild_scenery,
+                    hide_other_zones,
+                    animate_portals,
+                )
+                    .chain(),
+            );
     }
 }
+
+/// The zone the local player is in (and so the one being shown).
+#[derive(Resource, Default, Debug)]
+pub struct CurrentZone(pub Option<String>);
+
+/// Something in a different zone from the local player: hidden, and not
+/// targetable.
+#[derive(Component)]
+pub struct ElsewhereZone;
+
+/// The root of the current zone's scenery.
+#[derive(Component)]
+struct ZoneScenery(String);
+
+/// A spinning part of a portal.
+#[derive(Component)]
+struct PortalSpin;
 
 fn spawn_lighting(mut commands: Commands) {
     commands.spawn((
@@ -32,29 +65,183 @@ fn spawn_lighting(mut commands: Commands) {
     ));
 }
 
-fn spawn_level(mut commands: Commands, level: Res<Level>, mut toon: ToonAssets) {
+fn track_current_zone(
+    player: Option<Single<&Zone, With<LocalPlayer>>>,
+    mut current: ResMut<CurrentZone>,
+) {
+    let zone = player.map(|z| z.0.clone());
+    if current.0 != zone {
+        current.0 = zone;
+    }
+}
+
+/// Swap the scenery when the current zone changes.
+fn rebuild_scenery(
+    mut commands: Commands,
+    current: Res<CurrentZone>,
+    zones: Res<Zones>,
+    shown: Query<(Entity, &ZoneScenery)>,
+    mut toon: ToonAssets,
+    mut standard: ResMut<Assets<StandardMaterial>>,
+) {
+    let Some(zone) = &current.0 else {
+        return;
+    };
+    if shown.iter().any(|(_, s)| &s.0 == zone) {
+        return;
+    }
+    for (entity, _) in &shown {
+        commands.entity(entity).despawn();
+    }
+    if let Some(level) = zones.get(zone) {
+        spawn_level(&mut commands, zone, level, &mut toon, &mut standard);
+    }
+}
+
+/// Hide characters and markers that are in another zone.
+fn hide_other_zones(
+    mut commands: Commands,
+    current: Res<CurrentZone>,
+    mut things: Query<(Entity, &Zone, &mut Visibility, Has<ElsewhereZone>), With<Transform>>,
+) {
+    for (entity, zone, mut visibility, marked) in &mut things {
+        let elsewhere = current.0.as_ref() != Some(&zone.0);
+        if elsewhere != marked {
+            if elsewhere {
+                commands.entity(entity).insert(ElsewhereZone);
+            } else {
+                commands.entity(entity).remove::<ElsewhereZone>();
+            }
+        }
+        let wanted = if elsewhere {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        if *visibility != wanted {
+            *visibility = wanted;
+        }
+    }
+}
+
+fn spawn_level(
+    commands: &mut Commands,
+    id: &str,
+    level: &Level,
+    toon: &mut ToonAssets,
+    standard: &mut Assets<StandardMaterial>,
+) {
     let root = commands
         .spawn((
             Name::new(level.name.clone()),
+            ZoneScenery(id.to_owned()),
             Transform::default(),
             Visibility::default(),
         ))
         .id();
 
     // Ground.
-    let grass = toon.ground(Color::srgb(0.45, 0.72, 0.36));
+    let ground = toon.ground(ground_color(&level.ground));
     let size = level.half_size * 2.0;
     toon.spawn_part(
-        &mut commands,
+        commands,
         root,
         Plane3d::default().mesh().size(size, size),
-        grass,
+        ground,
         Outline::None,
         Transform::default(),
     );
 
     for obstacle in &level.obstacles {
-        spawn_obstacle(&mut commands, &mut toon, root, obstacle);
+        spawn_obstacle(commands, toon, root, obstacle);
+    }
+    for portal in &level.portals {
+        spawn_portal(commands, toon, standard, root, portal);
+    }
+}
+
+/// Colour of each `ground` look used in zone data.
+fn ground_color(key: &str) -> Color {
+    match key {
+        "moss" => Color::srgb(0.30, 0.50, 0.32),
+        "stone" => Color::srgb(0.62, 0.60, 0.58),
+        _ => Color::srgb(0.45, 0.72, 0.36),
+    }
+}
+
+/// A portal: a glowing ring on the ground with a soft column of light.
+fn spawn_portal(
+    commands: &mut Commands,
+    toon: &mut ToonAssets,
+    standard: &mut Assets<StandardMaterial>,
+    root: Entity,
+    portal: &Portal,
+) {
+    let glow = toon.glowing(Color::srgb(0.5, 0.9, 1.0), LinearRgba::rgb(0.8, 2.6, 3.4));
+    let base = commands
+        .spawn((
+            Transform::from_translation(portal.position),
+            Visibility::default(),
+            ChildOf(root),
+        ))
+        .id();
+    toon.spawn_part(
+        commands,
+        base,
+        Torus::new(portal.radius - 0.12, portal.radius)
+            .mesh()
+            .minor_resolution(8)
+            .major_resolution(48),
+        glow.clone(),
+        Outline::None,
+        Transform::from_xyz(0.0, 0.05, 0.0),
+    );
+    let column = standard.add(StandardMaterial {
+        base_color: Color::srgba(0.55, 0.9, 1.0, 0.18),
+        emissive: LinearRgba::rgb(0.3, 0.9, 1.2),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+    let column_mesh = toon.meshes.add(Cylinder::new(portal.radius * 0.9, 3.5));
+    commands.spawn((
+        Mesh3d(column_mesh),
+        MeshMaterial3d(column),
+        Transform::from_xyz(0.0, 1.75, 0.0),
+        NotShadowCaster,
+        ChildOf(base),
+    ));
+    // Floating runes that circle slowly.
+    let spinner = commands
+        .spawn((
+            PortalSpin,
+            Transform::from_xyz(0.0, 1.6, 0.0),
+            Visibility::default(),
+            ChildOf(base),
+        ))
+        .id();
+    for i in 0..3 {
+        let angle = i as f32 * std::f32::consts::TAU / 3.0;
+        toon.spawn_part(
+            commands,
+            spinner,
+            Sphere::new(0.14).mesh().uv(12, 8),
+            glow.clone(),
+            Outline::None,
+            Transform::from_xyz(
+                angle.cos() * portal.radius * 0.7,
+                0.0,
+                angle.sin() * portal.radius * 0.7,
+            ),
+        );
+    }
+}
+
+fn animate_portals(time: Res<Time>, mut spinners: Query<&mut Transform, With<PortalSpin>>) {
+    for mut transform in &mut spinners {
+        transform.rotation = Quat::from_rotation_y(time.elapsed_secs() * 0.8);
+        transform.translation.y = 1.6 + 0.25 * (time.elapsed_secs() * 1.3).sin();
     }
 }
 
@@ -136,6 +323,35 @@ fn spawn_obstacle(
                 material,
                 Outline::Box,
                 base.with_translation(obstacle.position + Vec3::Y * height / 2.0),
+            );
+        }
+        ("standing_stone", Shape::Cylinder { radius, height }) => {
+            let stone = toon.material(Color::srgb(0.55, 0.56, 0.52));
+            let moss = toon.material(Color::srgb(0.32, 0.55, 0.30));
+            let rune = toon.glowing(Color::srgb(0.6, 1.0, 0.6), LinearRgba::rgb(0.6, 2.2, 0.8));
+            let pillar = toon.spawn_part(
+                commands,
+                root,
+                Cylinder::new(radius, height),
+                stone,
+                Outline::Cylinder,
+                base.with_translation(obstacle.position + Vec3::Y * height / 2.0),
+            );
+            toon.spawn_part(
+                commands,
+                pillar,
+                Cylinder::new(radius * 1.05, height * 0.2),
+                moss,
+                Outline::Cylinder,
+                Transform::from_xyz(0.0, -height * 0.4, 0.0),
+            );
+            toon.spawn_part(
+                commands,
+                pillar,
+                Sphere::new(radius * 0.35).mesh().uv(16, 10),
+                rune,
+                Outline::None,
+                Transform::from_xyz(0.0, height * 0.15, -radius * 0.9),
             );
         }
         (_, Shape::Cylinder { radius, height }) => {

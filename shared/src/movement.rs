@@ -172,6 +172,7 @@ mod tests {
             half_size: 100.0,
             spawn_point: Vec3::ZERO,
             obstacles: vec![],
+            ..Level::empty()
         }
     }
 

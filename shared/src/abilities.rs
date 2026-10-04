@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::data::Problems;
+use crate::telegraphs::TelegraphDef;
 
 /// Who an ability is aimed at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -16,6 +17,8 @@ pub enum TargetKind {
     Ally,
     /// Only the user; no target needed.
     Myself,
+    /// A friend who has been defeated (for raises).
+    DefeatedAlly,
 }
 
 /// Where an area effect is centred.
@@ -37,6 +40,9 @@ pub enum Recipients {
     EnemiesAround { centre: Centre, radius: f32 },
     /// The user and every ally within `radius` metres of the centre.
     AlliesAround { centre: Centre, radius: f32 },
+    /// Every enemy of the user standing inside the ability's telegraph
+    /// (ground marker) when the cast finishes. Each marker hits separately.
+    InTelegraph,
 }
 
 /// One thing an ability does.
@@ -60,6 +66,14 @@ pub enum Effect {
     },
     /// Make the recipients focus the user (top of their threat list).
     Taunt,
+    /// Damage split evenly between everyone hit together (stack markers).
+    SharedDamage {
+        amount: u32,
+    },
+    /// Bring a defeated friend back with this percentage of their health.
+    Raise {
+        health_percent: f32,
+    },
 }
 
 /// An effect and who it lands on.
@@ -101,6 +115,9 @@ pub struct AbilityDef {
     pub effects: Vec<EffectEntry>,
     #[serde(default)]
     pub combo: Option<Combo>,
+    /// A ground marker shown while casting (enemy attacks to dodge).
+    #[serde(default)]
+    pub telegraph: Option<TelegraphDef>,
     /// Visual effect name (client only).
     #[serde(default)]
     pub vfx: String,
@@ -159,6 +176,25 @@ impl AbilityDef {
                 ));
             }
         }
+        if let Some(telegraph) = &self.telegraph {
+            for problem in telegraph.problems() {
+                p.push(problem);
+            }
+            if self.is_instant() {
+                p.push("has a `telegraph` but no `cast_time`: players need time to dodge");
+            }
+        }
+        let uses_telegraph = self.effects.iter().any(|e| e.to == Recipients::InTelegraph);
+        if uses_telegraph && self.telegraph.is_none() {
+            p.push("an effect lands `InTelegraph` but the ability has no `telegraph`");
+        }
+        let raises = self
+            .effects
+            .iter()
+            .any(|e| matches!(e.effect, Effect::Raise { .. }));
+        if raises != (self.target == TargetKind::DefeatedAlly) {
+            p.push("`Raise` effects need `target: DefeatedAlly` (and only they do)");
+        }
         if self.combo.is_some() && self.damage_amount().is_none() {
             p.push("has a `combo` but no Damage effect for it to boost");
         }
@@ -188,6 +224,7 @@ pub mod test_support {
                 effect: Effect::Damage { amount: 100 },
             }],
             combo: None,
+            telegraph: None,
             vfx: String::new(),
         }
     }

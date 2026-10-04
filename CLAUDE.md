@@ -6,7 +6,9 @@ Guide for working in this repository (for Claude and for humans).
 - Done: **M0** (plan), **M1** (scene, toon shading, movement), **M2** (targeting,
   GCD, hotbar, training dummies, rules/screen split), **M3** (effects, statuses,
   four classes, threat, sparring dummy, flame switching).
-- Next: **M4** (first trial boss). See `MILESTONES.md`.
+  **M4a** (zones + portals, the Rootwarden trial: telegraphs, phases, adds,
+  enrage, wipes, raises; simple spell visuals).
+- Next: **M4b** (particles and visual polish for the trial). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -56,8 +58,10 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   (search order: next to the program, current folder, project folder).
 - `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after 2 s
   of game time and quits (`client/src/devtools.rs`).
-- `LANTERNFLAME_DEMO=1` (with the above) — scripted scene (lantern panel, switch
-  to Elementalist, fight the sparring dummy); saves `<file>-1.png` … `-3.png`.
+- `LANTERNFLAME_DEMO=trial` (with the above) — scripted scene: switch to
+  Elementalist, walk through the portal, pull the Rootwarden, dodge a marker.
+  `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy. Saves
+  `<file>-1.png`, `<file>-2.png`, …
 
 ### Linux build dependencies
 `libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev` (and for headless
@@ -67,7 +71,8 @@ extra beyond the Rust toolchain.
 ## Code map
 - `shared/src/data.rs` — RON loading, `Validate` trait, `find_assets_dir()`.
 - `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
-- `shared/src/level.rs` — `Level` geometry: ground, boxes, cylinders; collision.
+- `shared/src/level.rs` — `Level` = one zone: geometry, collision, enemy spawns,
+  portals, `revive_in_place`, optional encounter.
 - `shared/src/movement.rs` — `step()`: the one movement function used everywhere.
 - `shared/src/combat.rs` — `CombatConfig`, `ActionState` (GCD, cooldowns, casts,
   animation lock, queue, combos), `Health`, `Reject`, range.
@@ -84,16 +89,24 @@ extra beyond the Rust toolchain.
 - `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`.
 - `shared/src/targeting.rs` — Tab-target ordering.
 - `shared/src/gamedata.rs` — `GameData`: loads config, abilities, statuses, classes,
-  enemies; checks every cross-file reference.
+  enemies, encounters; checks every cross-file reference. `Zones` (all zones),
+  `GameData::hotbar` (class abilities + shared lantern abilities).
+- `shared/src/telegraphs.rs` — ground marker shapes, placements, `covers()` hit tests,
+  the `Telegraph` component.
+- `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage) and `Progress`.
 - `server/src/lib.rs` — `AuthorityPlugin`, tick order (`AuthoritySystems`).
 - `server/src/requests.rs` — reads `ClientRequest`s.
-- `server/src/actions.rs` — target validation, using/queueing abilities, finishing casts.
-- `server/src/effects.rs` — effects landing (damage, heal, shield, status, taunt),
-  status ticks, threat from damage and healing.
+- `server/src/actions.rs` — target validation (same zone only), using/queueing
+  abilities, placing telegraphs when casts start, finishing casts.
+- `server/src/effects.rs` — effects landing (damage, shared damage, heal, shield,
+  status, taunt, raise), telegraphs going off/following players, status ticks, threat.
+- `server/src/encounters.rs` — boss fight director (pull, phases, timeline queue,
+  adds, enrage, victory, wipe → reset at the entrance).
 - `server/src/enemies.rs` — enemy spawning, `EnemyBrain` rotations, facing, idle resets.
 - `server/src/classes.rs` — flame changes (class switching).
 - `server/src/characters.rs` — players: joining, movement, combat clock, defeat,
-  revive, out-of-combat regen.
+  revive (only where `revive_in_place`), regen, portals (`interact`), forgetting
+  characters who left a zone.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining, `Received` event messages.
 - `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
@@ -104,7 +117,11 @@ extra beyond the Rust toolchain.
   status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
-- `client/src/world.rs` — builds visuals for a `Level` (visual keys → placeholder meshes).
+- `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
+  hides things in other zones (`ElsewhereZone`).
+- `client/src/telegraphs.rs` — draws ground markers (fill, edges, growing progress).
+- `client/src/vfx.rs` — simple spell visuals from `assets/data/client/vfx.ron`.
+- `client/src/hud/banner.rs` — big banners (boss speech, victory, wipes) + portal prompt.
 - `client/src/camera.rs` — FFXIV-style follow camera.
 - `server/src/main.rs` — placeholder until M11: validates data and exits.
 
@@ -128,6 +145,10 @@ extra beyond the Rust toolchain.
 - Data files are validated at load; errors must name the file and field.
   Cross-file references (ability → status, class → ability…) are checked in
   `GameData::check_references`.
+- Everything is per zone: recipients, targeting and threat only work within the
+  same `Zone`. New characters must get a `Zone` component.
+- Boss fights are data (`assets/data/encounters/`); telegraphed attacks are
+  abilities with a `telegraph` and effects `to: InTelegraph`.
 - New ability behaviour = new data. Only add an `Effect`/`Recipients` variant
   when no combination of existing ones can express it.
 - Server tests (`server/tests/authority.rs`) use their own RON data in the test

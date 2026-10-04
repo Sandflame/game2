@@ -4,9 +4,8 @@
 use bevy::prelude::*;
 use shared::classes::Stats;
 use shared::combat::{ActionState, Health};
-use shared::components::{CharacterName, Faction, HitRadius, Motion, VisualKey};
-use shared::gamedata::GameData;
-use shared::level::Level;
+use shared::components::{CharacterName, Faction, HitRadius, Motion, VisualKey, Zone};
+use shared::gamedata::{GameData, Zones};
 use shared::movement::MoveState;
 use shared::protocol::Link;
 use shared::statuses::Statuses;
@@ -42,52 +41,75 @@ pub struct BrainAction {
     pub next_at: Option<f64>,
 }
 
-pub fn spawn_enemies(mut commands: Commands, data: Res<GameData>, level: Res<Level>) {
-    for spawn in &level.spawns {
-        // References were checked when the level was loaded.
-        let Some(def) = data.enemies.get(&spawn.enemy) else {
-            continue;
-        };
-        let mut entity = commands.spawn((
-            EnemyKind(spawn.enemy.clone()),
-            CharacterName(def.name.clone()),
-            Motion(MoveState {
-                yaw: spawn.yaw,
-                ..MoveState::spawn_at(spawn.position)
-            }),
-            Faction::Enemy,
-            HitRadius(def.hit_radius),
-            Health::full(def.max_health),
-            Stats {
-                max_health: def.max_health,
-                power: def.power,
-                threat_multiplier: 1.0,
-            },
-            Statuses::default(),
-            ThreatTable::default(),
-            ActionState::default(),
-            VisualKey(def.visual.clone()),
-        ));
-        if let Some(after) = def.reset_after {
-            entity.insert(ResetWhenIdle {
-                after,
-                last_hit: 0.0,
-            });
-        }
-        if !def.actions.is_empty() {
-            entity.insert(EnemyBrain {
-                actions: def
-                    .actions
-                    .iter()
-                    .map(|a| BrainAction {
-                        ability: a.ability.clone(),
-                        every: a.every,
-                        next_at: None,
-                    })
-                    .collect(),
-            });
+/// Spawn every enemy placed in every zone.
+pub fn spawn_enemies(mut commands: Commands, data: Res<GameData>, zones: Res<Zones>) {
+    for (zone, level) in &zones.0 {
+        for spawn in &level.spawns {
+            spawn_enemy(
+                &mut commands,
+                &data,
+                &spawn.enemy,
+                zone,
+                spawn.position,
+                spawn.yaw,
+            );
         }
     }
+}
+
+/// Spawn one enemy of type `id` (file name in `assets/data/enemies/`).
+/// Returns `None` if there is no such enemy (data is checked at load, so
+/// this shouldn't happen).
+pub fn spawn_enemy(
+    commands: &mut Commands,
+    data: &GameData,
+    id: &str,
+    zone: &str,
+    position: Vec3,
+    yaw: f32,
+) -> Option<Entity> {
+    let def = data.enemies.get(id)?;
+    let mut entity = commands.spawn((
+        EnemyKind(id.to_owned()),
+        CharacterName(def.name.clone()),
+        Motion(MoveState {
+            yaw,
+            ..MoveState::spawn_at(position)
+        }),
+        Zone(zone.to_owned()),
+        Faction::Enemy,
+        HitRadius(def.hit_radius),
+        Health::full(def.max_health),
+        Stats {
+            max_health: def.max_health,
+            power: def.power,
+            threat_multiplier: 1.0,
+        },
+        Statuses::default(),
+        ThreatTable::default(),
+        ActionState::default(),
+        VisualKey(def.visual.clone()),
+    ));
+    if let Some(after) = def.reset_after {
+        entity.insert(ResetWhenIdle {
+            after,
+            last_hit: 0.0,
+        });
+    }
+    if !def.actions.is_empty() {
+        entity.insert(EnemyBrain {
+            actions: def
+                .actions
+                .iter()
+                .map(|a| BrainAction {
+                    ability: a.ability.clone(),
+                    every: a.every,
+                    next_at: None,
+                })
+                .collect(),
+        });
+    }
+    Some(entity.id())
 }
 
 /// Enemies use their abilities on whoever they are angriest at.
@@ -96,7 +118,7 @@ pub fn enemy_brains(
     data: Res<GameData>,
     mut link: ResMut<Link>,
     mut effects: ResMut<PendingEffects>,
-    mut brains: Query<(Entity, &mut EnemyBrain, &mut ThreatTable), Without<Defeated>>,
+    mut brains: Query<(Entity, &Zone, &mut EnemyBrain, &mut ThreatTable), Without<Defeated>>,
     alive: Query<(), Without<Defeated>>,
     mut actors: Actors,
     targets: Targets,
@@ -108,10 +130,11 @@ pub fn enemy_brains(
         link: &mut link,
         effects: &mut effects,
     };
-    for (enemy, mut brain, mut threat) in &mut brains {
-        threat
-            .0
-            .retain(|who, _| alive.get(*who).is_ok() && targets.get(*who).is_ok());
+    for (enemy, zone, mut brain, mut threat) in &mut brains {
+        // Forget anyone who fell, vanished or left the zone.
+        threat.0.retain(|who, _| {
+            alive.get(*who).is_ok() && targets.get(*who).is_ok_and(|(.., z)| z == zone)
+        });
         let Some(target) = threat.top() else {
             for action in &mut brain.actions {
                 action.next_at = None;
@@ -138,10 +161,14 @@ pub fn enemy_brains(
 
 /// Enemies turn to face whoever they are angriest at.
 pub fn face_targets(
-    enemies: Query<(Entity, &ThreatTable), (With<EnemyBrain>, Without<Defeated>)>,
+    enemies: Query<(Entity, &ThreatTable, &ActionState), (With<EnemyBrain>, Without<Defeated>)>,
     mut motions: Query<&mut Motion>,
 ) {
-    for (enemy, threat) in &enemies {
+    for (enemy, threat, actions) in &enemies {
+        // Hold still while casting so the attack goes where it was aimed.
+        if actions.cast.is_some() {
+            continue;
+        }
         let Some(target) = threat.top() else {
             continue;
         };

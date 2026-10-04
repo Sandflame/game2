@@ -19,6 +19,11 @@ pub struct CharacterName(pub String);
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq)]
 pub struct Motion(pub MoveState);
 
+/// Which zone a character is in (file name in `assets/data/zones/`).
+/// Characters only see and affect others in the same zone.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Zone(pub String);
+
 /// Which side a character is on.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Faction {

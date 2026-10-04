@@ -3,19 +3,26 @@
 
 use bevy::prelude::*;
 use shared::combat::Health;
-use shared::components::{CharacterName, Faction};
+use shared::components::{CharacterName, Faction, VisualKey};
 use shared::protocol::ServerEvent;
 
 use super::{font, palette, spawn_bar, text_shadow};
 use crate::camera::FollowCamera;
 use crate::characters::{DisplayMotion, LocalPlayer};
 use crate::session::{LocalPlayerId, Received};
+use crate::world::ElsewhereZone;
 use shared::gamedata::GameData;
 
 /// Nameplates are hidden beyond this distance from the camera.
 const NAMEPLATE_RANGE: f32 = 45.0;
-/// Height above a character's feet for its nameplate.
-const NAMEPLATE_HEIGHT: f32 = 2.4;
+/// Height above a character's feet for its nameplate, by look.
+fn nameplate_height(visual: &str) -> f32 {
+    match visual {
+        "rootwarden" => 8.0,
+        "thornling" => 1.8,
+        _ => 2.4,
+    }
+}
 const NAMEPLATE_WIDTH: f32 = 160.0;
 /// How long damage numbers stay up, in seconds.
 const DAMAGE_NUMBER_LIFE: f32 = 1.1;
@@ -42,6 +49,7 @@ impl Plugin for FloatingPlugin {
 #[derive(Component)]
 struct Nameplate {
     of: Entity,
+    height: f32,
 }
 #[derive(Component)]
 struct NameplateFill {
@@ -63,16 +71,28 @@ struct MessageLine {
 
 fn spawn_nameplates(
     mut commands: Commands,
-    new: Query<(Entity, &CharacterName, &Faction, Has<LocalPlayer>), Added<DisplayMotion>>,
+    new: Query<
+        (
+            Entity,
+            &CharacterName,
+            &Faction,
+            &VisualKey,
+            Has<LocalPlayer>,
+        ),
+        Added<DisplayMotion>,
+    >,
 ) {
-    for (entity, name, faction, is_me) in &new {
+    for (entity, name, faction, visual, is_me) in &new {
         // Your own name and health are on your frame instead.
         if is_me {
             continue;
         }
         commands
             .spawn((
-                Nameplate { of: entity },
+                Nameplate {
+                    of: entity,
+                    height: nameplate_height(&visual.0),
+                },
                 Node {
                     position_type: PositionType::Absolute,
                     width: px(NAMEPLATE_WIDTH),
@@ -116,17 +136,21 @@ fn to_screen(camera: &Camera, camera_transform: &Transform, world: Vec3) -> Opti
 fn place_nameplates(
     mut commands: Commands,
     camera: Single<(&Camera, &Transform), With<FollowCamera>>,
-    characters: Query<(&Transform, &Health), Without<FollowCamera>>,
+    characters: Query<(&Transform, &Health, Has<ElsewhereZone>), Without<FollowCamera>>,
     mut plates: Query<(Entity, &Nameplate, &mut Node, &mut Visibility)>,
     mut fills: Query<(&NameplateFill, &mut Node), Without<Nameplate>>,
 ) {
     let (camera, camera_transform) = *camera;
     for (plate_entity, plate, mut node, mut visibility) in &mut plates {
-        let Ok((transform, _)) = characters.get(plate.of) else {
+        let Ok((transform, _, elsewhere)) = characters.get(plate.of) else {
             commands.entity(plate_entity).despawn();
             continue;
         };
-        let head = transform.translation + Vec3::Y * NAMEPLATE_HEIGHT;
+        if elsewhere {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+        let head = transform.translation + Vec3::Y * plate.height;
         let near = camera_transform.translation.distance(head) <= NAMEPLATE_RANGE;
         match to_screen(camera, camera_transform, head).filter(|_| near) {
             Some(screen) => {
@@ -138,7 +162,7 @@ fn place_nameplates(
         }
     }
     for (fill, mut node) in &mut fills {
-        if let Ok((_, health)) = characters.get(fill.of) {
+        if let Ok((_, health, _)) = characters.get(fill.of) {
             node.width = percent(health.fraction() * 100.0);
         }
     }

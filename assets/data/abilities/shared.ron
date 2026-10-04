@@ -1,0 +1,17 @@
+// Lantern abilities: every class has these (hotbar slots 9 and 0).
+[
+    (
+        id: "second_wind", name: "Second Wind",
+        description: "Catch your breath and recover some health.",
+        on_gcd: false, cooldown: 60.0, target: Myself,
+        effects: [(effect: Heal(amount: 3000))],
+        vfx: "heal",
+    ),
+    (
+        id: "rekindle", name: "Rekindle",
+        description: "Rekindle a fallen friend's spirit with your lantern, bringing them back.",
+        on_gcd: true, cast_time: 3.0, cooldown: 60.0, range: 25.0, target: DefeatedAlly,
+        effects: [(effect: Raise(health_percent: 30))],
+        vfx: "heal_big",
+    ),
+]

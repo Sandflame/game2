@@ -19,6 +19,8 @@ pub enum ClientRequest {
     UseAbility { slot: usize, target: Option<Entity> },
     /// Change the flame in your lantern to switch class.
     ChangeClass { class: String },
+    /// Use whatever is here (for now: a portal you are standing in).
+    Interact,
 }
 
 /// Something the authority tells clients about.
@@ -31,6 +33,13 @@ pub enum ServerEvent {
         user: Entity,
         ability: String,
         target: Option<Entity>,
+    },
+    /// An ability's effects landed (the end of a cast, or an instant).
+    /// The client uses this to time visual effects.
+    AbilityLanded {
+        user: Entity,
+        ability: String,
+        target: Entity,
     },
     /// A cast or flame change was cancelled.
     CastInterrupted { user: Entity, ability: String },
@@ -67,6 +76,20 @@ pub enum ServerEvent {
     Defeated { entity: Entity },
     /// A defeated character got back up.
     Revived { entity: Entity },
+    /// A character moved to another zone.
+    ZoneChanged { entity: Entity, zone: String },
+    /// A line of text for everyone in a zone (boss speech, warnings).
+    Announce { zone: String, text: String },
+    /// A boss fight began.
+    EncounterStarted { zone: String, name: String },
+    /// A boss was defeated, `seconds` after the fight began.
+    EncounterWon {
+        zone: String,
+        name: String,
+        seconds: f32,
+    },
+    /// Everyone fell; the fight resets.
+    EncounterWiped { zone: String, name: String },
 }
 
 /// The in-process connection between the client and the authority.

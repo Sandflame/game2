@@ -54,7 +54,9 @@ impl Describer<'_> {
                     crate::abilities::TargetKind::Enemy => " to the target".to_owned(),
                     crate::abilities::TargetKind::Ally => " to the target (or you)".to_owned(),
                     crate::abilities::TargetKind::Myself => " to yourself".to_owned(),
+                    crate::abilities::TargetKind::DefeatedAlly => " to a fallen friend".to_owned(),
                 },
+                Recipients::InTelegraph => " to everyone in the marked area".to_owned(),
                 Recipients::Myself => " to yourself".to_owned(),
                 Recipients::EnemiesAround { centre, radius } => {
                     format!(" to enemies within {radius:.0}m of {}", centre_name(centre))
@@ -81,6 +83,12 @@ impl Describer<'_> {
                     None => format!("Applies {status}{who}."),
                 },
                 Effect::Taunt => format!("Makes enemies attack you{who}."),
+                Effect::SharedDamage { amount } => {
+                    format!("Deals {} damage, shared{who}.", self.damage(*amount))
+                }
+                Effect::Raise { health_percent } => {
+                    format!("Brings back a fallen friend with {health_percent:.0}% health.")
+                }
             };
             lines.push(line);
         }

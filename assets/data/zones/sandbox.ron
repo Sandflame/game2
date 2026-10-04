@@ -42,4 +42,10 @@
         // This one hits back.
         (enemy: "sparring_dummy", position: (-9.0, 0.0, 2.0), yaw: 1.2),
     ],
+
+    // Doorways to other zones (stand inside and press E).
+    portals: [
+        (position: (18.0, 0.0, 18.0), radius: 1.8, to: "trial_rootwarden", arrive: (0.0, 0.0, 16.0),
+         label: "Enter the Rootwarden's Hollow (trial)"),
+    ],
 )

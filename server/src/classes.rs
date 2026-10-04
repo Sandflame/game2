@@ -104,7 +104,7 @@ pub fn finish_flame_changes(
         };
         *stats = class.stats();
         health.set_max(stats.max_health);
-        hotbar.0 = class.hotbar(&class.default_spec);
+        hotbar.0 = data.hotbar(class, &class.default_spec);
         actions.reset();
         statuses.0.clear();
         link.to_client.push(ServerEvent::ClassChanged {

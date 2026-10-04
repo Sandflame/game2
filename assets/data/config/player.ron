@@ -4,4 +4,8 @@
     hit_radius: 0.5,
     // The class new characters start as (a file name in assets/data/classes/).
     start_class: "blademaster",
+    // The zone new characters start in (a file name in assets/data/zones/).
+    start_zone: "sandbox",
+    // Lantern abilities every class has, in hotbar slots 9 and 0.
+    shared_abilities: ["second_wind", "rekindle"],
 )

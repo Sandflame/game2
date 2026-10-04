@@ -55,15 +55,21 @@ Earlier changes to your original list:
 - **Test:** switch between all four classes and use every ability.
 
 ## M4 — First trial boss
-- Arena trial (enter from a test portal), scaled for 1–4 players.
-- Boss with a data-driven timeline: 2–3 phases, telegraphed markers
-  (circle, cone, line, donut, stack, spread), unavoidable raid-wide and
-  tank-buster hits, adds, enrage.
-- Threat, death, raise, wipe-and-reset, victory.
-- First real effects pass: ground-marker shader, particles
-  (bevy_hanabi), hit flashes, bloom.
+### M4a — The fight ✅
+- Zones with portals (a first slice of M7's zone system) — the trial is a
+  separate arena reached from the meadow.
+- The Rootwarden: data-driven timeline, 3 phases, telegraphs (circle, cone,
+  donut, line, stack, spread), unavoidable party-wide and tank hits, adds,
+  enrage; scaled by party size.
+- Threat, death, raise (Rekindle), wipe-and-reset at the entrance, victory
+  with clear time. Enemy cast bar on the target frame.
+- Shared "lantern abilities" for every class in slots 9 and 0: Second Wind
+  (self-heal) and Rekindle (raise). To revisit with secondary classes (M6).
+- Simple spell visuals (projectiles, bursts, rings) from a client data file.
+### M4b — Effects pass
+- Particles (bevy_hanabi), a proper ground-marker shader, hit flashes,
+  arena dressing (walls/edge), boss animations, sound hooks.
 - **Test:** clear the trial solo; deliberately fail mechanics.
-- *May be delivered in two check-ins (4a mechanics, 4b effects).*
 
 ## M5 — Levels, XP, gear, saving
 - SQLite (`world.db`) with automatic upgrades and backup-before-upgrade.

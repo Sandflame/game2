@@ -3,12 +3,13 @@
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
 use shared::combat::ActionState;
+use shared::components::{Motion, PlayerId, Zone};
 use shared::gamedata::GameData;
-use shared::level::Level;
+use shared::gamedata::Zones;
 use shared::protocol::{ClientRequest, Link};
 
 use crate::actions::{self, Actors, Targets, UseContext};
-use crate::characters::{CombatClock, Defeated, PlayerIndex, spawn_player};
+use crate::characters::{CombatClock, Defeated, PlayerIndex, interact, spawn_player};
 use crate::classes;
 use crate::effects::PendingEffects;
 
@@ -16,7 +17,8 @@ pub fn receive_requests(
     mut commands: Commands,
     time: Res<Time>,
     data: Res<GameData>,
-    level: Res<Level>,
+    zones: Res<Zones>,
+    mut interactions: ResMut<PendingInteractions>,
     mut link: ResMut<Link>,
     mut index: ResMut<PlayerIndex>,
     mut effects: ResMut<PendingEffects>,
@@ -39,7 +41,7 @@ pub fn receive_requests(
                 &mut index,
                 ctx.link,
                 &data,
-                &level,
+                &zones,
                 player,
                 name,
             );
@@ -50,6 +52,7 @@ pub fn receive_requests(
         };
         match request {
             ClientRequest::Join { .. } => {}
+            ClientRequest::Interact => interactions.0.push((player, entity)),
             ClientRequest::Move(input) => {
                 if let Ok((.., Some(mut player_input), _, _)) = actors.get_mut(entity) {
                     // A jump stays requested until a movement tick uses it.
@@ -79,6 +82,37 @@ pub fn receive_requests(
                     (current, action_state, clock, defeated),
                 );
             }
+        }
+    }
+}
+
+/// Interact requests, handled by [`handle_interactions`] (which may move
+/// characters, something `receive_requests` can't do while it reads them).
+#[derive(Resource, Default)]
+pub struct PendingInteractions(Vec<(PlayerId, Entity)>);
+
+pub fn handle_interactions(
+    mut commands: Commands,
+    time: Res<Time>,
+    data: Res<GameData>,
+    zones: Res<Zones>,
+    mut link: ResMut<Link>,
+    mut pending: ResMut<PendingInteractions>,
+    mut players: Query<(&Zone, &mut Motion, &CombatClock, Has<Defeated>)>,
+) {
+    let now = time.elapsed_secs_f64();
+    for (player, entity) in pending.0.drain(..) {
+        if let Ok((zone, mut motion, clock, defeated)) = players.get_mut(entity) {
+            interact(
+                &mut commands,
+                &mut link,
+                &data,
+                &zones,
+                now,
+                player,
+                entity,
+                (zone, &mut motion, clock, defeated),
+            );
         }
     }
 }

@@ -2,9 +2,10 @@
 //! the game on machines with no screen (for example automated test runs).
 //!
 //! - `LANTERNFLAME_SCREENSHOT=shot.png` saves a screenshot and quits.
-//! - `LANTERNFLAME_DEMO=1` also plays a short scripted scene (opens the
-//!   lantern, switches to Elementalist, fights the sparring dummy) and
-//!   takes screenshots during it, saved as `shot-1.png`, `shot-2.png`, …
+//! - `LANTERNFLAME_DEMO=trial` also plays a scripted scene: switch to
+//!   Elementalist, walk through the portal, pull the Rootwarden, dodge a
+//!   marker. `LANTERNFLAME_DEMO=classes` plays the older lantern/sparring
+//!   dummy scene. Screenshots are saved as `shot-1.png`, `shot-2.png`, …
 
 use std::path::PathBuf;
 
@@ -16,7 +17,7 @@ use shared::movement::yaw_from_direction;
 use shared::protocol::{ClientRequest, Link};
 
 use crate::camera::FollowCamera;
-use crate::characters::LocalPlayer;
+use crate::characters::{LocalPlayer, ScriptedMove};
 use crate::hud::lantern::LanternPanel;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
@@ -33,18 +34,46 @@ enum Step {
     OpenLantern,
     CloseLantern,
     ChangeClass(&'static str),
-    TargetSparringDummy,
+    /// Target the nearest enemy of this kind and turn the camera to it.
+    Target(&'static str),
     Press(usize),
+    /// Start walking in this world direction (x, z), or stop with `None`.
+    Walk(Option<(f32, f32)>),
+    Interact,
+    /// Camera pitch (radians) and distance (metres).
+    Camera(f32, f32),
     Shot,
 }
 
-const DEMO: &[(f32, Step)] = &[
+/// Walk from the meadow start (0, 8) to the trial portal (18, 18).
+const TO_PORTAL: (f32, f32) = (0.874, 0.486);
+
+const TRIAL_DEMO: &[(f32, Step)] = &[
+    (0.3, Step::ChangeClass("elementalist")),
+    (2.6, Step::Walk(Some(TO_PORTAL))),
+    (6.0, Step::Walk(None)),
+    (6.3, Step::Interact),
+    (6.6, Step::Target("rootwarden")),
+    (6.7, Step::Camera(0.25, 9.0)),
+    (7.6, Step::Shot), // the arena and the boss, with the zone name
+    (7.7, Step::Camera(0.55, 13.0)),
+    (7.8, Step::Press(1)), // Kindle: pulls the boss
+    (8.6, Step::Press(0)), // Firebolt
+    (11.6, Step::Shot),    // Root Slam's marker under us, boss cast bar
+    (12.0, Step::Walk(Some((1.0, 0.0)))),
+    (13.0, Step::Walk(None)),
+    (13.4, Step::Target("rootwarden")),
+    (13.5, Step::Press(0)), // Firebolt
+    (19.0, Step::Shot),     // Crushing Bough's cone
+];
+
+const CLASSES_DEMO: &[(f32, Step)] = &[
     (1.0, Step::OpenLantern),
     (1.6, Step::Shot), // the lantern panel
     (1.8, Step::ChangeClass("elementalist")),
     (1.9, Step::CloseLantern),
     (3.0, Step::Shot), // lantern held up while the flame changes
-    (4.0, Step::TargetSparringDummy),
+    (4.0, Step::Target("sparring_dummy")),
     (4.1, Step::Press(1)), // Kindle: burn
     (4.8, Step::Press(3)), // Ember Shield
     (5.6, Step::Press(0)), // Firebolt (1.5 s cast)
@@ -58,10 +87,10 @@ impl Plugin for DevToolsPlugin {
         let Ok(path) = std::env::var(SCREENSHOT_ENV) else {
             return;
         };
-        let steps: Vec<(f32, Step)> = if std::env::var(DEMO_ENV).is_ok() {
-            DEMO.to_vec()
-        } else {
-            vec![(PLAIN_SHOT_AT, Step::Shot)]
+        let steps: Vec<(f32, Step)> = match std::env::var(DEMO_ENV).as_deref() {
+            Ok("classes") => CLASSES_DEMO.to_vec(),
+            Ok(_) => TRIAL_DEMO.to_vec(),
+            Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
         let numbered = steps
             .iter()
@@ -116,6 +145,7 @@ fn run_script(
     player: Option<Single<&Motion, With<LocalPlayer>>>,
     enemies: Query<(Entity, &Motion, &EnemyKind)>,
     mut camera: Single<&mut FollowCamera>,
+    mut scripted: ResMut<ScriptedMove>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let now = fixed.elapsed_secs();
@@ -136,10 +166,16 @@ fn run_script(
                     class: class.into(),
                 },
             ),
-            Step::TargetSparringDummy => {
-                let found = enemies
-                    .iter()
-                    .find(|(_, _, kind)| kind.0 == "sparring_dummy");
+            Step::Walk(direction) => {
+                scripted.0 = direction.map(|(x, z)| Vec2::new(x, z));
+            }
+            Step::Interact => send(&mut link, *me, ClientRequest::Interact),
+            Step::Camera(pitch, distance) => {
+                camera.pitch = pitch;
+                camera.target_distance = distance;
+            }
+            Step::Target(kind) => {
+                let found = enemies.iter().find(|(_, _, k)| k.0 == kind);
                 if let (Some((entity, motion, _)), Some(player)) = (found, player.as_ref()) {
                     target.0 = Some(entity);
                     let offset = motion.0.position - player.0.position;

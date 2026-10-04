@@ -20,6 +20,7 @@ pub struct CharactersPlugin;
 impl Plugin for CharactersPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LanternSettings>()
+            .init_resource::<ScriptedMove>()
             .add_systems(
                 Update,
                 (spawn_visuals, react_to_events, animate_reactions).chain(),
@@ -99,6 +100,11 @@ struct Lantern {
     linger: f32,
 }
 
+/// A direction the developer demo script is walking in (world X/Z).
+/// Normal play never sets this.
+#[derive(Resource, Default)]
+pub struct ScriptedMove(pub Option<Vec2>);
+
 /// Player's choice: keep the lantern visible all the time (off by default).
 #[derive(Resource, Default)]
 pub struct LanternSettings {
@@ -157,6 +163,8 @@ fn spawn_visuals(
                 entity,
                 Color::srgb(0.20, 0.40, 0.85),
             ),
+            "rootwarden" => build_rootwarden(&mut commands, &mut toon, entity),
+            "thornling" => build_thornling(&mut commands, &mut toon, entity),
             other => {
                 warn!("no placeholder look for visual `{other}`");
                 let material = toon.material(Color::srgb(1.0, 0.0, 1.0));
@@ -328,6 +336,139 @@ fn build_training_dummy(
     );
 }
 
+/// Placeholder Rootwarden: a towering tree spirit with glowing eyes.
+fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity) {
+    let bark = toon.material(Color::srgb(0.55, 0.40, 0.28));
+    let dark_bark = toon.material(Color::srgb(0.40, 0.29, 0.21));
+    let leaves = toon.material(Color::srgb(0.30, 0.62, 0.32));
+    let blossom = toon.material(Color::srgb(0.95, 0.70, 0.80));
+    let eyes = toon.glowing(Color::srgb(1.0, 0.85, 0.4), LinearRgba::rgb(4.0, 2.6, 0.6));
+
+    // Trunk body.
+    toon.spawn_part(
+        commands,
+        boss,
+        Capsule3d::new(1.3, 2.6),
+        bark.clone(),
+        Outline::Smooth,
+        Transform::from_xyz(0.0, 2.6, 0.0),
+    );
+    // Roots spreading over the ground.
+    for i in 0..6 {
+        let angle = i as f32 * std::f32::consts::TAU / 6.0 + 0.3;
+        let out = Vec3::new(angle.cos(), 0.0, angle.sin());
+        toon.spawn_part(
+            commands,
+            boss,
+            Capsule3d::new(0.3, 1.6),
+            dark_bark.clone(),
+            Outline::Smooth,
+            Transform::from_translation(out * 1.6 + Vec3::Y * 0.3).with_rotation(
+                Quat::from_rotation_arc(Vec3::Y, (out + Vec3::Y * 0.25).normalize()),
+            ),
+        );
+    }
+    // Arms (great branches).
+    for side in [-1.0, 1.0] {
+        let arm = toon.spawn_part(
+            commands,
+            boss,
+            Capsule3d::new(0.35, 2.2),
+            bark.clone(),
+            Outline::Smooth,
+            Transform::from_xyz(1.6 * side, 3.4, -0.3)
+                .with_rotation(Quat::from_rotation_z(-0.9 * side) * Quat::from_rotation_x(0.3)),
+        );
+        toon.spawn_part(
+            commands,
+            arm,
+            Sphere::new(0.7).mesh().uv(20, 12),
+            leaves.clone(),
+            Outline::Smooth,
+            Transform::from_xyz(0.0, 1.5, 0.0),
+        );
+    }
+    // Leafy crown with a few blossoms.
+    for (offset, size) in [
+        (Vec3::new(0.0, 5.6, 0.0), 1.9),
+        (Vec3::new(1.2, 5.0, 0.6), 1.3),
+        (Vec3::new(-1.2, 5.1, 0.4), 1.4),
+        (Vec3::new(0.2, 5.0, 1.2), 1.2),
+    ] {
+        toon.spawn_part(
+            commands,
+            boss,
+            Sphere::new(size).mesh().uv(28, 16),
+            leaves.clone(),
+            Outline::Smooth,
+            Transform::from_translation(offset),
+        );
+    }
+    for offset in [
+        Vec3::new(0.9, 6.4, -1.1),
+        Vec3::new(-1.0, 5.9, -1.2),
+        Vec3::new(0.0, 7.2, -0.4),
+    ] {
+        toon.spawn_part(
+            commands,
+            boss,
+            Sphere::new(0.25).mesh().uv(12, 8),
+            blossom.clone(),
+            Outline::Smooth,
+            Transform::from_translation(offset),
+        );
+    }
+    // Glowing eyes, facing forward (-Z).
+    for side in [-1.0, 1.0] {
+        toon.spawn_part(
+            commands,
+            boss,
+            Sphere::new(0.2).mesh().uv(12, 8),
+            eyes.clone(),
+            Outline::None,
+            Transform::from_xyz(0.45 * side, 3.9, -1.2),
+        );
+    }
+}
+
+/// Placeholder Thornling: a small spiky sapling.
+fn build_thornling(commands: &mut Commands, toon: &mut ToonAssets, add: Entity) {
+    let green = toon.material(Color::srgb(0.35, 0.65, 0.30));
+    let thorn = toon.material(Color::srgb(0.55, 0.40, 0.25));
+    let eyes = toon.glowing(Color::srgb(1.0, 0.4, 0.3), LinearRgba::rgb(3.0, 0.5, 0.3));
+    let body = toon.spawn_part(
+        commands,
+        add,
+        Cone::new(0.55, 1.3),
+        green,
+        Outline::Smooth,
+        Transform::from_xyz(0.0, 0.65, 0.0),
+    );
+    for i in 0..5 {
+        let angle = i as f32 * std::f32::consts::TAU / 5.0;
+        let out = Vec3::new(angle.cos(), 0.3, angle.sin()).normalize();
+        toon.spawn_part(
+            commands,
+            body,
+            Cone::new(0.08, 0.4),
+            thorn.clone(),
+            Outline::Smooth,
+            Transform::from_translation(out * 0.35)
+                .with_rotation(Quat::from_rotation_arc(Vec3::Y, out)),
+        );
+    }
+    for side in [-1.0, 1.0] {
+        toon.spawn_part(
+            commands,
+            body,
+            Sphere::new(0.07).mesh().uv(10, 6),
+            eyes.clone(),
+            Outline::None,
+            Transform::from_xyz(0.13 * side, 0.1, -0.33),
+        );
+    }
+}
+
 /// After each tick, remember where every character was and now is.
 fn record_motion(mut characters: Query<(&Motion, &mut DisplayMotion)>) {
     for (motion, mut display) in &mut characters {
@@ -356,8 +497,21 @@ pub fn send_movement(
     mouse: Res<ButtonInput<MouseButton>>,
     camera: Single<&FollowCamera>,
     me: Res<LocalPlayerId>,
+    scripted: Res<ScriptedMove>,
     mut link: ResMut<Link>,
 ) {
+    // The interact key uses portals (and later, other things).
+    if keys.just_pressed(KeyCode::KeyE) {
+        send(&mut link, *me, ClientRequest::Interact);
+    }
+    if let Some(direction) = scripted.0 {
+        let input = MoveInput {
+            direction,
+            ..default()
+        };
+        send(&mut link, *me, ClientRequest::Move(input));
+        return;
+    }
     let mut wish = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) {
         wish.y += 1.0;

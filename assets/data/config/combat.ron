@@ -25,4 +25,7 @@
     revive_after: 5.0,
     // Tab only picks enemies within this distance.
     tab_target_range: 40.0,
+    // Ground markers count as this much smaller (metres) when checking who
+    // is hit, so standing right on the edge is forgiven.
+    marker_grace: 0.15,
 )

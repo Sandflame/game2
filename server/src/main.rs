@@ -10,9 +10,7 @@ use shared::gamedata::GameData;
 fn main() -> anyhow::Result<()> {
     let assets = find_assets_dir()?;
     let data = GameData::load(&assets).context("loading game data")?;
-    let level = data
-        .load_level(&assets, "sandbox")
-        .context("loading the sandbox zone")?;
+    let zones = data.load_zones(&assets).context("loading zones")?;
 
     println!("Lanternflame server (placeholder until multiplayer, Milestone 11)");
     println!("  assets folder: {}", assets.display());
@@ -20,14 +18,25 @@ fn main() -> anyhow::Result<()> {
         "  simulation:    {} ticks per second",
         data.config.simulation.tick_hz
     );
+    println!("  classes:       {}", data.classes.len());
     println!("  abilities:     {}", data.abilities.len());
     println!("  enemy types:   {}", data.enemies.len());
-    println!(
-        "  zone:          {} ({} obstacles, {} enemies)",
-        level.name,
-        level.obstacles.len(),
-        level.spawns.len()
-    );
+    println!("  encounters:    {}", data.encounters.len());
+    let mut names: Vec<_> = zones.0.iter().collect();
+    names.sort_by_key(|(id, _)| id.as_str());
+    for (id, level) in names {
+        println!(
+            "  zone {id}: {} ({} obstacles, {} enemies, {} portals{})",
+            level.name,
+            level.obstacles.len(),
+            level.spawns.len(),
+            level.portals.len(),
+            level
+                .encounter
+                .as_ref()
+                .map_or(String::new(), |e| format!(", encounter `{e}`"))
+        );
+    }
     println!("All game data loaded and valid.");
     Ok(())
 }

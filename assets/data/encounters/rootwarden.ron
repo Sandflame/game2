@@ -1,0 +1,72 @@
+// The Rootwarden: the first trial. One boss, three phases.
+//
+// Each phase lasts until the boss's health drops to `until_health` percent.
+// `timeline` entries happen `at` seconds into the phase and repeat every
+// `loop_after` seconds. Actions: Use("<ability>"), Say("<text>"),
+// Spawn(enemy: "<enemy>", at: (x, y, z)).
+(
+    name: "The Rootwarden",
+    boss: "rootwarden",
+    boss_position: (0.0, 0.0, -6.0),
+    // Facing the entrance (radians; 3.14 is a half turn).
+    boss_yaw: 3.1416,
+    // Each extra player adds 70% boss health.
+    extra_health_per_player: 70,
+    pull_message: Some("The Rootwarden stirs, bark groaning awake!"),
+    victory_message: Some("The Rootwarden sinks back into the soil."),
+    phases: [
+        (
+            name: "Awakening",
+            until_health: 65,
+            loop_after: 36.0,
+            timeline: [
+                (at: 3.0, action: Use("root_slam")),
+                (at: 9.0, action: Use("crushing_bough")),
+                (at: 15.0, action: Use("bark_burst")),
+                (at: 20.0, action: Use("heartwood_crush")),
+                (at: 26.0, action: Use("briar_line")),
+                (at: 31.0, action: Use("root_slam")),
+            ],
+        ),
+        (
+            name: "Overgrowth",
+            until_health: 30,
+            on_start: [
+                Say("Saplings burst from the soil!"),
+                Spawn(enemy: "thornling", at: (-7.0, 0.0, -2.0)),
+                Spawn(enemy: "thornling", at: (7.0, 0.0, -2.0)),
+                Use("verdant_ring"),
+            ],
+            loop_after: 40.0,
+            timeline: [
+                (at: 7.0, action: Use("seed_spread")),
+                (at: 13.0, action: Use("sap_stack")),
+                (at: 20.0, action: Use("crushing_bough")),
+                (at: 26.0, action: Use("bark_burst")),
+                (at: 31.0, action: Use("briar_line")),
+                (at: 36.0, action: Use("heartwood_crush")),
+            ],
+        ),
+        (
+            name: "Heartwood",
+            until_health: 0,
+            on_start: [
+                Say("The Rootwarden's heartwood blazes with light!"),
+                Use("bark_burst"),
+            ],
+            loop_after: 30.0,
+            timeline: [
+                (at: 4.0, action: Use("verdant_ring")),
+                (at: 10.0, action: Use("root_slam")),
+                (at: 14.0, action: Use("crushing_bough")),
+                (at: 19.0, action: Use("seed_spread")),
+                (at: 25.0, action: Use("bark_burst")),
+            ],
+        ),
+    ],
+    enrage: Some((
+        after: 300.0,
+        ability: "verdant_wrath",
+        message: Some("The Rootwarden gathers the forest's fury... finish it now!"),
+    )),
+)

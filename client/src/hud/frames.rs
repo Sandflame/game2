@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 use server::{Defeated, FlameChange};
-use shared::classes::{CurrentClass, Stats};
+use shared::classes::CurrentClass;
 use shared::combat::{ActionState, Health};
 use shared::components::{CharacterName, Faction};
 use shared::gamedata::GameData;
@@ -39,6 +39,8 @@ struct Frame {
     shield_fill: Entity,
     numbers: Entity,
     chips: Vec<(Entity, Entity)>,
+    /// The target's cast bar (target frame only): row, fill and label.
+    cast: Option<(Entity, Entity, Entity)>,
 }
 
 #[derive(Component)]
@@ -183,6 +185,27 @@ fn spawn_frame(commands: &mut Commands, parent: Entity, of: FrameOf, width: f32,
                         chips.push((chip, text));
                     }
                 });
+            // Enemies' casts show under the target frame, so you can react.
+            let cast = (of == FrameOf::Target).then(|| {
+                let mut fill = Entity::PLACEHOLDER;
+                let mut label = Entity::PLACEHOLDER;
+                let row = frame
+                    .spawn((Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: px(2),
+                        margin: UiRect::top(px(4)),
+                        display: Display::None,
+                        ..default()
+                    },))
+                    .with_children(|row| {
+                        label = row
+                            .spawn((Text::new(""), font(14.0), TextColor(palette::ENEMY_CAST)))
+                            .id();
+                        fill = spawn_bar(row, width, 8.0, palette::ENEMY_CAST);
+                    })
+                    .id();
+                (row, fill, label)
+            });
             parts = Some(Frame {
                 of,
                 name,
@@ -191,6 +214,7 @@ fn spawn_frame(commands: &mut Commands, parent: Entity, of: FrameOf, width: f32,
                 shield_fill,
                 numbers,
                 chips,
+                cast,
             });
         });
         if let Some(parts) = parts.take() {
@@ -201,6 +225,8 @@ fn spawn_frame(commands: &mut Commands, parent: Entity, of: FrameOf, width: f32,
 
 /// What a frame shows about one character.
 struct Shown<'a> {
+    /// What the character is casting and how far along (0–1).
+    cast: Option<(String, f32)>,
     name: &'a str,
     detail: String,
     health: Health,
@@ -220,7 +246,7 @@ fn update_frames(
         &Faction,
         Option<&Statuses>,
         Option<&CurrentClass>,
-        Option<&Stats>,
+        Option<&ActionState>,
         Has<Defeated>,
     )>,
     frames: Query<(&Frame, Entity)>,
@@ -239,7 +265,7 @@ fn update_frames(
             FrameOf::Target => target.0,
         };
         let shown = who.and_then(|e| characters.get(e).ok()).map(
-            |(name, health, faction, statuses, class, _stats, defeated)| {
+            |(name, health, faction, statuses, class, actions, defeated)| {
                 let class_text = class
                     .and_then(|c| {
                         let def = data.classes.get(&c.class)?;
@@ -253,7 +279,16 @@ fn update_frames(
                             String::new()
                         }
                     });
+                let cast = actions.and_then(|a| {
+                    let cast = a.cast.as_ref()?;
+                    let ability = data
+                        .abilities
+                        .get(&cast.ability)
+                        .map_or(cast.ability.clone(), |a| a.name.clone());
+                    Some((ability, a.cast_progress(now)?))
+                });
                 Shown {
+                    cast,
                     name: &name.0,
                     detail: if defeated {
                         "Defeated".to_owned()
@@ -311,6 +346,22 @@ fn update_frames(
             } else {
                 Display::None
             };
+        }
+
+        if let Some((row, fill, label)) = frame.cast {
+            if let Ok(mut node) = nodes.get_mut(row) {
+                node.display = if shown.cast.is_some() {
+                    Display::Flex
+                } else {
+                    Display::None
+                };
+            }
+            if let Some((ability, progress)) = &shown.cast {
+                set_text(&mut texts, label, ability);
+                if let Ok(mut node) = nodes.get_mut(fill) {
+                    node.width = percent(progress * 100.0);
+                }
+            }
         }
 
         // Buffs first, then debuffs, each soonest-ending first.

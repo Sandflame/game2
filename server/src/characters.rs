@@ -4,10 +4,12 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
+use shared::combat::Reject;
 use shared::combat::{ActionState, Health};
-use shared::components::{CharacterName, Faction, HitRadius, Hotbar, Motion, PlayerId, VisualKey};
-use shared::gamedata::GameData;
-use shared::level::Level;
+use shared::components::{
+    CharacterName, Faction, HitRadius, Hotbar, Motion, PlayerId, VisualKey, Zone,
+};
+use shared::gamedata::{GameData, Zones};
 use shared::movement::{self, MoveInput, MoveState};
 use shared::protocol::{Link, ServerEvent};
 use shared::statuses::Statuses;
@@ -58,7 +60,7 @@ pub fn spawn_player(
     index: &mut PlayerIndex,
     link: &mut Link,
     data: &GameData,
-    level: &Level,
+    zones: &Zones,
     player: PlayerId,
     name: &str,
 ) {
@@ -67,8 +69,9 @@ pub fn spawn_player(
         return;
     }
     let class_id = data.player.start_class.clone();
-    // Checked when the data was loaded.
-    let Some(class) = data.classes.get(&class_id) else {
+    let zone = data.player.start_zone.clone();
+    // Both checked when the data was loaded.
+    let (Some(class), Some(level)) = (data.classes.get(&class_id), zones.get(&zone)) else {
         return;
     };
     let name = if name.trim().is_empty() {
@@ -83,6 +86,7 @@ pub fn spawn_player(
                 player,
                 CharacterName(name.to_owned()),
                 Motion(MoveState::spawn_at(level.spawn_point)),
+                Zone(zone),
                 PlayerInput::default(),
                 Faction::Player,
                 HitRadius(data.player.hit_radius),
@@ -94,7 +98,7 @@ pub fn spawn_player(
                 ActionState::default(),
                 Statuses::default(),
                 CombatClock::default(),
-                Hotbar(class.hotbar(&class.default_spec)),
+                Hotbar(data.hotbar(class, &class.default_spec)),
                 CurrentClass {
                     class: class_id,
                     spec: class.default_spec.clone(),
@@ -110,10 +114,11 @@ pub fn move_characters(
     mut commands: Commands,
     time: Res<Time>,
     data: Res<GameData>,
-    level: Res<Level>,
+    zones: Res<Zones>,
     mut link: ResMut<Link>,
     mut characters: Query<(
         Entity,
+        &Zone,
         &mut PlayerInput,
         &mut Motion,
         &mut ActionState,
@@ -123,9 +128,12 @@ pub fn move_characters(
 ) {
     let now = time.elapsed_secs_f64();
     let dt = time.delta_secs();
-    for (entity, mut player_input, mut motion, mut actions, defeated, flame_change) in
+    for (entity, zone, mut player_input, mut motion, mut actions, defeated, flame_change) in
         &mut characters
     {
+        let Some(level) = zones.get(&zone.0) else {
+            continue;
+        };
         let mut input = player_input.input;
         player_input.input.jump = false;
         if defeated {
@@ -150,7 +158,7 @@ pub fn move_characters(
         if let Some(yaw) = player_input.face_once.take() {
             input.face_yaw = Some(yaw);
         }
-        motion.0 = movement::step(motion.0, input, &data.config.movement, &level, dt);
+        motion.0 = movement::step(motion.0, input, &data.config.movement, level, dt);
     }
 }
 
@@ -186,16 +194,67 @@ pub fn revive(
     mut commands: Commands,
     time: Res<Time>,
     data: Res<GameData>,
+    zones: Res<Zones>,
     mut link: ResMut<Link>,
-    mut players: Query<(Entity, &Defeated, &mut Health), With<PlayerId>>,
+    mut players: Query<(Entity, &Defeated, &Zone, &mut Health), With<PlayerId>>,
 ) {
     let now = time.elapsed_secs_f64();
-    for (entity, defeated, mut health) in &mut players {
-        if now - defeated.at >= f64::from(data.config.combat.revive_after) {
+    for (entity, defeated, zone, mut health) in &mut players {
+        // In trials you have to be raised (or the fight resets).
+        let allowed = zones.get(&zone.0).is_some_and(|z| z.revive_in_place);
+        if allowed && now - defeated.at >= f64::from(data.config.combat.revive_after) {
             *health = Health::full(health.max);
             commands.entity(entity).remove::<Defeated>();
             link.to_client.push(ServerEvent::Revived { entity });
         }
+    }
+}
+
+/// A player pressed the interact key: use the portal they are standing in.
+pub fn interact(
+    commands: &mut Commands,
+    link: &mut Link,
+    data: &GameData,
+    zones: &Zones,
+    now: f64,
+    player: PlayerId,
+    entity: Entity,
+    state: (&Zone, &mut Motion, &CombatClock, bool),
+) {
+    let (zone, motion, clock, defeated) = state;
+    let reject = |link: &mut Link, reason| {
+        link.to_client
+            .push(ServerEvent::Rejected { player, reason })
+    };
+    let portal = zones
+        .get(&zone.0)
+        .and_then(|level| level.portal_at(motion.0.position));
+    let Some(portal) = portal else {
+        return reject(link, Reject::NothingHere);
+    };
+    if defeated {
+        return reject(link, Reject::Dead);
+    }
+    if clock.in_combat(now, data.config.combat.combat_timeout) {
+        return reject(link, Reject::InCombat);
+    }
+    motion.0 = MoveState::spawn_at(portal.arrive);
+    commands.entity(entity).insert(Zone(portal.to.clone()));
+    link.to_client.push(ServerEvent::ZoneChanged {
+        entity,
+        zone: portal.to.clone(),
+    });
+}
+
+/// Characters who left a zone are forgotten by its enemies.
+pub fn forget_absent(
+    mut enemies: Query<(&Zone, &mut ThreatTable)>,
+    characters: Query<&Zone, Without<ThreatTable>>,
+) {
+    for (zone, mut table) in &mut enemies {
+        table
+            .0
+            .retain(|who, _| characters.get(*who).map_or(true, |z| z == zone));
     }
 }
 

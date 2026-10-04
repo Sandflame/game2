@@ -11,6 +11,7 @@ use shared::targeting::{Candidate, next_tab_target};
 use crate::camera::FollowCamera;
 use crate::characters::{DisplayMotion, LocalPlayer};
 use crate::toon::{Outline, ToonAssets};
+use crate::world::ElsewhereZone;
 
 /// How tall characters are for click-picking, in metres.
 const PICK_HEIGHT: f32 = 2.2;
@@ -51,7 +52,11 @@ struct ClickTracker {
 #[derive(Component)]
 struct TargetRing;
 
-fn forget_missing_target(mut target: ResMut<CurrentTarget>, characters: Query<(), With<Motion>>) {
+/// Forget a target that vanished or is in another zone.
+fn forget_missing_target(
+    mut target: ResMut<CurrentTarget>,
+    characters: Query<(), (With<Motion>, Without<ElsewhereZone>)>,
+) {
     if target.0.is_some_and(|t| characters.get(t).is_err()) {
         target.0 = None;
     }
@@ -62,7 +67,7 @@ fn tab_target(
     data: Res<GameData>,
     camera: Single<&FollowCamera>,
     player: Single<&Motion, With<LocalPlayer>>,
-    enemies: Query<(Entity, &Motion, &Faction, &Health)>,
+    enemies: Query<(Entity, &Motion, &Faction, &Health), Without<ElsewhereZone>>,
     mut target: ResMut<CurrentTarget>,
 ) {
     if !keys.just_pressed(KeyCode::Tab) {
@@ -111,7 +116,10 @@ fn click_target(
     ui: Query<&Interaction>,
     window: Single<&Window>,
     camera: Single<(&Camera, &GlobalTransform)>,
-    characters: Query<(Entity, &Transform, &HitRadius), With<DisplayMotion>>,
+    characters: Query<
+        (Entity, &Transform, &HitRadius),
+        (With<DisplayMotion>, Without<ElsewhereZone>),
+    >,
     mut target: ResMut<CurrentTarget>,
 ) {
     let over_ui = ui.iter().any(|i| *i != Interaction::None);

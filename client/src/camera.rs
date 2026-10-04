@@ -50,7 +50,7 @@ pub struct FollowCamera {
     pub pitch: f32,
     pub distance: f32,
     /// Where the zoom is heading; `distance` eases towards it.
-    target_distance: f32,
+    pub target_distance: f32,
 }
 
 fn spawn_camera(mut commands: Commands) {

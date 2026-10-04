@@ -1,0 +1,8 @@
+// Saplings summoned by the Rootwarden in its second phase.
+(
+    name: "Thornling",
+    max_health: 2500,
+    hit_radius: 0.8,
+    visual: "thornling",
+    actions: [(ability: "thorn_prick", every: 2.5)],
+)

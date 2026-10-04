@@ -1,6 +1,7 @@
 //! The heads-up display: hotbar, unit frames, cast bar, nameplates,
 //! floating damage numbers, messages and the controls help.
 
+mod banner;
 mod floating;
 mod frames;
 mod hotbar;
@@ -19,6 +20,7 @@ impl Plugin for HudPlugin {
                 frames::FramesPlugin,
                 floating::FloatingPlugin,
                 lantern::LanternPlugin,
+                banner::BannerPlugin,
             ));
     }
 }
@@ -35,6 +37,8 @@ pub mod palette {
     pub const ENEMY_HEALTH: Color = Color::srgb(0.85, 0.30, 0.25);
     pub const BAR_BACK: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
     pub const CAST: Color = Color::srgb(0.95, 0.70, 0.30);
+    pub const ENEMY_CAST: Color = Color::srgb(1.0, 0.45, 0.35);
+    pub const BANNER: Color = Color::srgb(1.0, 0.88, 0.55);
     pub const WARNING: Color = Color::srgb(1.0, 0.40, 0.35);
     pub const QUEUED: Color = Color::srgb(1.0, 0.85, 0.30);
     pub const COMBO: Color = Color::srgb(0.45, 0.90, 1.0);
@@ -111,6 +115,7 @@ fn spawn_help(mut commands: Commands) {
         "Tab/click target   F1 yourself   Esc clear",
         "1-0 or click hotbar: abilities",
         "L: lantern (change class)",
+        "E: use a portal",
     ];
     commands
         .spawn((

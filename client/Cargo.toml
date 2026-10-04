@@ -10,6 +10,7 @@ shared.workspace = true
 server = { path = "../server" }
 bevy = { workspace = true, features = ["3d", "ui", "audio", "tonemapping_luts"] }
 anyhow.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

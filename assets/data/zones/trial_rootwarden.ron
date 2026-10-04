@@ -1,0 +1,21 @@
+// The Rootwarden's Hollow: a mossy arena for the first trial.
+(
+    name: "Rootwarden's Hollow",
+    half_size: 22.0,
+    spawn_point: (0.0, 0.0, 16.0),
+    ground: "moss",
+    // In trials you need a raise; if everyone falls, the fight resets.
+    revive_in_place: false,
+    encounter: Some("rootwarden"),
+    obstacles: [
+        // Ancient standing stones in the corners (decoration you can't walk through).
+        (shape: Cylinder(radius: 1.2, height: 5.0), position: (-19.0, 0.0, -19.0), visual: "standing_stone"),
+        (shape: Cylinder(radius: 1.2, height: 5.0), position: (19.0, 0.0, -19.0), visual: "standing_stone"),
+        (shape: Cylinder(radius: 1.2, height: 5.0), position: (-19.0, 0.0, 19.0), visual: "standing_stone"),
+        (shape: Cylinder(radius: 1.2, height: 5.0), position: (19.0, 0.0, 19.0), visual: "standing_stone"),
+    ],
+    portals: [
+        (position: (16.0, 0.0, 17.0), radius: 1.8, to: "sandbox", arrive: (15.0, 0.0, 14.0),
+         label: "Leave the Hollow"),
+    ],
+)

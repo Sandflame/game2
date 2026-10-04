@@ -42,6 +42,9 @@ pub struct CombatConfig {
     pub revive_after: f32,
     /// Tab targeting only considers enemies within this distance.
     pub tab_target_range: f32,
+    /// Ground markers are this much smaller (metres) when checking who is
+    /// hit, so standing right on the edge is forgiven.
+    pub marker_grace: f32,
 }
 
 impl Validate for CombatConfig {
@@ -65,6 +68,7 @@ impl Validate for CombatConfig {
         p.non_negative("out_of_combat_regen", self.out_of_combat_regen);
         p.non_negative("revive_after", self.revive_after);
         p.positive("tab_target_range", self.tab_target_range);
+        p.non_negative("marker_grace", self.marker_grace);
         p.0
     }
 }
@@ -85,6 +89,7 @@ pub enum Reject {
     UnknownClass,
     AlreadyThatClass,
     Busy,
+    NothingHere,
 }
 
 impl Reject {
@@ -100,10 +105,11 @@ impl Reject {
             Reject::UnknownAbility => "Unknown ability.",
             Reject::NotOnHotbar => "That ability isn't on your hotbar.",
             Reject::Dead => "You can't do that while defeated.",
-            Reject::InCombat => "You can't change your flame during combat.",
+            Reject::InCombat => "You can't do that during combat.",
             Reject::UnknownClass => "Unknown class.",
             Reject::AlreadyThatClass => "That flame is already burning.",
             Reject::Busy => "You're busy.",
+            Reject::NothingHere => "There's nothing here to use.",
         }
     }
 }
@@ -396,6 +402,7 @@ pub fn test_config() -> CombatConfig {
         out_of_combat_regen: 0.1,
         revive_after: 5.0,
         tab_target_range: 40.0,
+        marker_grace: 0.0,
     }
 }
 

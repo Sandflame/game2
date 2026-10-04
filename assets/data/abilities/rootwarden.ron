@@ -1,0 +1,104 @@
+// The Rootwarden (trial boss) and its saplings.
+//
+// Telegraphs are ground markers shown while the boss casts. Shapes:
+//   Circle(radius), Donut(inner, outer), Cone(radius, angle in degrees),
+//   Line(length, width).
+// Placement:
+//   Caster, Target, CasterTowardsTarget (cones/lines aimed at the target),
+//   StackOnTarget (everyone inside shares the damage), SpreadOnEveryone
+//   (a marker on every player; overlapping markers stack up).
+// Effects with `to: InTelegraph` hit everyone standing inside when the cast ends.
+[
+    // ---- Auto-attack ----
+    (
+        id: "thorn_lash", name: "Thorn Lash",
+        description: "A lashing root.",
+        on_gcd: false, range: 40.0, target: Enemy,
+        effects: [(effect: Damage(amount: 150))],
+        vfx: "slash",
+    ),
+
+    // ---- Dodge these ----
+    (
+        id: "root_slam", name: "Root Slam",
+        description: "A massive root bursts up under its target.",
+        on_gcd: false, cast_time: 3.0, range: 60.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 6.0), placement: Target)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3500))],
+        vfx: "slam",
+    ),
+    (
+        id: "crushing_bough", name: "Crushing Bough",
+        description: "Sweeps a great branch across everything in front of it.",
+        on_gcd: false, cast_time: 3.5, range: 60.0, target: Enemy,
+        telegraph: Some((shape: Cone(radius: 18.0, angle: 100.0), placement: CasterTowardsTarget)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3800))],
+        vfx: "slam",
+    ),
+    (
+        id: "verdant_ring", name: "Verdant Ring",
+        description: "Thorns erupt in a ring around it. Get close to be safe!",
+        on_gcd: false, cast_time: 4.0, target: Myself,
+        telegraph: Some((shape: Donut(inner: 5.0, outer: 30.0), placement: Caster)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 4200))],
+        vfx: "slam",
+    ),
+    (
+        id: "briar_line", name: "Briar Line",
+        description: "A line of briars tears through the ground towards its target.",
+        on_gcd: false, cast_time: 3.0, range: 60.0, target: Enemy,
+        telegraph: Some((shape: Line(length: 34.0, width: 5.0), placement: CasterTowardsTarget)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 3500))],
+        vfx: "slam",
+    ),
+    (
+        id: "seed_spread", name: "Scattering Seeds",
+        description: "Seeds burst around every player. Spread out!",
+        on_gcd: false, cast_time: 4.0, range: 60.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 4.0), placement: SpreadOnEveryone)),
+        effects: [(to: InTelegraph, effect: Damage(amount: 1800))],
+        vfx: "burst_nature",
+    ),
+    (
+        id: "sap_stack", name: "Heavy Sap",
+        description: "A great glob of sap falls on its target. Stand together to share the weight!",
+        on_gcd: false, cast_time: 5.0, range: 60.0, target: Enemy,
+        telegraph: Some((shape: Circle(radius: 4.0), placement: StackOnTarget)),
+        effects: [(to: InTelegraph, effect: SharedDamage(amount: 2400))],
+        vfx: "burst_nature",
+    ),
+
+    // ---- Can't dodge: heal through or reduce ----
+    (
+        id: "bark_burst", name: "Bark Burst",
+        description: "Shards of bark fly through the whole arena.",
+        on_gcd: false, cast_time: 2.5, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 60.0), effect: Damage(amount: 700))],
+        vfx: "burst_nature",
+    ),
+    (
+        id: "heartwood_crush", name: "Heartwood Crush",
+        description: "A crushing blow on whoever it is focused on. Use a defensive ability!",
+        on_gcd: false, cast_time: 3.0, range: 60.0, target: Enemy,
+        effects: [(effect: Damage(amount: 1800))],
+        vfx: "slash_heavy",
+    ),
+
+    // ---- Enrage ----
+    (
+        id: "verdant_wrath", name: "Verdant Wrath",
+        description: "The forest's full fury. Defeat the Rootwarden before this!",
+        on_gcd: false, cast_time: 6.0, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 100.0), effect: Damage(amount: 99999))],
+        vfx: "burst_nature",
+    ),
+
+    // ---- Sapling ----
+    (
+        id: "thorn_prick", name: "Thorn Prick",
+        description: "A sapling flings a thorn.",
+        on_gcd: false, range: 40.0, target: Enemy,
+        effects: [(effect: Damage(amount: 120))],
+        vfx: "bolt_nature",
+    ),
+]

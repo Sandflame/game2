@@ -123,21 +123,73 @@ pub struct EnemySpawn {
     pub yaw: f32,
 }
 
-/// A whole level's solid geometry (`assets/data/zones/<name>.ron`).
+/// A doorway to another zone: stand in it and press the interact key.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Portal {
+    /// Centre of the portal on the ground.
+    pub position: Vec3,
+    /// How close (metres) you must be to use it.
+    pub radius: f32,
+    /// The zone it leads to (file name in `assets/data/zones/`).
+    pub to: String,
+    /// Where you appear in that zone.
+    pub arrive: Vec3,
+    /// Shown to the player, e.g. "Enter the Rootwarden's Hollow".
+    pub label: String,
+}
+
+/// One zone (`assets/data/zones/<id>.ron`): its solid geometry, enemies,
+/// portals and rules.
 #[derive(Debug, Clone, Deserialize, Resource)]
 pub struct Level {
     pub name: String,
     /// Characters are kept inside a square of this half-size around the origin.
     pub half_size: f32,
-    /// Where new characters appear.
+    /// Where characters appear when they first enter.
     pub spawn_point: Vec3,
+    /// Look of the ground (client only), e.g. "grass" or "stone".
+    #[serde(default = "default_ground")]
+    pub ground: String,
     #[serde(default)]
     pub obstacles: Vec<Obstacle>,
     #[serde(default)]
     pub spawns: Vec<EnemySpawn>,
+    #[serde(default)]
+    pub portals: Vec<Portal>,
+    /// Defeated players get back up on their own here (open world).
+    /// In trials and dungeons this is false: you need a raise, or the
+    /// fight resets when everyone falls.
+    #[serde(default = "yes")]
+    pub revive_in_place: bool,
+    /// A boss fight that takes place here (`assets/data/encounters/`).
+    #[serde(default)]
+    pub encounter: Option<String>,
+}
+
+fn default_ground() -> String {
+    "grass".to_owned()
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Level {
+    /// A flat, empty zone (handy for tests).
+    pub fn empty() -> Self {
+        Self {
+            name: String::new(),
+            half_size: 100.0,
+            spawn_point: Vec3::ZERO,
+            ground: default_ground(),
+            obstacles: Vec::new(),
+            spawns: Vec::new(),
+            portals: Vec::new(),
+            revive_in_place: true,
+            encounter: None,
+        }
+    }
+
     pub fn load(assets_dir: &Path, zone: &str) -> Result<Self, DataError> {
         load_ron(&Self::path(assets_dir, zone))
     }
@@ -148,6 +200,13 @@ impl Level {
             .join("data")
             .join("zones")
             .join(format!("{zone}.ron"))
+    }
+
+    /// The portal (if any) a character standing at `position` can use.
+    pub fn portal_at(&self, position: Vec3) -> Option<&Portal> {
+        self.portals.iter().find(|p| {
+            Vec2::new(p.position.x - position.x, p.position.z - position.z).length() <= p.radius
+        })
     }
 
     /// Height of the highest walkable surface under a character whose feet
@@ -208,6 +267,12 @@ impl Validate for Level {
             if outside(spawn.position) {
                 p.push(format!("spawns[{i}] is outside the level"));
             }
+        }
+        for (i, portal) in self.portals.iter().enumerate() {
+            if outside(portal.position) {
+                p.push(format!("portals[{i}] is outside the level"));
+            }
+            p.positive(&format!("portals[{i}].radius"), portal.radius);
         }
         for (i, o) in self.obstacles.iter().enumerate() {
             match o.shape {
@@ -308,6 +373,7 @@ mod tests {
                     visual: String::new(),
                 },
             ],
+            ..Level::empty()
         };
         assert_eq!(level.ground_height(Vec2::ZERO, 0.4, 0.0, 0.4), 0.3);
         // Too tall to step onto from the floor…
@@ -324,6 +390,7 @@ mod tests {
             half_size: 10.0,
             spawn_point: Vec3::ZERO,
             obstacles: vec![],
+            ..Level::empty()
         };
         let p = level.resolve_horizontal(Vec2::new(20.0, -20.0), 0.5, 0.0, 1.8, 0.4);
         assert_eq!(p, Vec2::new(9.5, -9.5));
@@ -344,6 +411,7 @@ mod tests {
                 position: Vec3::ZERO,
                 visual: String::new(),
             }],
+            ..Level::empty()
         };
         let problems = level.validate();
         assert_eq!(problems.len(), 2, "{problems:?}");

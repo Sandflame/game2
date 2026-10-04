@@ -12,24 +12,27 @@ use bevy::time::TimeUpdateStrategy;
 use server::{AuthorityPlugin, CombatRng, Defeated, EnemyKind};
 use shared::classes::{ClassDef, CurrentClass};
 use shared::combat::{Health, Reject};
-use shared::components::{CharacterName, Hotbar, Motion, PlayerId};
+use shared::components::{CharacterName, Hotbar, Motion, PlayerId, Zone};
 use shared::config::{GameConfig, SimulationConfig};
 use shared::data::{Validate, parse_ron};
+use shared::encounters::EncounterDef;
 use shared::formulas::Rng;
-use shared::gamedata::{AbilityFile, EnemyDef, GameData, PlayerConfig};
-use shared::level::{EnemySpawn, Level};
+use shared::gamedata::{AbilityFile, EnemyDef, GameData, PlayerConfig, Zones};
+use shared::level::{EnemySpawn, Level, Portal};
 use shared::movement::MoveInput;
 use shared::protocol::{ClientRequest, Link, ServerEvent};
 use shared::statuses::{StatusFile, Statuses};
+use shared::telegraphs::Telegraph;
 
 const TICK: f64 = 1.0 / 60.0;
 const ME: PlayerId = PlayerId(1);
+const FRIEND: PlayerId = PlayerId(2);
 
 const COMBAT: &str = r#"(
     gcd: 1.5, animation_lock: 0.6, cast_lock: 0.1, queue_window: 0.5, combo_window: 15.0,
     crit_chance: 0.0, crit_multiplier: 1.5, tick_interval: 3.0,
     combat_timeout: 6.0, flame_change_time: 2.0, out_of_combat_regen: 0.0, revive_after: 5.0,
-    tab_target_range: 40.0,
+    tab_target_range: 40.0, marker_grace: 0.0,
 )"#;
 
 const MOVEMENT: &str = r#"(
@@ -60,7 +63,44 @@ const ABILITIES: &str = r#"[
      effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(amount: 10))]),
     (id: "swat", name: "Swat", on_gcd: false, range: 30.0, target: Enemy,
      effects: [(effect: Damage(amount: 100))]),
+    (id: "second_wind", name: "Second Wind", on_gcd: false, cooldown: 60.0, target: Myself,
+     effects: [(effect: Heal(amount: 300))]),
+    (id: "rekindle", name: "Rekindle", on_gcd: true, cast_time: 3.0, cooldown: 60.0, range: 25.0,
+     target: DefeatedAlly, effects: [(effect: Raise(health_percent: 30))]),
+    (id: "slam", name: "Slam", on_gcd: false, cast_time: 2.0, range: 60.0, target: Enemy,
+     telegraph: Some((shape: Circle(radius: 3.0), placement: Target)),
+     effects: [(to: InTelegraph, effect: Damage(amount: 300))]),
+    (id: "sap", name: "Sap", on_gcd: false, cast_time: 2.0, range: 60.0, target: Enemy,
+     telegraph: Some((shape: Circle(radius: 4.0), placement: StackOnTarget)),
+     effects: [(to: InTelegraph, effect: SharedDamage(amount: 600))]),
+    (id: "seeds", name: "Seeds", on_gcd: false, cast_time: 2.0, range: 60.0, target: Enemy,
+     telegraph: Some((shape: Circle(radius: 4.0), placement: SpreadOnEveryone)),
+     effects: [(to: InTelegraph, effect: Damage(amount: 200))]),
+    (id: "quake", name: "Quake", on_gcd: false, cast_time: 1.0, target: Myself,
+     effects: [(to: EnemiesAround(centre: Me, radius: 60.0), effect: Damage(amount: 50))]),
 ]"#;
+
+const WARDEN: &str = r#"(name: "Warden", max_health: 1000, hit_radius: 1.0, visual: "rootwarden",
+    actions: [(ability: "swat", every: 2.0)])"#;
+
+const SAPLING: &str = r#"(name: "Sapling", max_health: 100, hit_radius: 0.5, visual: "thornling")"#;
+
+/// Phase one: slam at 1 s, a stack at 4 s, spreads at 7 s (each a 2 s cast).
+/// Phase two (below 50%): a sapling appears, then quakes.
+const TRIAL: &str = r#"(
+    name: "The Warden", boss: "warden", boss_position: (0.0, 0.0, 0.0),
+    extra_health_per_player: 50,
+    phases: [
+        (name: "One", until_health: 50, loop_after: 12.0, timeline: [
+            (at: 1.0, action: Use("slam")),
+            (at: 4.0, action: Use("sap")),
+            (at: 7.0, action: Use("seeds")),
+        ]),
+        (name: "Two", until_health: 0, loop_after: 5.0,
+         on_start: [Say("Grow!"), Spawn(enemy: "sapling", at: (3.0, 0.0, 0.0))],
+         timeline: [(at: 1.0, action: Use("quake"))]),
+    ],
+)"#;
 
 const STATUSES: &str = r#"[
     (id: "burn", name: "Burn", kind: Debuff, duration: 9.5, tick: Some(Damage(amount: 40))),
@@ -106,6 +146,8 @@ fn test_data() -> GameData {
         player: PlayerConfig {
             hit_radius: 0.5,
             start_class: "fighter".into(),
+            start_zone: "test".into(),
+            shared_abilities: vec!["second_wind".into(), "rekindle".into()],
         },
         abilities: abilities.0.into_iter().map(|a| (a.id.clone(), a)).collect(),
         statuses: statuses.0.into_iter().map(|s| (s.id.clone(), s)).collect(),
@@ -116,17 +158,19 @@ fn test_data() -> GameData {
         enemies: HashMap::from([
             ("dummy".to_owned(), parse::<EnemyDef>(DUMMY)),
             ("hitter".to_owned(), parse::<EnemyDef>(HITTER)),
+            ("warden".to_owned(), parse::<EnemyDef>(WARDEN)),
+            ("sapling".to_owned(), parse::<EnemyDef>(SAPLING)),
         ]),
+        encounters: HashMap::from([("trial".to_owned(), parse::<EncounterDef>(TRIAL))]),
     }
 }
 
-/// A level with the given enemies; the first one stands 3 m in front of the player.
-fn test_level(enemies: &[(&str, Vec3)]) -> Level {
-    Level {
+/// Two zones. "test" has the given enemies (players start at the origin)
+/// and a portal 6 m behind the start; "arena" holds the trial, with the
+/// boss at the origin and the entrance 8 m away.
+fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
+    let field = Level {
         name: "test".into(),
-        half_size: 100.0,
-        spawn_point: Vec3::ZERO,
-        obstacles: vec![],
         spawns: enemies
             .iter()
             .map(|(enemy, position)| EnemySpawn {
@@ -135,8 +179,37 @@ fn test_level(enemies: &[(&str, Vec3)]) -> Level {
                 yaw: 0.0,
             })
             .collect(),
-    }
+        portals: vec![Portal {
+            position: PORTAL,
+            radius: 1.5,
+            to: "arena".into(),
+            arrive: ARENA_ENTRANCE,
+            label: "To the arena".into(),
+        }],
+        ..Level::empty()
+    };
+    let arena = Level {
+        name: "arena".into(),
+        spawn_point: ARENA_ENTRANCE,
+        revive_in_place: false,
+        encounter: Some("trial".into()),
+        portals: vec![Portal {
+            position: Vec3::new(0.0, 0.0, 12.0),
+            radius: 1.5,
+            to: "test".into(),
+            arrive: Vec3::ZERO,
+            label: "Back".into(),
+        }],
+        ..Level::empty()
+    };
+    Zones(HashMap::from([
+        ("test".to_owned(), field),
+        ("arena".to_owned(), arena),
+    ]))
 }
+
+const PORTAL: Vec3 = Vec3::new(0.0, 0.0, 6.0);
+const ARENA_ENTRANCE: Vec3 = Vec3::new(0.0, 0.0, 8.0);
 
 // Hotbar slots of the "fighter" class.
 const STRIKE: usize = 0;
@@ -147,6 +220,9 @@ const FOLLOWUP: usize = 4;
 const IGNITE: usize = 5;
 const GUARD: usize = 6;
 const BARRIER: usize = 7;
+// Shared lantern abilities, after the class's own.
+const SECOND_WIND: usize = 8;
+const REKINDLE: usize = 9;
 
 struct Game {
     app: App,
@@ -167,7 +243,7 @@ impl Game {
             )))
             .insert_resource(Time::<Fixed>::from_seconds(TICK))
             .insert_resource(test_data())
-            .insert_resource(test_level(enemies))
+            .insert_resource(test_zones(enemies))
             .insert_resource(CombatRng(Rng::new(1)))
             .add_plugins(AuthorityPlugin);
         let mut game = Self {
@@ -190,11 +266,82 @@ impl Game {
     }
 
     fn send(&mut self, request: ClientRequest) {
+        self.send_as(ME, request);
+    }
+
+    fn send_as(&mut self, player: PlayerId, request: ClientRequest) {
         self.app
             .world_mut()
             .resource_mut::<Link>()
             .to_authority
-            .push((ME, request));
+            .push((player, request));
+    }
+
+    /// Bring in a second player; returns their character.
+    fn join_friend(&mut self) -> Entity {
+        self.send_as(
+            FRIEND,
+            ClientRequest::Join {
+                name: "Friend".into(),
+            },
+        );
+        self.run(0.1);
+        self.character(FRIEND)
+    }
+
+    fn character(&mut self, player: PlayerId) -> Entity {
+        let world = self.app.world_mut();
+        world
+            .query::<(Entity, &PlayerId)>()
+            .iter(world)
+            .find(|(_, p)| **p == player)
+            .unwrap()
+            .0
+    }
+
+    /// Walk a player into the portal and through it to the arena.
+    fn enter_arena(&mut self, player: PlayerId) {
+        let entity = self.character(player);
+        self.app
+            .world_mut()
+            .get_mut::<Motion>(entity)
+            .unwrap()
+            .0
+            .position = PORTAL;
+        self.send_as(player, ClientRequest::Interact);
+        self.run(0.1);
+    }
+
+    fn zone_of(&mut self, entity: Entity) -> String {
+        self.app.world().get::<Zone>(entity).unwrap().0.clone()
+    }
+
+    fn set_health(&mut self, entity: Entity, current: u32) {
+        self.app
+            .world_mut()
+            .get_mut::<Health>(entity)
+            .unwrap()
+            .current = current;
+    }
+
+    fn damage_from(&self, target: Entity, cause: &str) -> Vec<u32> {
+        self.events
+            .iter()
+            .filter_map(|e| match e {
+                ServerEvent::Damage {
+                    target: t,
+                    amount,
+                    cause: c,
+                    ..
+                } if *t == target && c == cause => Some(*amount),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn markers(&mut self) -> usize {
+        let world = self.app.world_mut();
+        world.query::<&Telegraph>().iter(world).count()
     }
 
     /// Advance the game by roughly `seconds`, collecting events.
@@ -222,11 +369,7 @@ impl Game {
     }
 
     fn me(&mut self) -> Entity {
-        let world = self.app.world_mut();
-        world
-            .query_filtered::<Entity, With<PlayerId>>()
-            .single(world)
-            .unwrap()
+        self.character(ME)
     }
 
     fn use_on(&mut self, slot: usize, target: Option<Entity>) {
@@ -346,7 +489,7 @@ fn attacks_need_an_enemy_target() {
     let me = Some(game.me());
     game.use_on(STRIKE, me);
     game.run(0.1);
-    game.use_slot(9);
+    game.use_slot(10); // past the end of the hotbar
     game.run(0.1);
     assert_eq!(
         game.rejections(),
@@ -531,9 +674,12 @@ fn changing_flame_switches_class_after_a_moment() {
     let world = game.app.world();
     assert_eq!(world.get::<CurrentClass>(me).unwrap().class, "guardian");
     assert_eq!(world.get::<Health>(me).unwrap().max, 2000);
+    let hotbar = &world.get::<Hotbar>(me).unwrap().0;
+    assert_eq!(hotbar[1].as_deref(), Some("provoke"));
     assert_eq!(
-        world.get::<Hotbar>(me).unwrap().0[1].as_deref(),
-        Some("provoke")
+        hotbar[REKINDLE].as_deref(),
+        Some("rekindle"),
+        "the shared lantern abilities stay on the hotbar"
     );
     assert!(
         game.events
@@ -630,4 +776,250 @@ fn defeated_players_get_back_up() {
     game.run(5.0);
     assert!(game.app.world().get::<Defeated>(me).is_none());
     assert_eq!(game.health(me).current, 1000);
+}
+
+// ---------- Zones and portals (Milestone 4) ----------
+
+#[test]
+fn portals_move_you_to_another_zone() {
+    let mut game = Game::new();
+    let me = game.me();
+    assert_eq!(game.zone_of(me), "test");
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    assert_eq!(
+        game.rejections(),
+        vec![Reject::NothingHere],
+        "not standing in a portal"
+    );
+    game.enter_arena(ME);
+    assert_eq!(game.zone_of(me), "arena");
+    let position = game.app.world().get::<Motion>(me).unwrap().0.position;
+    assert_eq!(position, ARENA_ENTRANCE);
+}
+
+#[test]
+fn portals_cannot_be_used_in_combat() {
+    let mut game = Game::new();
+    game.use_slot(STRIKE);
+    game.run(0.1);
+    game.enter_arena(ME);
+    let me = game.me();
+    assert_eq!(game.zone_of(me), "test");
+    assert!(game.rejections().contains(&Reject::InCombat));
+}
+
+#[test]
+fn characters_in_other_zones_are_out_of_reach() {
+    // A dummy in the field, right where the player will stand in the arena.
+    let mut game = Game::with_enemies(&[("dummy", ARENA_ENTRANCE)]);
+    game.enter_arena(ME);
+    let dummy = game.dummy();
+    game.use_on(STRIKE, Some(dummy));
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::InvalidTarget]);
+}
+
+// ---------- The trial (Milestone 4) ----------
+
+/// Enter the arena and pull the boss with a bolt; returns the boss.
+fn pull_boss(game: &mut Game) -> Entity {
+    game.enter_arena(ME);
+    let boss = game.enemy("Warden");
+    game.use_on(BOLT, Some(boss));
+    game.run(2.1);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::EncounterStarted { .. })),
+        "the fight started"
+    );
+    boss
+}
+
+#[test]
+fn standing_in_a_marker_hurts() {
+    let mut game = Game::new();
+    pull_boss(&mut game);
+    game.run(1.1); // slam starts 1 s into the fight
+    assert_eq!(game.markers(), 1, "a marker is on the ground");
+    game.run(2.0);
+    let me = game.me();
+    assert_eq!(game.damage_from(me, "slam"), vec![300]);
+    assert_eq!(game.markers(), 0, "and it is gone once it goes off");
+}
+
+#[test]
+fn walking_out_of_a_marker_dodges_it() {
+    let mut game = Game::new();
+    pull_boss(&mut game);
+    game.run(1.1);
+    game.walk(Vec2::X, 1.0); // 6 m sideways: out of the 3 m circle
+    game.run(1.5);
+    let me = game.me();
+    assert!(game.damage_from(me, "slam").is_empty());
+}
+
+#[test]
+fn stack_markers_share_the_damage() {
+    let mut game = Game::new();
+    let friend = game.join_friend();
+    game.enter_arena(FRIEND);
+    pull_boss(&mut game);
+    // Stand together. The stack goes off at 6 s.
+    game.app
+        .world_mut()
+        .get_mut::<Motion>(friend)
+        .unwrap()
+        .0
+        .position = ARENA_ENTRANCE;
+    game.run(6.1);
+    let me = game.me();
+    assert_eq!(game.damage_from(me, "sap"), vec![300]);
+    assert_eq!(game.damage_from(friend, "sap"), vec![300]);
+}
+
+#[test]
+fn spread_markers_hit_everyone_inside_each_one() {
+    let mut game = Game::new();
+    let friend = game.join_friend();
+    game.enter_arena(FRIEND);
+    pull_boss(&mut game);
+    // Stand together for the spreads at 9 s: both markers hit both of us.
+    game.app
+        .world_mut()
+        .get_mut::<Motion>(friend)
+        .unwrap()
+        .0
+        .position = ARENA_ENTRANCE;
+    game.run(9.1);
+    let me = game.me();
+    assert_eq!(game.damage_from(me, "seeds"), vec![200, 200]);
+    assert_eq!(game.damage_from(friend, "seeds"), vec![200, 200]);
+}
+
+#[test]
+fn the_boss_changes_phase_and_calls_adds() {
+    let mut game = Game::new();
+    let boss = pull_boss(&mut game);
+    game.set_health(boss, 400); // below 50%
+    game.run(0.2);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::Announce { text, .. } if text == "Grow!"))
+    );
+    game.enemy("Sapling"); // panics if it wasn't summoned
+    game.run(3.0);
+    let me = game.me();
+    assert_eq!(
+        game.damage_from(me, "quake"),
+        vec![50],
+        "phase two's timeline runs"
+    );
+}
+
+#[test]
+fn defeating_the_boss_wins_the_fight() {
+    let mut game = Game::new();
+    let boss = pull_boss(&mut game);
+    game.set_health(boss, 1);
+    game.use_on(BURST, Some(boss));
+    game.run(0.2);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::EncounterWon { .. }))
+    );
+}
+
+#[test]
+fn when_everyone_falls_the_fight_resets_at_the_entrance() {
+    let mut game = Game::new();
+    let boss = pull_boss(&mut game);
+    let me = game.me();
+    game.app
+        .world_mut()
+        .get_mut::<Motion>(me)
+        .unwrap()
+        .0
+        .position = Vec3::new(0.0, 0.0, 4.0);
+    game.set_health(me, 1);
+    game.run(3.0); // the boss's slam (aimed at us) finishes us
+    assert!(
+        game.app.world().get::<Defeated>(me).is_some(),
+        "{:#?}",
+        game.events
+    );
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::EncounterWiped { .. }))
+    );
+    game.run(4.5);
+    assert!(
+        game.app.world().get::<Defeated>(me).is_none(),
+        "back on our feet"
+    );
+    assert_eq!(game.health(me).current, 1000);
+    assert_eq!(
+        game.app.world().get::<Motion>(me).unwrap().0.position,
+        ARENA_ENTRANCE
+    );
+    let boss_health = game.health(boss);
+    assert_eq!(
+        boss_health.current, boss_health.max,
+        "the boss is back to full"
+    );
+}
+
+#[test]
+fn in_a_trial_you_wait_to_be_raised() {
+    let mut game = Game::new();
+    let friend = game.join_friend();
+    game.enter_arena(ME);
+    game.enter_arena(FRIEND);
+    let me = game.me();
+    game.set_health(me, 0);
+    game.run(6.0);
+    assert!(
+        game.app.world().get::<Defeated>(me).is_some(),
+        "no automatic revive here"
+    );
+    // The friend rekindles us.
+    game.app
+        .world_mut()
+        .get_mut::<Motion>(friend)
+        .unwrap()
+        .0
+        .position = ARENA_ENTRANCE;
+    game.send_as(
+        FRIEND,
+        ClientRequest::UseAbility {
+            slot: REKINDLE,
+            target: Some(me),
+        },
+    );
+    game.run(3.2);
+    assert!(game.app.world().get::<Defeated>(me).is_none());
+    assert_eq!(game.health(me).current, 300, "30% health");
+}
+
+#[test]
+fn second_wind_heals_you() {
+    let mut game = Game::new();
+    let me = game.me();
+    game.set_health(me, 500);
+    game.use_on(SECOND_WIND, None);
+    game.run(0.1);
+    assert_eq!(game.health(me).current, 800);
+}
+
+#[test]
+fn the_boss_has_more_health_with_more_players() {
+    let mut game = Game::new();
+    game.join_friend();
+    game.enter_arena(FRIEND);
+    let boss = pull_boss(&mut game);
+    assert_eq!(game.health(boss).max, 1500, "+50% for the second player");
 }

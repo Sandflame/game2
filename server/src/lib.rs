@@ -14,6 +14,7 @@ mod actions;
 mod characters;
 mod classes;
 mod effects;
+mod encounters;
 mod enemies;
 mod requests;
 
@@ -23,6 +24,7 @@ use shared::protocol::Link;
 
 pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput};
 pub use classes::FlameChange;
+pub use encounters::{Encounter, FightState};
 pub use enemies::{EnemyKind, ResetWhenIdle};
 
 /// Ordered steps of one authority tick.
@@ -60,6 +62,8 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<PlayerIndex>()
             .init_resource::<CombatRng>()
             .init_resource::<effects::PendingEffects>()
+            .init_resource::<encounters::EncounterChanges>()
+            .init_resource::<requests::PendingInteractions>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -70,16 +74,25 @@ impl Plugin for AuthorityPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Startup, enemies::spawn_enemies)
+            .add_systems(
+                Startup,
+                (enemies::spawn_enemies, encounters::setup_encounters),
+            )
             .add_systems(
                 FixedUpdate,
                 (
-                    requests::receive_requests.in_set(AuthoritySystems::Receive),
+                    (requests::receive_requests, requests::handle_interactions)
+                        .chain()
+                        .in_set(AuthoritySystems::Receive),
                     characters::move_characters.in_set(AuthoritySystems::Move),
                     (
+                        encounters::run_encounters,
+                        encounters::apply_encounter_changes,
                         enemies::enemy_brains,
                         enemies::face_targets,
                         actions::process_actions,
+                        effects::spawn_telegraphs,
+                        effects::follow_telegraphs,
                         effects::resolve_effects,
                         effects::tick_statuses,
                         characters::handle_defeats,
@@ -91,6 +104,7 @@ impl Plugin for AuthorityPlugin {
                         characters::regenerate,
                         characters::revive,
                         enemies::reset_idle_enemies,
+                        characters::forget_absent,
                     )
                         .chain()
                         .in_set(AuthoritySystems::Maintain),

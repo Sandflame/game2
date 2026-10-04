@@ -12,6 +12,7 @@ use crate::abilities::AbilityDef;
 use crate::classes::ClassDef;
 use crate::config::GameConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
+use crate::encounters::EncounterDef;
 use crate::level::Level;
 use crate::statuses::{StatusDef, StatusFile};
 
@@ -80,13 +81,32 @@ pub struct PlayerConfig {
     pub hit_radius: f32,
     /// The class (file name in `assets/data/classes/`) new characters start as.
     pub start_class: String,
+    /// The zone (file name in `assets/data/zones/`) new characters start in.
+    pub start_zone: String,
+    /// Abilities every class has, after the class's own (hotbar slots 9 and 0).
+    #[serde(default)]
+    pub shared_abilities: Vec<String>,
 }
 
 impl Validate for PlayerConfig {
     fn validate(&self) -> Vec<String> {
         let mut p = Problems::default();
         p.positive("hit_radius", self.hit_radius);
+        let class_slots = crate::classes::CORE_ABILITIES + crate::classes::SPEC_ABILITIES;
+        if class_slots + self.shared_abilities.len() > crate::components::HOTBAR_SLOTS {
+            p.push("too many `shared_abilities` to fit on the hotbar");
+        }
         p.0
+    }
+}
+
+/// Every zone, by id (file name in `assets/data/zones/`).
+#[derive(Debug, Clone, Resource, Default)]
+pub struct Zones(pub HashMap<String, Level>);
+
+impl Zones {
+    pub fn get(&self, zone: &str) -> Option<&Level> {
+        self.0.get(zone)
     }
 }
 
@@ -99,6 +119,7 @@ pub struct GameData {
     pub statuses: HashMap<String, StatusDef>,
     pub classes: HashMap<String, ClassDef>,
     pub enemies: HashMap<String, EnemyDef>,
+    pub encounters: HashMap<String, EncounterDef>,
 }
 
 impl GameData {
@@ -142,6 +163,12 @@ impl GameData {
             .map(|(path, enemy)| (file_id(&path), enemy))
             .collect();
 
+        let encounters: HashMap<String, EncounterDef> =
+            load_dir::<EncounterDef>(&data.join("encounters"))?
+                .into_iter()
+                .map(|(path, encounter)| (file_id(&path), encounter))
+                .collect();
+
         let game = Self {
             config,
             player,
@@ -149,6 +176,7 @@ impl GameData {
             statuses,
             classes,
             enemies,
+            encounters,
         };
         game.check_references(&data)?;
         Ok(game)
@@ -207,6 +235,34 @@ impl GameData {
                 });
             }
         }
+        for (id, encounter) in &self.encounters {
+            let mut problems: Vec<String> = encounter
+                .abilities()
+                .filter(|a| !ability(a))
+                .map(|a| format!("uses unknown ability `{a}`"))
+                .collect();
+            problems.extend(
+                encounter
+                    .enemies()
+                    .filter(|e| !self.enemies.contains_key(*e))
+                    .map(|e| format!("uses unknown enemy `{e}`")),
+            );
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: data.join("encounters").join(format!("{id}.ron")),
+                    problems,
+                });
+            }
+        }
+        let player_path = data.join("config").join("player.ron");
+        for shared in &self.player.shared_abilities {
+            if !ability(shared) {
+                return Err(invalid(
+                    &player_path,
+                    format!("`shared_abilities` names unknown ability `{shared}`"),
+                ));
+            }
+        }
         if !self.classes.contains_key(&self.player.start_class) {
             return Err(invalid(
                 &data.join("config").join("player.ron"),
@@ -226,23 +282,63 @@ impl GameData {
         list
     }
 
-    /// Load a zone and check that everything it refers to exists.
-    pub fn load_level(&self, assets_dir: &Path, zone: &str) -> Result<Level, DataError> {
-        let level = Level::load(assets_dir, zone)?;
-        let problems: Vec<String> = level
-            .spawns
-            .iter()
-            .filter(|s| !self.enemies.contains_key(&s.enemy))
-            .map(|s| format!("spawn names unknown enemy `{}`", s.enemy))
+    /// Load every zone and check that everything they refer to exists.
+    pub fn load_zones(&self, assets_dir: &Path) -> Result<Zones, DataError> {
+        let dir = assets_dir.join("data").join("zones");
+        let zones: HashMap<String, Level> = load_dir::<Level>(&dir)?
+            .into_iter()
+            .map(|(path, level)| (file_id(&path), level))
             .collect();
-        if problems.is_empty() {
-            Ok(level)
-        } else {
-            Err(DataError::Invalid {
-                path: Level::path(assets_dir, zone),
-                problems,
-            })
+        for (id, level) in &zones {
+            let mut problems: Vec<String> = level
+                .spawns
+                .iter()
+                .filter(|s| !self.enemies.contains_key(&s.enemy))
+                .map(|s| format!("spawn names unknown enemy `{}`", s.enemy))
+                .collect();
+            problems.extend(
+                level
+                    .portals
+                    .iter()
+                    .filter(|p| !zones.contains_key(&p.to))
+                    .map(|p| format!("portal leads to unknown zone `{}`", p.to)),
+            );
+            if let Some(encounter) = &level.encounter
+                && !self.encounters.contains_key(encounter)
+            {
+                problems.push(format!("names unknown encounter `{encounter}`"));
+            }
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: Level::path(assets_dir, id),
+                    problems,
+                });
+            }
         }
+        if !zones.contains_key(&self.player.start_zone) {
+            return Err(invalid(
+                &assets_dir.join("data").join("config").join("player.ron"),
+                format!(
+                    "`start_zone` names unknown zone `{}`",
+                    self.player.start_zone
+                ),
+            ));
+        }
+        Ok(Zones(zones))
+    }
+
+    /// A class's hotbar: its own abilities, then the shared ones.
+    pub fn hotbar(&self, class: &ClassDef, spec: &str) -> Vec<Option<String>> {
+        let mut bar = class.hotbar(spec);
+        let first_free = crate::classes::CORE_ABILITIES + crate::classes::SPEC_ABILITIES;
+        for (slot, ability) in bar
+            .iter_mut()
+            .skip(first_free)
+            .zip(&self.player.shared_abilities)
+        {
+            *slot = Some(ability.clone());
+        }
+        bar
     }
 }
 
@@ -291,7 +387,7 @@ mod tests {
         let data = GameData::load(&assets).unwrap();
         assert!(data.enemies.contains_key("training_dummy"));
         assert_eq!(data.classes.len(), 4);
-        let level = data.load_level(&assets, "sandbox").unwrap();
-        assert!(!level.spawns.is_empty());
+        let zones = data.load_zones(&assets).unwrap();
+        assert!(!zones.get("sandbox").unwrap().spawns.is_empty());
     }
 }
