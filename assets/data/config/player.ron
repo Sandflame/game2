@@ -1,0 +1,7 @@
+// Player character settings. (Milestone 3 moves these into class data.)
+(
+    max_health: 10000,
+    hit_radius: 0.5,
+    // Abilities on hotbar slots 1, 2, 3… (ids from assets/data/abilities/).
+    hotbar: ["strike", "lantern_bolt", "flare_burst"],
+)

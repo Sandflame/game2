@@ -11,7 +11,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
 
-use crate::player::{LocalPlayer, gather_input, interpolate_transforms};
+use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
 
 /// Radians of turn per pixel of mouse movement.
 const MOUSE_SENSITIVITY: f32 = 0.005;
@@ -32,7 +32,7 @@ impl Plugin for CameraPlugin {
             RunFixedMainLoop,
             (
                 (orbit_camera, grab_cursor_while_dragging)
-                    .before(gather_input)
+                    .before(send_movement)
                     .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
                 follow_player
                     .after(interpolate_transforms)

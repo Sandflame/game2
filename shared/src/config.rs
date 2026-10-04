@@ -5,6 +5,7 @@ use std::path::Path;
 use bevy::prelude::Resource;
 use serde::Deserialize;
 
+use crate::combat::CombatConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
 use crate::movement::MovementConfig;
 
@@ -33,6 +34,7 @@ impl Validate for SimulationConfig {
 pub struct GameConfig {
     pub simulation: SimulationConfig,
     pub movement: MovementConfig,
+    pub combat: CombatConfig,
 }
 
 impl GameConfig {
@@ -42,6 +44,7 @@ impl GameConfig {
         Ok(Self {
             simulation: load_ron(&dir.join("simulation.ron"))?,
             movement: load_ron(&dir.join("movement.ron"))?,
+            combat: load_ron(&dir.join("combat.ron"))?,
         })
     }
 }

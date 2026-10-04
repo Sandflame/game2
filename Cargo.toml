@@ -24,3 +24,11 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+# No debug info for libraries: much smaller and faster builds.
+debug = false
+
+# Bevy systems naturally take many parameters with long query types, so
+# these two lints (standard for Bevy projects) are switched off.
+[workspace.lints.clippy]
+type_complexity = "allow"
+too_many_arguments = "allow"

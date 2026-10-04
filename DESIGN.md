@@ -91,9 +91,11 @@ game2/
   cooldown tracking, XP curves, ability resolution, boss timelines,
   ground-marker hit tests, party-synergy rules, data-file definitions and
   validation. Everything here gets unit tests. It never touches rendering.
-- **`server`** — Builds a Bevy `App` with `MinimalPlugins` (no window).
-  Owns the truth: positions, health, cooldowns, enemy AI, loot, the
-  database. Runs on Windows and Linux from the same code.
+- **`server`** — The *rules half* ("authority"): a library with an
+  `AuthorityPlugin` that owns the truth — positions, health, cooldowns,
+  enemy AI, loot, the database — plus a headless program (`MinimalPlugins`,
+  no window) that will run it for multiplayer. Runs on Windows and Linux
+  from the same code.
 - **`client`** — Sends inputs, renders what the server says, predicts the
   local player's movement, interpolates everyone else, shows UI and
   effects.
@@ -111,7 +113,27 @@ refer to visuals by name (`vfx: "fire_bolt"`), and a separate
 client-only file maps those names to actual effects. Upgrading art means
 editing the client's visual mapping and assets; game logic is untouched.
 
-### 3.3 Networking model
+### 3.3 Single-player first: the in-process "link"
+
+Multiplayer is built late (Milestone 11), so until then the client
+program runs the authority **inside itself**. The two halves still only
+talk through messages:
+
+- The client puts `ClientRequest`s (join, movement input, use ability)
+  into a `Link` outbox. The authority drains it every tick.
+- The authority puts `ServerEvent`s (damage dealt, action rejected,
+  cast started/interrupted) into the `Link` inbox. The client drains it
+  every frame for floating numbers and messages.
+- The client may **read** logic components (health, positions, cast
+  state) — later these arrive by network replication — but **never
+  changes them**.
+
+Adding multiplayer means replacing the in-process `Link` with lightyear:
+requests and events become network messages, and logic components are
+replicated. Movement prediction for your own character is the main new
+work at that point.
+
+### 3.4 Networking model (Milestone 11)
 
 - **Transport:** UDP via lightyear's netcode.io implementation. Clients
   connect by typing `IP:port`.
@@ -135,7 +157,7 @@ editing the client's visual mapping and assets; game logic is untouched.
   normal connection (< 150 ms) this feels fair. We add a small grace
   margin (data-tunable, e.g. 0.15 m) at marker edges to forgive latency.
 
-### 3.4 Instances and zones
+### 3.5 Instances and zones
 
 The game is **separate zones**, not a seamless world. One server process
 runs everything:
@@ -150,7 +172,7 @@ runs everything:
 
 With 4–8 players this all fits in one process with plenty of headroom.
 
-### 3.5 Login and security (honest version)
+### 3.6 Login and security (honest version)
 
 - Username + password. Passwords are hashed with **argon2** before being
   stored; the server never stores the actual password.
@@ -165,7 +187,7 @@ With 4–8 players this all fits in one process with plenty of headroom.
   (compared by a hash at connect time), so nobody accidentally plays with
   different ability numbers.
 
-### 3.6 Persistence
+### 3.7 Persistence
 
 - One SQLite file, `world.db`, next to the server program (path
   configurable). Copy the file to move the world to another PC.
@@ -179,7 +201,7 @@ With 4–8 players this all fits in one process with plenty of headroom.
   program, and we only use `std::path` for file paths, so no code changes
   are needed between platforms.
 
-### 3.7 Hosting reality check
+### 3.8 Hosting reality check
 
 Running the server on your Windows PC works, but **your friends can only
 reach it if your router forwards the UDP port** to your PC (and Windows
@@ -191,8 +213,7 @@ hosting guide will cover:
    Tailscale or ZeroTier). Everyone installs it, and you connect using the
    host's virtual IP. Often easier for friend groups.
 
-A basic `HOSTING.md` starts at Milestone 2, so you can test with friends
-early; the full guide comes last.
+`HOSTING.md` arrives with accounts in Milestone 12.
 
 ---
 
@@ -480,7 +501,7 @@ with one key; quest progress still records.
    hard is real work. We scale HP/damage by party size from data and
    expect to tune by playing.
 2. **Hosting from a home PC** — router port forwarding is the main hurdle.
-   Mitigation: virtual-LAN alternative in the hosting guide (§3.7).
+   Mitigation: virtual-LAN alternative in the hosting guide (§3.8).
 3. **Prediction + physics** — avoided by keeping movement our own small
    shared function (§2.1).
 4. **Sliding down the root** — done as a scripted ride, not physics (§8.1).

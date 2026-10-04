@@ -112,6 +112,17 @@ impl Obstacle {
     }
 }
 
+/// An enemy placed in a level.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnemySpawn {
+    /// Enemy id: the file name in `assets/data/enemies/` without `.ron`.
+    pub enemy: String,
+    pub position: Vec3,
+    /// Facing in radians (0 faces -Z).
+    #[serde(default)]
+    pub yaw: f32,
+}
+
 /// A whole level's solid geometry (`assets/data/zones/<name>.ron`).
 #[derive(Debug, Clone, Deserialize, Resource)]
 pub struct Level {
@@ -122,16 +133,21 @@ pub struct Level {
     pub spawn_point: Vec3,
     #[serde(default)]
     pub obstacles: Vec<Obstacle>,
+    #[serde(default)]
+    pub spawns: Vec<EnemySpawn>,
 }
 
 impl Level {
     pub fn load(assets_dir: &Path, zone: &str) -> Result<Self, DataError> {
-        load_ron(
-            &assets_dir
-                .join("data")
-                .join("zones")
-                .join(format!("{zone}.ron")),
-        )
+        load_ron(&Self::path(assets_dir, zone))
+    }
+
+    /// Where a zone's data file lives.
+    pub fn path(assets_dir: &Path, zone: &str) -> std::path::PathBuf {
+        assets_dir
+            .join("data")
+            .join("zones")
+            .join(format!("{zone}.ron"))
     }
 
     /// Height of the highest walkable surface under a character whose feet
@@ -184,8 +200,14 @@ impl Validate for Level {
     fn validate(&self) -> Vec<String> {
         let mut p = Problems::default();
         p.positive("half_size", self.half_size);
-        if self.spawn_point.x.abs() > self.half_size || self.spawn_point.z.abs() > self.half_size {
+        let outside = |v: Vec3| v.x.abs() > self.half_size || v.z.abs() > self.half_size;
+        if outside(self.spawn_point) {
             p.push("`spawn_point` is outside the level");
+        }
+        for (i, spawn) in self.spawns.iter().enumerate() {
+            if outside(spawn.position) {
+                p.push(format!("spawns[{i}] is outside the level"));
+            }
         }
         for (i, o) in self.obstacles.iter().enumerate() {
             match o.shape {
@@ -263,6 +285,7 @@ mod tests {
     fn ground_includes_low_objects_only() {
         let level = Level {
             name: "test".into(),
+            spawns: vec![],
             half_size: 50.0,
             spawn_point: Vec3::ZERO,
             obstacles: vec![
@@ -297,6 +320,7 @@ mod tests {
     fn stays_inside_level_bounds() {
         let level = Level {
             name: "test".into(),
+            spawns: vec![],
             half_size: 10.0,
             spawn_point: Vec3::ZERO,
             obstacles: vec![],
@@ -309,6 +333,7 @@ mod tests {
     fn validation_catches_bad_sizes() {
         let level = Level {
             name: "bad".into(),
+            spawns: vec![],
             half_size: 10.0,
             spawn_point: Vec3::new(20.0, 0.0, 0.0),
             obstacles: vec![Obstacle {

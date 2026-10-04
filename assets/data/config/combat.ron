@@ -1,0 +1,15 @@
+// Combat timing. Times in seconds, distances in metres.
+(
+    // Global cooldown shared by all GCD abilities.
+    gcd: 1.5,
+    // After an instant ability, nothing else can start for this long.
+    animation_lock: 0.6,
+    // Short pause after a cast finishes.
+    cast_lock: 0.1,
+    // Pressing an ability this close to it being ready queues it.
+    queue_window: 0.5,
+    // Damage per point of potency (until stats arrive in later milestones).
+    damage_per_potency: 1.0,
+    // Tab only picks enemies within this distance.
+    tab_target_range: 40.0,
+)

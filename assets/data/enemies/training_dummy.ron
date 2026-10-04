@@ -1,0 +1,8 @@
+// A training dummy. It never attacks and heals to full when left alone.
+(
+    name: "Training Dummy",
+    max_health: 20000,
+    hit_radius: 0.7,
+    visual: "training_dummy",
+    reset_after: 8.0,
+)

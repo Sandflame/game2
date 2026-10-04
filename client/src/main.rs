@@ -1,29 +1,35 @@
 //! Lanternflame game client: window, rendering, input and UI.
+//!
+//! Until multiplayer (Milestone 11) the client also runs the game's rules
+//! half (`server::AuthorityPlugin`) inside the same program. The two halves
+//! only talk through `shared::protocol::Link`; see DESIGN.md §3.3.
 
 mod camera;
+mod characters;
 mod devtools;
 mod hud;
-mod player;
+mod session;
+mod targeting;
 mod toon;
 mod world;
 
 use bevy::prelude::*;
-use shared::config::GameConfig;
+use server::AuthorityPlugin;
 use shared::data::find_assets_dir;
-use shared::level::Level;
+use shared::gamedata::GameData;
 
-/// The zone loaded at startup (Milestone 1 has only one).
+/// The zone loaded at startup.
 const START_ZONE: &str = "sandbox";
 
 fn main() -> AppExit {
     // Load and check the game data before opening a window, so mistakes
     // in data files show a clear message instead of a crash later.
     let loaded = find_assets_dir().and_then(|assets| {
-        let config = GameConfig::load(&assets)?;
-        let level = Level::load(&assets, START_ZONE)?;
-        Ok((assets, config, level))
+        let data = GameData::load(&assets)?;
+        let level = data.load_level(&assets, START_ZONE)?;
+        Ok((assets, data, level))
     });
-    let (assets_dir, config, level) = match loaded {
+    let (assets_dir, data, level) = match loaded {
         Ok(loaded) => loaded,
         Err(error) => {
             eprintln!("Lanternflame could not start: {error}");
@@ -46,14 +52,19 @@ fn main() -> AppExit {
                     ..default()
                 }),
         )
-        .insert_resource(Time::<Fixed>::from_hz(config.simulation.tick_hz))
-        .insert_resource(config)
+        .insert_resource(Time::<Fixed>::from_hz(data.config.simulation.tick_hz))
+        .insert_resource(data)
         .insert_resource(level)
+        // The rules half, running in-process for now.
+        .add_plugins(AuthorityPlugin)
+        // The screen half.
         .add_plugins((
+            session::SessionPlugin,
             toon::ToonPlugin,
             world::WorldPlugin,
-            player::PlayerPlugin,
+            characters::CharactersPlugin,
             camera::CameraPlugin,
+            targeting::TargetingPlugin,
             hud::HudPlugin,
             devtools::DevToolsPlugin,
         ))

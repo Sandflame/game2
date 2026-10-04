@@ -1,29 +1,33 @@
 //! Lanternflame headless server.
 //!
-//! Milestone 1: only checks that the game data loads, then exits.
-//! Networking arrives in Milestone 2.
+//! Until multiplayer arrives (Milestone 11) the game runs its rules inside
+//! the client program, so this only checks that the game data loads.
 
 use anyhow::Context;
-use shared::config::GameConfig;
 use shared::data::find_assets_dir;
-use shared::level::Level;
+use shared::gamedata::GameData;
 
 fn main() -> anyhow::Result<()> {
     let assets = find_assets_dir()?;
-    let config = GameConfig::load(&assets).context("loading config")?;
-    let level = Level::load(&assets, "sandbox").context("loading the sandbox zone")?;
+    let data = GameData::load(&assets).context("loading game data")?;
+    let level = data
+        .load_level(&assets, "sandbox")
+        .context("loading the sandbox zone")?;
 
-    println!("Lanternflame server (Milestone 1 placeholder)");
+    println!("Lanternflame server (placeholder until multiplayer, Milestone 11)");
     println!("  assets folder: {}", assets.display());
     println!(
         "  simulation:    {} ticks per second",
-        config.simulation.tick_hz
+        data.config.simulation.tick_hz
     );
+    println!("  abilities:     {}", data.abilities.len());
+    println!("  enemy types:   {}", data.enemies.len());
     println!(
-        "  zone:          {} ({} obstacles)",
+        "  zone:          {} ({} obstacles, {} enemies)",
         level.name,
-        level.obstacles.len()
+        level.obstacles.len(),
+        level.spawns.len()
     );
-    println!("All game data loaded and valid. Networking arrives in Milestone 2.");
+    println!("All game data loaded and valid.");
     Ok(())
 }

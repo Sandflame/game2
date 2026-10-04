@@ -10,3 +10,6 @@ bevy = { workspace = true, features = ["std", "bevy_log", "serialize"] }
 serde.workspace = true
 ron.workspace = true
 thiserror.workspace = true
+
+[lints]
+workspace = true

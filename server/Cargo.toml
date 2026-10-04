@@ -5,6 +5,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+# The library is the game's rules half ("authority"). The client runs it
+# in-process for single-player; the `server` program will run it headless
+# for multiplayer (Milestone 11).
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
 [dependencies]
 shared.workspace = true
+bevy = { workspace = true, features = ["std", "bevy_log"] }
 anyhow.workspace = true
+
+[lints]
+workspace = true

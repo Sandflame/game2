@@ -168,6 +168,7 @@ mod tests {
     fn flat() -> Level {
         Level {
             name: "flat".into(),
+            spawns: vec![],
             half_size: 100.0,
             spawn_point: Vec3::ZERO,
             obstacles: vec![],

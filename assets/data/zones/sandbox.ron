@@ -33,4 +33,11 @@
         (shape: Cylinder(radius: 0.5, height: 3.0), position: (26.0, 0.0, 20.0), visual: "tree"),
         (shape: Cylinder(radius: 0.5, height: 3.0), position: (-28.0, 0.0, 4.0), visual: "tree"),
     ],
+
+    // Enemies placed in this zone (ids from assets/data/enemies/).
+    spawns: [
+        (enemy: "training_dummy", position: (-3.0, 0.0, -4.0), yaw: 0.0),
+        (enemy: "training_dummy", position: (0.0, 0.0, -6.0), yaw: 0.0),
+        (enemy: "training_dummy", position: (3.0, 0.0, -4.0), yaw: 0.0),
+    ],
 )

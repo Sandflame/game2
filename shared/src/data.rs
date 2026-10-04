@@ -50,7 +50,11 @@ pub fn load_ron<T: DeserializeOwned + Validate>(path: &Path) -> Result<T, DataEr
 
 /// Parse and validate RON text. `path` is only used in error messages.
 pub fn parse_ron<T: DeserializeOwned + Validate>(text: &str, path: &Path) -> Result<T, DataError> {
-    let value: T = ron::from_str(text).map_err(|source| DataError::Parse {
+    // `IMPLICIT_SOME` lets optional values be written plainly (`8.0`
+    // instead of `Some(8.0)`), which is friendlier for hand-edited files.
+    let options =
+        ron::Options::default().with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME);
+    let value: T = options.from_str(text).map_err(|source| DataError::Parse {
         path: path.to_owned(),
         source: Box::new(source),
     })?;

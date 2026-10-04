@@ -3,8 +3,10 @@
 Guide for working in this repository (for Claude and for humans).
 
 ## Project status
-- Done: **M0** (plan), **M1** (workspace, 3D scene, toon shading, local movement).
-- Next: **M2** (server + networking). See `MILESTONES.md`.
+- Done: **M0** (plan), **M1** (scene, toon shading, movement), **M2** (targeting,
+  GCD, hotbar, training dummies, rules/screen split).
+- Next: **M3** (data-driven abilities, four classes). See `MILESTONES.md`.
+- Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
 ## What this is
@@ -16,10 +18,14 @@ render.
 - `shared/` — components, network protocol, data-file types, and **all
   game rules** (formulas, cooldowns, movement, hit tests). No rendering.
   Every rule gets unit tests here.
-- `server/` — headless Bevy app (`MinimalPlugins`). Owns the truth and
-  the SQLite database. Must build and run on Windows and Linux unchanged.
-- `client/` — rendering, input, UI, effects. Predicts the local player's
-  movement; interpolates everything else. Never decides outcomes.
+- `server/` — the **authority** (rules half) as a library (`AuthorityPlugin`),
+  plus a headless binary for multiplayer later. Owns the truth (and later the
+  SQLite database). Must build and run on Windows and Linux unchanged.
+- `client/` — rendering, input, UI, effects. **Runs `AuthorityPlugin`
+  in-process** until multiplayer (M11). Never decides outcomes.
+- The halves talk only through `shared::protocol::Link`: the client pushes
+  `ClientRequest`s, the authority pushes `ServerEvent`s. The client may *read*
+  logic components (they'll be replicated later) but never writes them.
 - `assets/data/` — RON data files with every tunable number.
 - `assets/data/client/` — client-only visual mappings (vfx names → effects).
 
@@ -46,8 +52,10 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
 ### Environment variables
 - `LANTERNFLAME_ASSETS=<dir>` — use this `assets` folder instead of searching
   (search order: next to the program, current folder, project folder).
-- `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after
-  ~120 frames and quits (`client/src/devtools.rs`).
+- `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after 2 s
+  of game time and quits (`client/src/devtools.rs`).
+- `LANTERNFLAME_DEMO=1` (with the above) — scripted fight on a dummy; saves
+  `<file>-1.png` (mid-cast) and `<file>-2.png` (after the hit).
 
 ### Linux build dependencies
 `libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev` (and for headless
@@ -59,12 +67,26 @@ extra beyond the Rust toolchain.
 - `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
 - `shared/src/level.rs` — `Level` geometry: ground, boxes, cylinders; collision.
 - `shared/src/movement.rs` — `step()`: the one movement function used everywhere.
+- `shared/src/combat.rs` — `AbilityDef`, `CombatConfig`, `ActionState` (GCD,
+  cooldowns, casts, animation lock, queue), `Health`, damage, range.
+- `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
+- `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`.
+- `shared/src/targeting.rs` — Tab-target ordering.
+- `shared/src/gamedata.rs` — `GameData`: loads config, abilities, enemies; checks references.
+- `server/src/lib.rs` — `AuthorityPlugin`, tick order (`AuthoritySystems`).
+- `server/src/{requests,actions,characters}.rs` — handling requests, using
+  abilities/applying damage, spawning/moving characters, dummy resets.
+- `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
+- `client/src/session.rs` — local player id, joining, `Received` event messages.
+- `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
+  sending movement, hit wobble, lantern glow.
+- `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
+- `client/src/hud/` — hotbar, unit frames + cast bar, nameplates, damage numbers, messages.
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — builds visuals for a `Level` (visual keys → placeholder meshes).
-- `client/src/player.rs` — input → fixed-tick `step()` → interpolated `Transform`.
 - `client/src/camera.rs` — FFXIV-style follow camera.
-- `server/src/main.rs` — M1 placeholder: validates data and exits.
+- `server/src/main.rs` — placeholder until M11: validates data and exits.
 
 ## Conventions
 - **Game logic belongs in `shared`** as plain functions where possible
@@ -75,7 +97,12 @@ extra beyond the Rust toolchain.
 - **Logic/visual split:** logic components never reference meshes,
   materials, or effects. The client attaches visuals by observing new
   entities. Data refers to visuals by string key.
-- **Server-authoritative:** the client sends inputs/requests only.
+- **Server-authoritative:** the client sends inputs/requests only, through `Link`.
+- Visible things are built from `VisualKey` strings in the client; logic never
+  references meshes.
+- Clippy `type_complexity` and `too_many_arguments` are allowed workspace-wide
+  (normal for Bevy systems).
+- Dependencies build without debug info (`Cargo.toml` profile) to save disk space.
 - Data files are validated at load; errors must name the file and field.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
 - Database access goes through one module in `server/` and runs off the
