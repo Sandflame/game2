@@ -38,11 +38,13 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraShake>()
+            .init_resource::<CameraDrag>()
             .add_systems(Startup, spawn_camera)
             .add_systems(
                 RunFixedMainLoop,
                 (
-                    (orbit_camera, grab_cursor_while_dragging)
+                    (track_drag, orbit_camera, grab_cursor_while_dragging)
+                        .chain()
                         .before(send_movement)
                         .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
                     follow_player
@@ -103,18 +105,42 @@ fn spawn_camera(mut commands: Commands) {
     ));
 }
 
-fn orbit_camera(
+/// Whether the mouse is dragging the camera. Only a press that starts in
+/// the game world (not on a menu, slider or button) turns the camera, so
+/// the pointer stays free for the interface.
+#[derive(Resource, Default)]
+pub struct CameraDrag {
+    pub active: bool,
+}
+
+fn track_drag(
     mouse: Res<ButtonInput<MouseButton>>,
+    menu: Res<OptionsMenu>,
+    ui: Query<&Interaction>,
+    mut drag: ResMut<CameraDrag>,
+) {
+    let held = mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Right);
+    if !held {
+        drag.active = false;
+    } else if mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right) {
+        let over_ui = ui.iter().any(|i| *i != Interaction::None);
+        // A second button pressed during a drag keeps it going.
+        drag.active = drag.active || (!menu.open && !over_ui);
+    }
+}
+
+fn orbit_camera(
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
     menu: Res<OptionsMenu>,
+    drag: Res<CameraDrag>,
     mut camera: Single<&mut FollowCamera>,
 ) {
     // The mouse works the options menu while it is open.
     if menu.open {
         return;
     }
-    if mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Right) {
+    if drag.active {
         camera.yaw -= motion.delta.x * MOUSE_SENSITIVITY;
         camera.pitch =
             (camera.pitch + motion.delta.y * MOUSE_SENSITIVITY).clamp(MIN_PITCH, MAX_PITCH);
@@ -130,11 +156,8 @@ fn orbit_camera(
 }
 
 /// Hide and hold the mouse pointer while dragging the camera.
-fn grab_cursor_while_dragging(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut cursor: Single<&mut CursorOptions>,
-) {
-    let dragging = mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Right);
+fn grab_cursor_while_dragging(drag: Res<CameraDrag>, mut cursor: Single<&mut CursorOptions>) {
+    let dragging = drag.active;
     let grab = if dragging {
         CursorGrabMode::Locked
     } else {
