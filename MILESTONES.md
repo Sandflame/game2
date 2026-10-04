@@ -18,11 +18,11 @@ I changed your list in three ways (marked **Changed**):
 
 ---
 
-## M0 — Plan *(this step)*
+## M0 — Plan ✅
 - `DESIGN.md`, `MILESTONES.md`, `CLAUDE.md`.
 - **Done when:** you have reviewed and approved the plan.
 
-## M1 — Workspace and a 3D scene
+## M1 — Workspace and a 3D scene ✅
 - Cargo workspace with `shared`, `server` (prints "hello" and exits for
   now), `client`.
 - Client: window, ground plane, a few placeholder props, a capsule

@@ -3,7 +3,8 @@
 Guide for working in this repository (for Claude and for humans).
 
 ## Project status
-- Current milestone: **M0 — planning** (no code yet). See `MILESTONES.md`.
+- Done: **M0** (plan), **M1** (workspace, 3D scene, toon shading, local movement).
+- Next: **M2** (server + networking). See `MILESTONES.md`.
 - Full design: `DESIGN.md`.
 
 ## What this is
@@ -36,8 +37,34 @@ cargo test                                    # all tests
 cargo run -p client                           # run the game client
 cargo run -p server                           # run the headless server
 cargo test -p shared                          # just the game-rule tests
+cargo fmt                                     # format code
+
+# Render a screenshot without a screen (Linux, software rendering):
+LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target/debug/client
 ```
-(Server/client command-line options are documented here as they are added.)
+
+### Environment variables
+- `LANTERNFLAME_ASSETS=<dir>` — use this `assets` folder instead of searching
+  (search order: next to the program, current folder, project folder).
+- `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after
+  ~120 frames and quits (`client/src/devtools.rs`).
+
+### Linux build dependencies
+`libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev` (and for headless
+screenshots: `xvfb mesa-vulkan-drivers libxkbcommon-x11-0`). Windows needs nothing
+extra beyond the Rust toolchain.
+
+## Code map
+- `shared/src/data.rs` — RON loading, `Validate` trait, `find_assets_dir()`.
+- `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
+- `shared/src/level.rs` — `Level` geometry: ground, boxes, cylinders; collision.
+- `shared/src/movement.rs` — `step()`: the one movement function used everywhere.
+- `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
+  material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
+- `client/src/world.rs` — builds visuals for a `Level` (visual keys → placeholder meshes).
+- `client/src/player.rs` — input → fixed-tick `step()` → interpolated `Transform`.
+- `client/src/camera.rs` — FFXIV-style follow camera.
+- `server/src/main.rs` — M1 placeholder: validates data and exits.
 
 ## Conventions
 - **Game logic belongs in `shared`** as plain functions where possible

@@ -1,0 +1,36 @@
+// Milestone 1 test meadow. Obstacles are solid: characters can't walk
+// through them but can stand on top. `position` is the centre of the
+// object's bottom face. `visual` picks the placeholder look (client only).
+(
+    name: "Sandbox Meadow",
+    half_size: 60.0,
+    spawn_point: (0.0, 0.0, 8.0),
+    obstacles: [
+        // Low stone steps up to a platform.
+        (shape: Box(half_x: 2.0, half_z: 1.0, height: 0.3), position: (8.0, 0.0, 2.0), visual: "stone"),
+        (shape: Box(half_x: 2.0, half_z: 1.0, height: 0.6), position: (8.0, 0.0, 0.0), visual: "stone"),
+        (shape: Box(half_x: 2.0, half_z: 1.0, height: 0.9), position: (8.0, 0.0, -2.0), visual: "stone"),
+        (shape: Box(half_x: 3.0, half_z: 3.0, height: 1.2), position: (8.0, 0.0, -6.0), visual: "stone"),
+
+        // Crates to jump on.
+        (shape: Box(half_x: 0.6, half_z: 0.6, height: 1.0), position: (-5.0, 0.0, 0.0), visual: "crate"),
+        (shape: Box(half_x: 0.6, half_z: 0.6, height: 1.0), position: (-6.4, 0.0, -0.6), visual: "crate"),
+        (shape: Box(half_x: 0.5, half_z: 0.5, height: 1.0), position: (-5.6, 1.0, -0.3), visual: "crate"),
+
+        // A ruined wall.
+        (shape: Box(half_x: 6.0, half_z: 0.4, height: 2.5), position: (-2.0, 0.0, -14.0), visual: "wall"),
+
+        // Glowing magitech pillars.
+        (shape: Cylinder(radius: 0.6, height: 4.0), position: (-12.0, 0.0, -6.0), visual: "pillar"),
+        (shape: Cylinder(radius: 0.6, height: 4.0), position: (-12.0, 0.0, 6.0), visual: "pillar"),
+
+        // Trees (the collision is just the trunk).
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (14.0, 0.0, 12.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (-16.0, 0.0, 16.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (20.0, 0.0, -10.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (-22.0, 0.0, -18.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (2.0, 0.0, 22.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (26.0, 0.0, 20.0), visual: "tree"),
+        (shape: Cylinder(radius: 0.5, height: 3.0), position: (-28.0, 0.0, 4.0), visual: "tree"),
+    ],
+)

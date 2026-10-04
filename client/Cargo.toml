@@ -1,0 +1,11 @@
+[package]
+name = "client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+shared.workspace = true
+bevy = { workspace = true, features = ["3d", "ui", "audio", "tonemapping_luts"] }
+anyhow.workspace = true

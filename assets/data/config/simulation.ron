@@ -1,0 +1,5 @@
+// Fixed-rate game simulation settings.
+(
+    // How many times per second the game rules run (movement, combat).
+    tick_hz: 60.0,
+)

@@ -1,0 +1,12 @@
+[package]
+name = "shared"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "bevy_log", "serialize"] }
+serde.workspace = true
+ron.workspace = true
+thiserror.workspace = true
