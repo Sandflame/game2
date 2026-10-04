@@ -16,7 +16,9 @@ Guide for working in this repository (for Claude and for humans).
   chase, assist, leash and respawn at home). **M8** (the Tangled Burrow
   dungeon: 3 bosses, walls, about 3 minutes; instanced zones; the dungeon
   board; the way out after a boss falls; bosses topple when defeated).
-- Next: **M9** (quests and skippable dialogue). See `MILESTONES.md`.
+  **M9** (quests + skippable dialogue as data, starter chain hub → root →
+  forest → dungeon, quest tracker and log; minimap + big map with N/E/S/W).
+- Next: **M10** (remaining specializations). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -79,7 +81,11 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   `LANTERNFLAME_DEMO=world` — hub, talk to a townsperson, root slide,
   Whisperwood, a thornwolf pack, the burrow's mouth.
   `LANTERNFLAME_DEMO=dungeon` — the dungeon board, then a quick (cheating)
-  tour of the Tangled Burrow and back. Each demo starts in its own zone
+  tour of the Tangled Burrow and back.
+  `LANTERNFLAME_DEMO=quests` — take Ilsa's quest, the map, Fen, the quest log.
+  Leave ~1.5 s after a `Shot` before changing what's on screen: software
+  rendering is slow and the shot is taken at the end of the frame.
+  Each demo starts in its own zone
   (`devtools::demo_start_zone`); demos may cheat (teleport, defeat). Saves
   `<file>-1.png`, `<file>-2.png`, …
 
@@ -124,6 +130,10 @@ extra beyond the Rust toolchain.
   secondary (borrowed), -/= shared lantern abilities (`HOTBAR_SLOTS = 12`).
 - `shared/src/telegraphs.rs` — ground marker shapes, placements, `covers()` hit tests,
   the `Telegraph` component.
+- `shared/src/quests.rs` — `QuestDef` (`quests/*.ron`: giver, offer dialogue,
+  `after`, steps with `Goal` Talk/Defeat/Reach/Win, xp, items), `DialogueDef`
+  (`dialogue/*.ron`: lines of `who`/`says`), `QuestLog` component (`talk`,
+  `record(Deed)`, `offers`, `marker` `!`/`?`, `tidy`), `step_text`.
 - `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage, xp, loot,
   `exit_portal`) and `Progress`.
 - `shared/src/progression.rs` — `ProgressionDef` (`progression.ron`: XP curve, per-level
@@ -150,6 +160,9 @@ extra beyond the Rust toolchain.
 - `server/src/instances.rs` — `fill_zone` (enemies, boss fights, people), filling
   ordinary zones at startup, `Instances` (a fresh `zone#n` copy per group,
   removed when empty; defeated enemies stay down).
+- `server/src/quests.rs` — `PendingDeeds` (kills, arrivals, boss wins) →
+  `record_deeds`; `talked` (called from `travel::talk`: quest step or offer,
+  else the person's idle lines); quest rewards go through `PendingRewards`.
 - `server/src/classes.rs` — flame changes (class switching).
 - `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
   gear + secondary requests, `refresh_stats` (stats + hotbar from class/level/gear/
@@ -175,7 +188,10 @@ extra beyond the Rust toolchain.
   character panel (C: levels, stats, secondary, party bonuses, worn gear, bag) + XP
   bar, secondary flame picker (`secondary.rs`, inside the lantern panel), speech box +
   zone fade (`speech.rs`), `[E]` prompt for portals, exit portals and people
-  (`banner.rs`), dungeon board list (`board.rs`).
+  (`banner.rs`), dungeon board list (`board.rs`), conversations (`dialogue.rs`:
+  E/click next, Esc skip), quest tracker + quest log J + `!`/`?` markers
+  (`journal.rs`), minimap + big map M with compass, quest-gold doorways and
+  people (`map.rs`). Mute is Ctrl+M.
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change (sky/fog
@@ -245,6 +261,11 @@ extra beyond the Rust toolchain.
 - New characters start in `hub` (Lanternhold); "party" (synergy) is still
   everyone in the same zone until M11.
 - Say **dungeon** and **trial**, never "duty" (user request, 2026-10-04).
+- Quests and dialogue are data. People have a unique `id` in zone data;
+  quests name people, enemies, zones and boss fights by id (checked at load).
+  Talking always records progress on the server; the client only shows the
+  lines, so skipping never loses anything. Quest progress is saved
+  (migration 3).
 - Dungeons and trials are `instanced` zones with an `exit`, a `back` portal at
   the entrance and an `exit_portal` on the last boss, so you always return to
   where you came in. Each must be enterable by walking to it in the world as

@@ -1,0 +1,16 @@
+// The end of the starter chain: clear the Tangled Burrow, then tell Ilsa.
+(
+    name: "Rot Beneath the Roots",
+    summary: "Something in the Tangled Burrow, east of the old tree, is poisoning the forest. Find it, destroy it, and bring the news home to Lanternhold.",
+    giver: "oak",
+    offer: "oak_burrow",
+    after: ["thinning_the_pack"],
+    steps: [
+        (goal: Reach("tangled_burrow"), text: "Enter the Tangled Burrow (east of the old tree)"),
+        (goal: Win("rotheart"), text: "Defeat the Rotheart"),
+        (goal: Talk("oak"), text: "Tell Ranger Oak the rot is gone", dialogue: Some("oak_burrow_done")),
+        (goal: Talk("ilsa"), text: "Return to Lamplighter Ilsa in Lanternhold", dialogue: Some("ilsa_home")),
+    ],
+    xp: 1500,
+    items: [(item: "rotheart_ring", chance: 100)],
+)

@@ -193,6 +193,8 @@ pub const INSTANCE_MARK: char = '#';
 /// Someone to talk to (press E nearby).
 #[derive(Debug, Clone, Deserialize)]
 pub struct NpcDef {
+    /// Unique in the whole game; quests name people by it.
+    pub id: String,
     pub name: String,
     /// Look (client only).
     pub visual: String,

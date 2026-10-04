@@ -18,6 +18,7 @@ pub mod level;
 pub mod movement;
 pub mod progression;
 pub mod protocol;
+pub mod quests;
 pub mod rides;
 pub mod statuses;
 pub mod synergy;

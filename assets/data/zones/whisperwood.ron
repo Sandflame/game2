@@ -190,7 +190,7 @@
          visual: "burrow_entrance", label: "Enter the Tangled Burrow (dungeon, level 8)"),
     ],
     npcs: [
-        (name: "Ranger Oak", visual: "townsfolk_ranger", position: (-5.0, 0.0, 52.0), yaw: 0.9,
+        (id: "oak", name: "Ranger Oak", visual: "townsfolk_ranger", position: (-5.0, 0.0, 52.0), yaw: 0.9,
          lines: [
             "Welcome to Whisperwood. Mind the thornwolves - they hunt in packs.",
             "Bramble sprouts to the west, spore caps to the south. Good practice.",

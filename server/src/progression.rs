@@ -24,8 +24,11 @@ use shared::threat::ThreatTable;
 
 use crate::CombatRng;
 use crate::characters::{CombatClock, Defeated};
-use crate::database::{CharacterSave, Database, SavedItem};
+use crate::database::{CharacterSave, Database, SavedItem, SavedQuest};
 use crate::enemies::EnemyKind;
+use crate::quests::PendingDeeds;
+use shared::quests::Deed;
+use shared::quests::{Active, QuestLog};
 
 /// Experience (and maybe loot) waiting to be handed out.
 #[derive(Debug, Clone)]
@@ -126,6 +129,26 @@ pub fn restore(
     (levels, bag, worn, secondaries)
 }
 
+/// A saved character's quests (ones no longer in the data are dropped).
+pub fn restore_quests(save: &CharacterSave, data: &GameData) -> QuestLog {
+    let mut log = QuestLog::default();
+    for saved in &save.quests {
+        if saved.done {
+            log.done.insert(saved.quest.clone());
+        } else {
+            log.active.insert(
+                saved.quest.clone(),
+                Active {
+                    step: saved.step as usize,
+                    count: saved.count,
+                },
+            );
+        }
+    }
+    log.tidy(&data.quests);
+    log
+}
+
 /// What gets written to the save file for one character.
 pub fn to_save(
     name: &str,
@@ -133,6 +156,7 @@ pub fn to_save(
     zone: &Zone,
     motion: &Motion,
     build: &Build,
+    quests: &QuestLog,
 ) -> CharacterSave {
     let Build {
         levels,
@@ -183,6 +207,22 @@ pub fn to_save(
             list.sort_by(|a, b| a.0.cmp(&b.0));
             list
         },
+        quests: quests
+            .active
+            .iter()
+            .map(|(quest, active)| SavedQuest {
+                quest: quest.clone(),
+                step: active.step as u32,
+                count: active.count,
+                done: false,
+            })
+            .chain(quests.done.iter().map(|quest| SavedQuest {
+                quest: quest.clone(),
+                step: 0,
+                count: 0,
+                done: true,
+            }))
+            .collect(),
     }
 }
 
@@ -276,14 +316,11 @@ pub fn player_stats(
 pub fn kill_rewards(
     data: Res<GameData>,
     mut rewards: ResMut<PendingRewards>,
+    mut deeds: ResMut<PendingDeeds>,
     fallen: Query<(&EnemyKind, &ThreatTable, &Zone), Added<Defeated>>,
     players: Query<&Zone, With<PlayerId>>,
 ) {
     for (kind, threat, zone) in &fallen {
-        let xp = data.enemies.get(&kind.0).map_or(0, |e| e.xp);
-        if xp == 0 {
-            continue;
-        }
         let mut fought: Vec<Entity> = threat
             .0
             .keys()
@@ -291,7 +328,12 @@ pub fn kill_rewards(
             .filter(|e| players.get(*e).is_ok_and(|z| z == zone))
             .collect();
         fought.sort();
-        if !fought.is_empty() {
+        // It counts for everyone's quests, experience or not.
+        for player in &fought {
+            deeds.0.push((*player, Deed::Defeated(kind.0.clone())));
+        }
+        let xp = data.enemies.get(&kind.0).map_or(0, |e| e.xp);
+        if xp > 0 && !fought.is_empty() {
             rewards.0.push(Reward {
                 players: fought,
                 xp,
@@ -570,6 +612,7 @@ pub fn save_players(
                 Changed<Bag>,
                 Changed<Equipment>,
                 Changed<Secondaries>,
+                Changed<QuestLog>,
             )>,
         ),
     >,
@@ -584,6 +627,7 @@ pub fn save_players(
             &Bag,
             &Equipment,
             &Secondaries,
+            &QuestLog,
         ),
         With<PlayerId>,
     >,
@@ -597,7 +641,7 @@ pub fn save_players(
         last.0 = now;
     }
     let changed: HashSet<Entity> = changed.iter().collect();
-    for (entity, name, class, zone, motion, levels, bag, worn, secondaries) in &players {
+    for (entity, name, class, zone, motion, levels, bag, worn, secondaries, quests) in &players {
         if everyone || changed.contains(&entity) {
             let build = Build {
                 levels,
@@ -605,7 +649,7 @@ pub fn save_players(
                 worn,
                 secondaries,
             };
-            database.save(to_save(&name.0, class, zone, motion, &build));
+            database.save(to_save(&name.0, class, zone, motion, &build, quests));
         }
     }
 }
@@ -624,6 +668,7 @@ pub fn save_on_exit(
             &Bag,
             &Equipment,
             &Secondaries,
+            &QuestLog,
         ),
         With<PlayerId>,
     >,
@@ -634,14 +679,14 @@ pub fn save_on_exit(
     let Some(database) = database else {
         return;
     };
-    for (name, class, zone, motion, levels, bag, worn, secondaries) in &players {
+    for (name, class, zone, motion, levels, bag, worn, secondaries, quests) in &players {
         let build = Build {
             levels,
             bag,
             worn,
             secondaries,
         };
-        database.save(to_save(&name.0, class, zone, motion, &build));
+        database.save(to_save(&name.0, class, zone, motion, &build, quests));
     }
     database.flush();
 }
@@ -703,7 +748,14 @@ mod tests {
             &Zone("sandbox".into()),
             &Motion(MoveState::spawn_at(Vec3::new(3.0, 0.0, 4.0))),
             &build,
+            &QuestLog {
+                active: [("down_the_root".to_owned(), Active { step: 1, count: 0 })].into(),
+                done: ["lamplighters_errand".to_owned()].into(),
+            },
         );
+        let quests_back = restore_quests(&save, &data);
+        assert_eq!(quests_back.active["down_the_root"].step, 1);
+        assert!(quests_back.done.contains("lamplighters_errand"));
         let (levels_back, bag_back, worn_back, secondaries_back) = restore(&save, &data);
         assert_eq!(secondaries_back, secondaries);
         assert_eq!(levels_back, levels);
@@ -731,6 +783,7 @@ mod tests {
             yaw: 0.0,
             levels: vec![("no_such_class".into(), ClassProgress::default())],
             secondaries: Vec::new(),
+            quests: Vec::new(),
             items: vec![
                 SavedItem {
                     item: "no_such_item".into(),

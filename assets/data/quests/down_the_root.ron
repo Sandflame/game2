@@ -1,0 +1,13 @@
+// Fen sends you down the root to Whisperwood.
+(
+    name: "Down the Root",
+    summary: "Root Keeper Fen says Ranger Oak needs help in Whisperwood. Slide down the giant root and find the ranger's camp.",
+    giver: "fen",
+    offer: "fen_slide",
+    after: ["lamplighters_errand"],
+    steps: [
+        (goal: Reach("whisperwood"), text: "Slide down the giant root to Whisperwood"),
+        (goal: Talk("oak"), text: "Talk to Ranger Oak near the old tree", dialogue: Some("oak_meet")),
+    ],
+    xp: 400,
+)

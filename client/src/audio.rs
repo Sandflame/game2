@@ -1,6 +1,6 @@
 //! Sound effects. `assets/data/client/sounds.ron` names every sound file
 //! and says which sound plays for which game event; spell looks in
-//! `vfx.ron` can name a sound too. Press M to mute.
+//! `vfx.ron` can name a sound too. Press Ctrl+M to mute.
 
 use std::collections::HashMap;
 
@@ -87,7 +87,7 @@ impl SoundLibrary {
 #[derive(Resource, Default)]
 struct SoundHandles(HashMap<String, Handle<AudioSource>>);
 
-/// Player's choice: all sound off (M).
+/// Player's choice: all sound off (Ctrl+M).
 #[derive(Resource, Default)]
 pub struct Muted(pub bool);
 
@@ -169,8 +169,10 @@ fn load_sounds(
     }
 }
 
+/// Ctrl+M mutes (M alone opens the map).
 fn toggle_mute(keys: Res<ButtonInput<KeyCode>>, mut muted: ResMut<Muted>) {
-    if keys.just_pressed(KeyCode::KeyM) {
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    if ctrl && keys.just_pressed(KeyCode::KeyM) {
         muted.0 = !muted.0;
     }
 }

@@ -1,0 +1,13 @@
+// Ranger Oak's first job: thornwolves are getting too bold.
+(
+    name: "Thinning the Pack",
+    summary: "The thornwolves near Ranger Oak's camp are getting bold. Defeat three of them, then report back.",
+    giver: "oak",
+    offer: "oak_wolves",
+    after: ["down_the_root"],
+    steps: [
+        (goal: Defeat(enemy: "thornwolf", count: 3), text: "Defeat thornwolves"),
+        (goal: Talk("oak"), text: "Report back to Ranger Oak", dialogue: Some("oak_wolves_done")),
+    ],
+    xp: 600,
+)

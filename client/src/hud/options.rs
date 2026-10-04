@@ -7,7 +7,10 @@ use bevy::ui::RelativeCursorPosition;
 
 use super::board::DungeonBoard;
 use super::character::CharacterPanel;
+use super::dialogue::Conversation;
+use super::journal::QuestJournal;
 use super::lantern::LanternPanel;
+use super::map::WorldMap;
 use super::{font, palette};
 use crate::audio::{Muted, SoundVolume};
 use crate::characters::LanternSettings;
@@ -26,7 +29,10 @@ impl Plugin for OptionsPlugin {
                         .before(crate::targeting::TargetingInput)
                         .before(super::lantern::toggle_panel)
                         .before(super::character::toggle_panel)
-                        .before(super::board::close_board),
+                        .before(super::board::close_board)
+                        .before(super::dialogue::advance_dialogue)
+                        .before(super::map::toggle_map)
+                        .before(super::journal::toggle_journal),
                     (drag_volume, press_buttons, update_menu).chain(),
                 ),
             );
@@ -236,6 +242,9 @@ fn toggle_menu(
     lantern: Res<LanternPanel>,
     character: Res<CharacterPanel>,
     board: Res<DungeonBoard>,
+    conversation: Res<Conversation>,
+    map: Res<WorldMap>,
+    journal: Res<QuestJournal>,
     mut menu: ResMut<OptionsMenu>,
 ) {
     if keys.just_pressed(KeyCode::KeyO) {
@@ -244,7 +253,14 @@ fn toggle_menu(
     if keys.just_pressed(KeyCode::Escape) {
         if menu.open {
             menu.open = false;
-        } else if target.0.is_none() && !lantern.open && !character.open && !board.open {
+        } else if target.0.is_none()
+            && !lantern.open
+            && !character.open
+            && !board.open
+            && !conversation.open()
+            && !map.open
+            && !journal.open
+        {
             menu.open = true;
         }
     }
@@ -322,7 +338,10 @@ fn update_menu(
     fill.width = percent(volume.0);
     let texts = [
         format!("Sound volume: {}", volume.0),
-        format!("Mute all sound (M): {}", if muted.0 { "On" } else { "Off" }),
+        format!(
+            "Mute all sound (Ctrl+M): {}",
+            if muted.0 { "On" } else { "Off" }
+        ),
         format!(
             "Show lantern at all times: {}",
             if lantern.always_show { "On" } else { "Off" }

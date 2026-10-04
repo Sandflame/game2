@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
 use shared::combat::ActionState;
-use shared::components::{CharacterName, Motion, PlayerId, Zone};
+use shared::components::{Motion, PlayerId, Zone};
 use shared::gamedata::GameData;
 use shared::gamedata::Zones;
 use shared::protocol::{ClientRequest, Link};
@@ -16,11 +16,13 @@ use crate::classes;
 use crate::database::Database;
 use crate::effects::PendingEffects;
 use crate::instances::Instances;
+use crate::progression::PendingRewards;
 use crate::progression::{GearRequest, PendingGear};
-use crate::travel::{CameFrom, Npc, Riding, Travel, busy_riding, enter_from_board};
+use crate::travel::{CameFrom, People, Riding, Travel, busy_riding, enter_from_board};
 use shared::combat::Reject;
 use shared::components::ExitPortal;
 use shared::protocol::ServerEvent;
+use shared::quests::QuestLog;
 
 pub fn receive_requests(
     mut commands: Commands,
@@ -187,6 +189,7 @@ pub fn handle_interactions(
     mut instances: ResMut<Instances>,
     mut link: ResMut<Link>,
     mut pending: ResMut<PendingInteractions>,
+    mut rewards: ResMut<PendingRewards>,
     mut players: Query<
         (
             &Zone,
@@ -194,11 +197,12 @@ pub fn handle_interactions(
             &CombatClock,
             Has<Defeated>,
             Option<&CameFrom>,
+            Option<&mut QuestLog>,
         ),
         With<PlayerId>,
     >,
     exits: Query<(&ExitPortal, &Zone)>,
-    mut npcs: Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
+    mut npcs: People,
 ) {
     let now = time.elapsed_secs_f64();
     for (player, entity, board_choice) in pending.0.drain(..) {
@@ -212,7 +216,8 @@ pub fn handle_interactions(
             occupied: &occupied,
             now,
         };
-        let Ok((zone, mut motion, clock, defeated, came_from)) = players.get_mut(entity) else {
+        let Ok((zone, mut motion, clock, defeated, came_from, log)) = players.get_mut(entity)
+        else {
             continue;
         };
         match board_choice {
@@ -221,6 +226,7 @@ pub fn handle_interactions(
                 player,
                 entity,
                 (zone, &mut motion, clock, defeated, came_from),
+                (&mut rewards, log.map(|l| l.into_inner())),
                 &exits,
                 &mut npcs,
             ),

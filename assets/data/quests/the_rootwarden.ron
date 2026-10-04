@@ -1,0 +1,13 @@
+// An optional quest: the Rootwarden's trial.
+(
+    name: "The Rootwarden",
+    summary: "Ranger Oak thinks you're ready to face the Rootwarden, the ancient spirit sleeping in a hollow in the far south-west of Whisperwood.",
+    giver: "oak",
+    offer: "oak_rootwarden",
+    after: ["thinning_the_pack"],
+    steps: [
+        (goal: Win("rootwarden"), text: "Defeat the Rootwarden in its Hollow (south-west)"),
+        (goal: Talk("oak"), text: "Tell Ranger Oak what happened", dialogue: Some("oak_rootwarden_done")),
+    ],
+    xp: 1000,
+)

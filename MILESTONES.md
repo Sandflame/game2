@@ -133,9 +133,20 @@ Earlier changes to your original list:
   ground (no longer hiding the body); the giant root no longer has a root
   across the slide entrance.
 
-## M9 — Quests and skippable dialogue
-- Quest and dialogue data files; quest log and tracker UI.
-- Starter story chain: hub → root → forest → dungeon.
+## M9 — Quests and skippable dialogue ✅
+- Quests (`quests/*.ron`) and dialogue (`dialogue/*.ron`) as data. Steps:
+  talk to someone, defeat enemies, reach a zone, win a boss fight. People
+  offer quests when you talk to them (gold `!` overhead; `?` when a quest
+  wants you to talk to them).
+- Conversations line by line: E or click for the next line, Esc skips (the
+  quest still records).
+- Quest tracker under the minimap; quest log (J). Progress is saved.
+- Starter chain: Lamplighter Ilsa → Root Keeper Fen → slide down → Ranger Oak
+  → thin the thornwolves → clear the Tangled Burrow → back to Ilsa (a ring).
+  Optional: the Rootwarden.
+- Also (user request): a minimap (top right) and a big map (M), both with
+  N/E/S/W, people, enemies, doorways, and quest destinations in gold. Mute
+  moved to Ctrl+M. Fixed: townsfolk nameplates never showed.
 
 ## M10 — Remaining specializations
 - The other 10 specs, added as data (plus any new effect types).

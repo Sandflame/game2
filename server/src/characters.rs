@@ -21,10 +21,14 @@ use crate::classes::FlameChange;
 use crate::database::CharacterSave;
 use crate::encounters::WIPE_PAUSE;
 use crate::instances::Instances;
-use crate::progression::{Build, player_hotbar, player_stats, restore, starting_gear};
-use crate::travel::{CameFrom, Npc, Riding, Travel, talk, use_portal};
+use crate::progression::PendingRewards;
+use crate::progression::{
+    Build, player_hotbar, player_stats, restore, restore_quests, starting_gear,
+};
+use crate::travel::{CameFrom, People, Riding, Travel, talk, use_portal};
 use shared::components::ExitPortal;
 use shared::level::Portal;
+use shared::quests::QuestLog;
 
 /// Finds a player's character from their id.
 #[derive(Resource, Default, Debug)]
@@ -133,6 +137,7 @@ pub fn spawn_player(
             (ClassLevels::default(), bag, worn, Secondaries::default())
         }
     };
+    let quests = save.map_or_else(QuestLog::default, |s| restore_quests(s, data));
     let build = Build {
         levels: &levels,
         bag: &bag,
@@ -168,7 +173,7 @@ pub fn spawn_player(
                 Hotbar(hotbar),
                 current,
             ),
-            (levels, bag, worn, secondaries),
+            (levels, bag, worn, secondaries, quests),
         ))
         .id();
     index.0.insert(player, entity);
@@ -285,8 +290,9 @@ pub fn interact(
     player: PlayerId,
     entity: Entity,
     state: (&Zone, &mut Motion, &CombatClock, bool, Option<&CameFrom>),
+    quest: (&mut PendingRewards, Option<&mut QuestLog>),
     exits: &Query<(&ExitPortal, &Zone)>,
-    npcs: &mut Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
+    npcs: &mut People,
 ) {
     let (zone, motion, clock, defeated, came_from) = state;
     let reject = |link: &mut Link, reason| {
@@ -317,7 +323,15 @@ pub fn interact(
             board: false,
         });
     let Some(portal) = fixed.or(appeared) else {
-        if !talk(travel.link, travel.data, player, zone, here, npcs) {
+        if !talk(
+            travel.link,
+            travel.data,
+            quest,
+            (player, entity),
+            zone,
+            here,
+            npcs,
+        ) {
             reject(travel.link, Reject::NothingHere);
         }
         return;

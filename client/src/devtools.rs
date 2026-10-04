@@ -26,7 +26,10 @@ use shared::protocol::{ClientRequest, Link};
 use crate::camera::FollowCamera;
 use crate::characters::{LocalPlayer, ScriptedMove};
 use crate::hud::character::CharacterPanel;
+use crate::hud::dialogue::Conversation;
+use crate::hud::journal::QuestJournal;
 use crate::hud::lantern::LanternPanel;
+use crate::hud::map::WorldMap;
 use crate::hud::options::OptionsMenu;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
@@ -42,7 +45,7 @@ pub fn demo_start_zone() -> Option<&'static str> {
     }
     match std::env::var(DEMO_ENV).as_deref() {
         Ok("classes" | "progress") => Some("sandbox"),
-        Ok("world" | "dungeon") | Err(_) => None,
+        Ok("world" | "dungeon" | "quests") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
 }
@@ -85,7 +88,38 @@ enum Step {
     Defeat(&'static str),
     /// Pick a place on the dungeon board.
     Board(&'static str),
+    /// Open or close the big map / the quest log.
+    Map(bool),
+    Journal(bool),
+    /// Skip the conversation on screen.
+    SkipDialogue,
 }
+
+/// Starts in Lanternhold: take Ilsa's quest, look at the map and the quest
+/// log, finish it with Fen and take the next one.
+const QUEST_DEMO: &[(f32, Step)] = &[
+    (0.6, Step::Teleport(5.0, 15.0, 0.0)),
+    (0.7, Step::Camera(0.3, 9.0)),
+    (2.0, Step::Shot), // Ilsa's gold "!", the minimap
+    (3.5, Step::Teleport(4.0, 11.0, 0.0)),
+    (3.6, Step::Interact),
+    (6.0, Step::Shot), // her dialogue
+    (7.5, Step::SkipDialogue),
+    (8.0, Step::Map(true)),
+    (10.0, Step::Shot), // the big map: Fen in gold, the tracker
+    (11.5, Step::Map(false)),
+    (11.6, Step::Teleport(-4.0, -24.0, 0.0)),
+    (11.8, Step::Interact),
+    (14.0, Step::SkipDialogue),
+    (14.5, Step::Interact), // Fen offers the next quest
+    (17.0, Step::Shot),     // quest complete, Fen's dialogue
+    (18.5, Step::SkipDialogue),
+    (18.6, Step::Journal(true)),
+    (20.5, Step::Shot), // the quest log
+    (22.0, Step::Journal(false)),
+    (22.1, Step::Map(true)),
+    (24.0, Step::Shot), // the slide's doorway in gold
+];
 
 /// Starts in the trial (see `demo_start_zone`).
 const TRIAL_DEMO: &[(f32, Step)] = &[
@@ -180,6 +214,8 @@ const WORLD_DEMO: &[(f32, Step)] = &[
     (26.5, Step::Teleport(54.0, -18.0, -FRAC_PI_2)),
     (26.6, Step::Camera(0.3, 10.0)),
     (28.0, Step::Shot), // the mouth of the Tangled Burrow
+    (28.1, Step::Map(true)),
+    (28.8, Step::Shot), // the map of Whisperwood
 ];
 
 /// The character panel, then a fight with a bramble sprout in the meadow.
@@ -229,6 +265,7 @@ impl Plugin for DevToolsPlugin {
             Ok("progress") => PROGRESS_DEMO.to_vec(),
             Ok("world") => WORLD_DEMO.to_vec(),
             Ok("dungeon") => DUNGEON_DEMO.to_vec(),
+            Ok("quests") => QUEST_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -281,14 +318,17 @@ fn run_script(
     mut link: ResMut<Link>,
     me: Res<LocalPlayerId>,
     mut target: ResMut<CurrentTarget>,
-    mut lantern: ResMut<LanternPanel>,
-    mut options: ResMut<OptionsMenu>,
-    mut character: ResMut<CharacterPanel>,
+    mut menus: (
+        ResMut<LanternPanel>,
+        ResMut<OptionsMenu>,
+        ResMut<CharacterPanel>,
+    ),
     mut player: Option<Single<(&mut Motion, &Zone), With<LocalPlayer>>>,
     enemies: Query<(Entity, &Motion, &EnemyKind, &Zone), Without<LocalPlayer>>,
     mut health: Query<&mut Health, With<EnemyKind>>,
     mut camera: Single<&mut FollowCamera>,
     mut scripted: ResMut<ScriptedMove>,
+    mut panels: (ResMut<WorldMap>, ResMut<QuestJournal>, ResMut<Conversation>),
     mut exit: MessageWriter<AppExit>,
 ) {
     let now = fixed.elapsed_secs();
@@ -300,9 +340,9 @@ fn run_script(
         .collect();
     for step in due {
         match step {
-            Step::OpenLantern => lantern.open = true,
-            Step::OpenOptions => options.open = true,
-            Step::OpenCharacter => character.set_open(true),
+            Step::OpenLantern => menus.0.open = true,
+            Step::OpenOptions => menus.1.open = true,
+            Step::OpenCharacter => menus.2.set_open(true),
             Step::Secondary(class, ability) => send(
                 &mut link,
                 *me,
@@ -313,8 +353,8 @@ fn run_script(
                     }),
                 },
             ),
-            Step::CloseCharacter => character.set_open(false),
-            Step::CloseLantern => lantern.open = false,
+            Step::CloseCharacter => menus.2.set_open(false),
+            Step::CloseLantern => menus.0.open = false,
             Step::ChangeClass(class) => send(
                 &mut link,
                 *me,
@@ -366,6 +406,9 @@ fn run_script(
                     }
                 }
             }
+            Step::Map(open) => panels.0.open = open,
+            Step::Journal(open) => panels.1.open = open,
+            Step::SkipDialogue => panels.2.skip(),
             Step::Board(zone) => send(
                 &mut link,
                 *me,

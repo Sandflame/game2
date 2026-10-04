@@ -19,6 +19,7 @@ mod encounters;
 mod enemies;
 pub mod instances;
 pub mod progression;
+mod quests;
 mod requests;
 pub mod travel;
 
@@ -76,6 +77,7 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<progression::PendingGear>()
             .init_resource::<progression::LastAutosave>()
             .init_resource::<Instances>()
+            .init_resource::<quests::PendingDeeds>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -122,7 +124,9 @@ impl Plugin for AuthorityPlugin {
                         .in_set(AuthoritySystems::Act),
                     (
                         classes::finish_flame_changes,
+                        quests::note_arrivals,
                         progression::kill_rewards,
+                        quests::record_deeds,
                         progression::grant_rewards,
                         progression::refresh_stats,
                         progression::apply_synergy,

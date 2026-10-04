@@ -52,6 +52,15 @@ pub const MIGRATIONS: &[&str] = &[
         second_ability TEXT,
         PRIMARY KEY (character_id, main_class)
     );",
+    // 3: quests being done (step, enemies counted) and finished.
+    "CREATE TABLE quests (
+        character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+        quest TEXT NOT NULL,
+        step INTEGER NOT NULL,
+        count INTEGER NOT NULL,
+        done INTEGER NOT NULL,
+        PRIMARY KEY (character_id, quest)
+    );",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -94,6 +103,16 @@ pub struct CharacterSave {
     pub items: Vec<SavedItem>,
     /// (main class, its secondary choice).
     pub secondaries: Vec<(String, SecondaryChoice)>,
+    pub quests: Vec<SavedQuest>,
+}
+
+/// A quest being done (its step and enemies counted) or finished.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedQuest {
+    pub quest: String,
+    pub step: u32,
+    pub count: u32,
+    pub done: bool,
 }
 
 /// An owned item and where it is worn: `None` in the bag, `"head"` etc. for
@@ -205,6 +224,14 @@ pub fn save_character(conn: &mut Connection, save: &CharacterSave) -> rusqlite::
         "DELETE FROM secondary_choices WHERE character_id = ?1",
         params![id],
     )?;
+    tx.execute("DELETE FROM quests WHERE character_id = ?1", params![id])?;
+    for quest in &save.quests {
+        tx.execute(
+            "INSERT INTO quests (character_id, quest, step, count, done)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, quest.quest, quest.step, quest.count, quest.done],
+        )?;
+    }
     for (main, choice) in &save.secondaries {
         tx.execute(
             "INSERT INTO secondary_choices
@@ -252,6 +279,7 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                         levels: Vec::new(),
                         items: Vec::new(),
                         secondaries: Vec::new(),
+                        quests: Vec::new(),
                     },
                 ))
             },
@@ -297,6 +325,19 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                     abilities: [row.get(2)?, row.get(3)?],
                 },
             ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut quests = conn.prepare(
+        "SELECT quest, step, count, done FROM quests WHERE character_id = ?1 ORDER BY quest",
+    )?;
+    save.quests = quests
+        .query_map(params![id], |row| {
+            Ok(SavedQuest {
+                quest: row.get(0)?,
+                step: row.get(1)?,
+                count: row.get(2)?,
+                done: row.get(3)?,
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(Some(save))
@@ -437,6 +478,20 @@ mod tests {
                     abilities: [Some("bm_battle_focus".into()), None],
                 },
             )],
+            quests: vec![
+                SavedQuest {
+                    quest: "down_the_root".into(),
+                    step: 1,
+                    count: 0,
+                    done: false,
+                },
+                SavedQuest {
+                    quest: "lamplighters_errand".into(),
+                    step: 1,
+                    count: 0,
+                    done: true,
+                },
+            ],
         }
     }
 

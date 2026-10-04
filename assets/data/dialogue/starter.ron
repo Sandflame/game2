@@ -1,0 +1,47 @@
+// Dialogue for the starter quests. Each entry is a list of lines:
+// (who: "<speaker>", says: "<text>"). Players click (or press E) through
+// them, or skip them all with Esc.
+{
+    "ilsa_errand": [
+        (who: "Lamplighter Ilsa", says: "A new face! Welcome to Lanternhold. That lantern of yours - it holds your flame. Change it with L and you change your whole way of fighting."),
+        (who: "Lamplighter Ilsa", says: "We could use a fresh pair of hands. Root Keeper Fen has been worried about the forest below for days."),
+        (who: "Lamplighter Ilsa", says: "You'll find Fen at the foot of the giant root, north of the fountain. Press M if you lose your way."),
+    ],
+    "fen_errand_done": [
+        (who: "Root Keeper Fen", says: "Ilsa sent you? Good. I've been listening to the root all week. It groans like something underneath is hurting it."),
+    ],
+    "fen_slide": [
+        (who: "Root Keeper Fen", says: "Ranger Oak keeps watch in Whisperwood, right where the root comes out at the bottom."),
+        (who: "Root Keeper Fen", says: "The quickest way down is the slide inside the root. Step into the doorway and hold on to your lantern!"),
+    ],
+    "oak_meet": [
+        (who: "Ranger Oak", says: "You came down the root? Fen must be worried. So am I."),
+        (who: "Ranger Oak", says: "The forest has gone sour. The wolves are restless, the mushrooms are rotting, and there's a smell coming out of the old burrow to the east."),
+    ],
+    "oak_wolves": [
+        (who: "Ranger Oak", says: "First things first: the thornwolves have started hunting near my camp. They come in packs - hit one and the others join in."),
+        (who: "Ranger Oak", says: "Thin them out. Three should teach the rest some manners."),
+    ],
+    "oak_wolves_done": [
+        (who: "Ranger Oak", says: "That'll keep them back for a while. You fight well for someone who arrived by slide."),
+    ],
+    "oak_burrow": [
+        (who: "Ranger Oak", says: "Now, the burrow. Whatever is rotting the roots lives down there. I've heard a big she-wolf, and worse."),
+        (who: "Ranger Oak", says: "The entrance is east of the old tree. Take friends if you can. If it goes badly, you'll wake up at the entrance - no shame in trying again."),
+    ],
+    "oak_burrow_done": [
+        (who: "Ranger Oak", says: "The air's already clearer. A heart of rot, you say? Then the forest will heal."),
+        (who: "Ranger Oak", says: "Go and tell Ilsa. Lanternhold will want to hear this."),
+    ],
+    "ilsa_home": [
+        (who: "Lamplighter Ilsa", says: "You're back - and Fen says the root has stopped groaning! The whole city owes you."),
+        (who: "Lamplighter Ilsa", says: "Here, take this ring. It was made from what you brought back up. Keep your flame burning bright."),
+    ],
+    "oak_rootwarden": [
+        (who: "Ranger Oak", says: "There's an ancient spirit asleep in a hollow to the south-west: the Rootwarden. It tests anyone who wakes it."),
+        (who: "Ranger Oak", says: "Watch the ground. When glowing marks appear, get out of them - or into them, if it wants you close."),
+    ],
+    "oak_rootwarden_done": [
+        (who: "Ranger Oak", says: "You beat the Rootwarden? Ha! It'll sleep well now, and so will I."),
+    ],
+}

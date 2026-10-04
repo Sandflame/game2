@@ -16,6 +16,7 @@ use crate::encounters::EncounterDef;
 use crate::items::{ItemDef, ItemFile};
 use crate::level::Level;
 use crate::progression::ProgressionDef;
+use crate::quests::{DialogueDef, DialogueFile, Goal, QuestDef};
 use crate::rides::RideDef;
 use crate::statuses::{StatusDef, StatusFile};
 use crate::synergy::SynergyDef;
@@ -165,6 +166,8 @@ pub struct GameData {
     pub items: HashMap<String, ItemDef>,
     pub synergy: SynergyDef,
     pub rides: HashMap<String, RideDef>,
+    pub quests: HashMap<String, QuestDef>,
+    pub dialogues: HashMap<String, DialogueDef>,
 }
 
 impl GameData {
@@ -230,6 +233,20 @@ impl GameData {
             }
         }
 
+        let quests: HashMap<String, QuestDef> = load_dir::<QuestDef>(&data.join("quests"))?
+            .into_iter()
+            .map(|(path, quest)| (file_id(&path), quest))
+            .collect();
+        let mut dialogues = HashMap::new();
+        for (path, file) in load_dir::<DialogueFile>(&data.join("dialogue"))? {
+            for (id, dialogue) in file.0 {
+                if dialogues.contains_key(&id) {
+                    return Err(invalid(&path, format!("dialogue id `{id}` is used twice")));
+                }
+                dialogues.insert(id, dialogue);
+            }
+        }
+
         let game = Self {
             config,
             player,
@@ -242,6 +259,8 @@ impl GameData {
             items,
             synergy,
             rides,
+            quests,
+            dialogues,
         };
         game.check_references(&data)?;
         Ok(game)
@@ -342,6 +361,42 @@ impl GameData {
                 path: data.join("items"),
                 problems: item_problems,
             });
+        }
+        for (id, quest) in &self.quests {
+            let mut problems: Vec<String> = quest
+                .dialogues()
+                .filter(|d| !self.dialogues.contains_key(*d))
+                .map(|d| format!("plays unknown dialogue `{d}`"))
+                .collect();
+            for after in &quest.after {
+                if !self.quests.contains_key(after) {
+                    problems.push(format!("comes after unknown quest `{after}`"));
+                }
+            }
+            for step in &quest.steps {
+                match &step.goal {
+                    Goal::Defeat { enemy, .. } if !self.enemies.contains_key(enemy) => {
+                        problems.push(format!("asks to defeat unknown enemy `{enemy}`"));
+                    }
+                    Goal::Win(fight) if !self.encounters.contains_key(fight) => {
+                        problems.push(format!("asks to win unknown boss fight `{fight}`"));
+                    }
+                    _ => {}
+                }
+            }
+            problems.extend(
+                quest
+                    .items
+                    .iter()
+                    .filter(|l| !self.items.contains_key(&l.item))
+                    .map(|l| format!("gives unknown item `{}`", l.item)),
+            );
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: data.join("quests").join(format!("{id}.ron")),
+                    problems,
+                });
+            }
         }
         let synergy_problems: Vec<String> = self
             .synergy
@@ -444,6 +499,45 @@ impl GameData {
                         .join("rides")
                         .join(format!("{id}.ron")),
                     problems: missing,
+                });
+            }
+        }
+        // People: ids are unique, and quests only name people (and
+        // places) that exist.
+        let mut people = HashMap::new();
+        for (zone, level) in &zones {
+            for npc in &level.npcs {
+                if let Some(other) = people.insert(npc.id.as_str(), zone.as_str()) {
+                    return Err(invalid(
+                        &Level::path(assets_dir, zone),
+                        format!("person id `{}` is also used in zone `{other}`", npc.id),
+                    ));
+                }
+            }
+        }
+        for (id, quest) in &self.quests {
+            let mut problems = Vec::new();
+            if !people.contains_key(quest.giver.as_str()) {
+                problems.push(format!("`giver` names unknown person `{}`", quest.giver));
+            }
+            for step in &quest.steps {
+                match &step.goal {
+                    Goal::Talk(npc) if !people.contains_key(npc.as_str()) => {
+                        problems.push(format!("asks to talk to unknown person `{npc}`"));
+                    }
+                    Goal::Reach(zone) if !zones.contains_key(zone) => {
+                        problems.push(format!("asks to reach unknown zone `{zone}`"));
+                    }
+                    _ => {}
+                }
+            }
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: assets_dir
+                        .join("data")
+                        .join("quests")
+                        .join(format!("{id}.ron")),
+                    problems,
                 });
             }
         }

@@ -128,6 +128,14 @@ pub enum ServerEvent {
     },
     /// The player is at a dungeon board: show the list.
     OpenBoard { player: PlayerId },
+    /// Play a conversation (`assets/data/dialogue/`) for this player.
+    Dialogue { player: PlayerId, dialogue: String },
+    /// The player took on a quest.
+    QuestAccepted { player: PlayerId, quest: String },
+    /// A quest moved on a step (or counted another enemy).
+    QuestProgressed { player: PlayerId, quest: String },
+    /// The player finished a quest.
+    QuestCompleted { player: PlayerId, quest: String },
 }
 
 /// The in-process connection between the client and the authority.

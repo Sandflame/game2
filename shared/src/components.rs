@@ -33,6 +33,10 @@ pub struct ExitPortal {
     pub label: String,
 }
 
+/// Which person this is (their `id` in zone data); quests name people by it.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct NpcId(pub String);
+
 /// Which side a character is on.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Faction {

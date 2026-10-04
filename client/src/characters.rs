@@ -16,6 +16,7 @@ use crate::camera::FollowCamera;
 use crate::creatures::{
     self, BURROW_PUP, MATRIARCH, MOTHER_SPORECAP, ROT_SPORE, SPORE_CAP, THORNWOLF,
 };
+use crate::hud::dialogue::Conversation;
 use crate::session::{LocalPlayerId, Received, send};
 use crate::toon::{Outline, ToonAssets, ToonMaterial};
 
@@ -544,10 +545,12 @@ pub fn send_movement(
     camera: Single<&FollowCamera>,
     me: Res<LocalPlayerId>,
     scripted: Res<ScriptedMove>,
+    conversation: Res<Conversation>,
     mut link: ResMut<Link>,
 ) {
-    // The interact key uses portals (and later, other things).
-    if keys.just_pressed(KeyCode::KeyE) {
+    // The interact key uses portals and talks to people (during a
+    // conversation it shows the next line instead).
+    if keys.just_pressed(KeyCode::KeyE) && !conversation.open() {
         send(&mut link, *me, ClientRequest::Interact);
     }
     if let Some(direction) = scripted.0 {

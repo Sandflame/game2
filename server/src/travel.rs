@@ -3,7 +3,13 @@
 
 use bevy::prelude::*;
 use shared::combat::Reject;
-use shared::components::{CharacterName, Faction, HitRadius, Motion, PlayerId, VisualKey, Zone};
+use shared::components::{
+    CharacterName, Faction, HitRadius, Motion, NpcId, PlayerId, VisualKey, Zone,
+};
+use shared::quests::QuestLog;
+
+use crate::progression::PendingRewards;
+use crate::quests;
 use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
 use shared::level::{NpcDef, Portal};
@@ -44,6 +50,7 @@ pub fn spawn_npc(commands: &mut Commands, data: &GameData, npc: &NpcDef, zone: &
             lines: npc.lines.clone(),
             next: 0,
         },
+        NpcId(npc.id.clone()),
         CharacterName(npc.name.clone()),
         Motion(MoveState {
             yaw: npc.yaw,
@@ -245,28 +252,51 @@ pub fn enter_from_board(
     Ok(())
 }
 
-/// Talk to the nearest person in reach, if any. Returns whether someone
+/// The people a player can talk to.
+pub type People<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut Npc,
+        &'static CharacterName,
+        &'static NpcId,
+        &'static Zone,
+        &'static Motion,
+    ),
+    Without<PlayerId>,
+>;
+
+/// Talk to the nearest person in reach, if any: their part in a quest if
+/// they have one, otherwise their next line. Returns whether someone
 /// answered.
 pub fn talk(
     link: &mut Link,
     data: &GameData,
-    player: PlayerId,
+    quest: (&mut PendingRewards, Option<&mut QuestLog>),
+    who: (PlayerId, Entity),
     zone: &Zone,
     position: Vec3,
-    npcs: &mut Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
+    npcs: &mut People,
 ) -> bool {
+    let (player, entity) = who;
     let nearest = npcs
         .iter_mut()
-        .filter(|(_, _, z, m)| {
+        .filter(|(.., z, m)| {
             *z == zone && ground_distance(m.0.position, position) <= data.player.talk_distance
         })
         .min_by(|a, b| {
-            ground_distance(a.3.0.position, position)
-                .total_cmp(&ground_distance(b.3.0.position, position))
+            ground_distance(a.4.0.position, position)
+                .total_cmp(&ground_distance(b.4.0.position, position))
         });
-    let Some((mut npc, name, ..)) = nearest else {
+    let Some((mut npc, name, id, ..)) = nearest else {
         return false;
     };
+    let (rewards, log) = quest;
+    if let Some(log) = log
+        && quests::talked(data, link, rewards, player, entity, &zone.0, log, &id.0)
+    {
+        return true;
+    }
     if npc.lines.is_empty() {
         return false;
     }

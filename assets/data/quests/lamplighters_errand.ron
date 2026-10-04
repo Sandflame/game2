@@ -1,0 +1,11 @@
+// The first quest: Lamplighter Ilsa sends new arrivals to the giant root.
+(
+    name: "The Lamplighter's Errand",
+    summary: "Lamplighter Ilsa asked you to find Root Keeper Fen at the foot of the giant root, north of the fountain.",
+    giver: "ilsa",
+    offer: "ilsa_errand",
+    steps: [
+        (goal: Talk("fen"), text: "Talk to Root Keeper Fen by the giant root", dialogue: Some("fen_errand_done")),
+    ],
+    xp: 300,
+)

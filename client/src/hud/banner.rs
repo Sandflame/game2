@@ -8,9 +8,10 @@ use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
 use shared::protocol::ServerEvent;
 
+use super::dialogue::Conversation;
 use super::{font, palette, text_shadow};
 use crate::characters::LocalPlayer;
-use crate::session::Received;
+use crate::session::{LocalPlayerId, Received};
 use crate::world::CurrentZone;
 
 /// Matches the shadow alpha set by `text_shadow()`.
@@ -84,6 +85,8 @@ fn show_banners(
     mut received: MessageReader<Received>,
     current: Res<CurrentZone>,
     zones: Res<Zones>,
+    data: Res<GameData>,
+    my_id: Res<LocalPlayerId>,
     me: Option<Single<Entity, With<LocalPlayer>>>,
     mut banner: Single<(&mut Text, &mut TextColor, &mut Banner)>,
 ) {
@@ -113,6 +116,19 @@ fn show_banners(
                     palette::BANNER,
                     LONG + 2.0,
                 ))
+            }
+            ServerEvent::QuestAccepted { player, quest } if *player == my_id.0 => data
+                .quests
+                .get(quest)
+                .map(|q| (format!("New quest: {}", q.name), palette::BANNER, SHORT)),
+            ServerEvent::QuestCompleted { player, quest } if *player == my_id.0 => {
+                data.quests.get(quest).map(|q| {
+                    (
+                        format!("Quest complete!\n{}", q.name),
+                        palette::BANNER,
+                        LONG,
+                    )
+                })
             }
             ServerEvent::EncounterWiped { zone, .. } if here(zone) => Some((
                 "Everyone has fallen...\nReturning to the entrance.".to_owned(),
@@ -186,9 +202,11 @@ fn update_prompt(
     player: Option<Single<(&Motion, &Zone), With<LocalPlayer>>>,
     people: Query<(&CharacterName, &Faction, &Motion, &Zone), Without<LocalPlayer>>,
     exits: Query<(&ExitPortal, &Zone)>,
+    conversation: Res<Conversation>,
     mut prompt: Single<(&mut Text, &mut Visibility), With<Prompt>>,
 ) {
-    let label = player.and_then(|player| {
+    // (Not while someone is talking.)
+    let label = player.filter(|_| !conversation.open()).and_then(|player| {
         let (motion, zone) = *player;
         let here = motion.0.position;
         if let Some(portal) = zones.get(&zone.0)?.portal_at(here) {

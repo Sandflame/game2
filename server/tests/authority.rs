@@ -23,6 +23,7 @@ use shared::level::{EnemySpawn, Exit, Level, Listing, NpcDef, Portal};
 use shared::movement::MoveInput;
 use shared::progression::ClassLevels;
 use shared::protocol::{ClientRequest, Link, ServerEvent};
+use shared::quests::{DialogueFile, QuestDef, QuestLog};
 use shared::rides::RideDef;
 use shared::statuses::{StatusFile, Statuses};
 use shared::telegraphs::Telegraph;
@@ -227,6 +228,11 @@ fn test_data() -> GameData {
         items: parse::<ItemFile>(ITEMS).0,
         synergy: parse("(covered_at: 0.5, missing: {})"),
         rides: HashMap::from([("slide".to_owned(), parse::<RideDef>(RIDE))]),
+        quests: HashMap::from([
+            ("hunt".to_owned(), parse::<QuestDef>(HUNT)),
+            ("next".to_owned(), parse::<QuestDef>(NEXT)),
+        ]),
+        dialogues: parse::<DialogueFile>(DIALOGUE).0,
     }
 }
 
@@ -283,13 +289,24 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
                 ..portal()
             },
         ],
-        npcs: vec![NpcDef {
-            name: "Ilsa".into(),
-            visual: "townsfolk".into(),
-            position: Vec3::new(30.0, 0.0, 30.0),
-            yaw: 0.0,
-            lines: vec!["Hello!".into(), "Goodbye!".into()],
-        }],
+        npcs: vec![
+            NpcDef {
+                id: "ilsa".into(),
+                name: "Ilsa".into(),
+                visual: "townsfolk".into(),
+                position: NPC_AT,
+                yaw: 0.0,
+                lines: vec!["Hello!".into(), "Goodbye!".into()],
+            },
+            NpcDef {
+                id: "rowan".into(),
+                name: "Rowan".into(),
+                visual: "townsfolk".into(),
+                position: GIVER_AT,
+                yaw: 0.0,
+                lines: vec!["Nice day.".into()],
+            },
+        ],
         ..Level::empty()
     };
     let tunnel = Level {
@@ -375,6 +392,29 @@ const CAVE_ENTRANCE: Vec3 = Vec3::new(0.0, 0.0, 10.0);
 const CAVE_BACK: Vec3 = Vec3::new(0.0, 0.0, 13.0);
 const SLIDE: Vec3 = Vec3::new(6.0, 0.0, 6.0);
 const NPC_AT: Vec3 = Vec3::new(30.0, 0.0, 30.0);
+/// Rowan, who gives the test quest.
+const GIVER_AT: Vec3 = Vec3::new(-30.0, 0.0, 30.0);
+
+/// Defeat a sprout, then go back to Rowan; then a second quest opens.
+const HUNT: &str = r#"(
+    name: "Hunt", summary: "Defeat a sprout.", giver: "rowan", offer: "rowan_offer",
+    steps: [
+        (goal: Defeat(enemy: "sprout", count: 1), text: "Defeat a sprout"),
+        (goal: Talk("rowan"), text: "Report back", dialogue: Some("rowan_thanks")),
+    ],
+    xp: 500,
+    items: [(item: "cap", chance: 100)],
+)"#;
+const NEXT: &str = r#"(
+    name: "Next", summary: "Visit the cave.", giver: "rowan", offer: "rowan_offer",
+    after: ["hunt"],
+    steps: [(goal: Reach("cave"), text: "Go to the cave")],
+    xp: 100,
+)"#;
+const DIALOGUE: &str = r#"{
+    "rowan_offer": [(who: "Rowan", says: "Help me?")],
+    "rowan_thanks": [(who: "Rowan", says: "Thanks!")],
+}"#;
 
 const PORTAL: Vec3 = Vec3::new(0.0, 0.0, 6.0);
 const ARENA_ENTRANCE: Vec3 = Vec3::new(0.0, 0.0, 8.0);
@@ -1743,9 +1783,11 @@ fn people_cannot_be_attacked() {
     let mut game = Game::new();
     let world = game.app.world_mut();
     let npc = world
-        .query_filtered::<Entity, With<server::Npc>>()
-        .single(world)
-        .unwrap();
+        .query_filtered::<(Entity, &CharacterName), With<server::Npc>>()
+        .iter(world)
+        .find(|(_, name)| name.0 == "Ilsa")
+        .unwrap()
+        .0;
     let me = game.me();
     game.place(me, NPC_AT + Vec3::new(1.0, 0.0, 0.0));
     game.use_on(STRIKE, Some(npc));
@@ -1934,4 +1976,78 @@ fn falling_in_a_dungeon_brings_you_back_to_the_entrance() {
     assert!(game.app.world().get::<Defeated>(me).is_none());
     assert_eq!(game.position(me), CAVE_ENTRANCE);
     assert_eq!(game.health(me).current, game.health(me).max);
+}
+
+impl Game {
+    fn quest_log(&mut self) -> QuestLog {
+        let me = self.me();
+        self.app.world().get::<QuestLog>(me).unwrap().clone()
+    }
+
+    fn dialogues(&self) -> Vec<String> {
+        self.events
+            .iter()
+            .filter_map(|e| match e {
+                ServerEvent::Dialogue { dialogue, .. } => Some(dialogue.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn people_offer_quests_and_play_their_dialogue() {
+    let mut game = Game::with_enemies(&[]);
+    game.interact_at(GIVER_AT + Vec3::new(1.0, 0.0, 0.0));
+    assert_eq!(game.dialogues(), vec!["rowan_offer"]);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::QuestAccepted { quest, .. } if quest == "hunt"))
+    );
+    assert!(game.quest_log().active.contains_key("hunt"));
+    // Nothing more to offer until it's done: Rowan just chats.
+    game.events.clear();
+    game.interact_at(GIVER_AT + Vec3::new(1.0, 0.0, 0.0));
+    assert!(game.dialogues().is_empty());
+    assert_eq!(game.speech()[0].1, "Nice day.");
+}
+
+#[test]
+fn quests_count_defeats_and_reward_when_finished() {
+    let mut game = Game::with_enemies(&[("sprout", GIVER_AT + Vec3::new(0.0, 0.0, -3.0))]);
+    let me = game.me();
+    game.interact_at(GIVER_AT + Vec3::new(1.0, 0.0, 0.0));
+    let sprout = game.enemy("Sprout");
+    game.use_on(STRIKE, Some(sprout));
+    game.run(0.5);
+    game.set_health(sprout, 0);
+    game.run(0.5);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::QuestProgressed { quest, .. } if quest == "hunt"))
+    );
+    assert_eq!(game.quest_log().active["hunt"].step, 1);
+    game.events.clear();
+    game.interact_at(GIVER_AT + Vec3::new(1.0, 0.0, 0.0));
+    assert_eq!(game.dialogues(), vec!["rowan_thanks"]);
+    assert!(game.quest_log().done.contains("hunt"));
+    assert!(
+        game.events.iter().any(
+            |e| matches!(e, ServerEvent::XpGained { amount: 500, entity, .. } if *entity == me)
+        )
+    );
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::ItemReceived { item, .. } if item == "cap"))
+    );
+    // The next quest opens up, and going to the cave finishes it.
+    game.interact_at(GIVER_AT + Vec3::new(1.0, 0.0, 0.0));
+    assert!(game.quest_log().active.contains_key("next"));
+    // (Wait for the fight to be over: doors don't work in combat.)
+    game.run(7.0);
+    game.interact_at(CAVE_DOOR);
+    assert!(game.quest_log().done.contains("next"));
 }

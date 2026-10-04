@@ -6,6 +6,7 @@ use shared::combat::Health;
 use shared::components::{CharacterName, Faction, VisualKey};
 use shared::protocol::ServerEvent;
 
+use super::journal::QuestMarker;
 use super::{font, palette, spawn_bar, text_shadow};
 use crate::camera::FollowCamera;
 use crate::characters::{DisplayMotion, LocalPlayer};
@@ -116,13 +117,32 @@ fn spawn_nameplates(
                     Faction::Neutral => Color::srgb(0.70, 1.0, 0.70),
                     Faction::Player => Color::srgb(0.75, 0.90, 1.0),
                 };
+                // People you talk to have no health bar, but may have a
+                // quest marker over their name.
+                if *faction == Faction::Neutral {
+                    plate.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            bottom: percent(100),
+                            width: percent(100),
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        children![(
+                            QuestMarker { of: entity },
+                            Text::new(""),
+                            font(36.0),
+                            TextColor(palette::BANNER),
+                            text_shadow(),
+                        )],
+                    ));
+                }
                 plate.spawn((
                     Text::new(name.0.clone()),
                     font(14.0),
                     TextColor(color),
                     text_shadow(),
                 ));
-                // People you talk to have no health bar.
                 if *faction == Faction::Neutral {
                     return;
                 }
@@ -146,7 +166,7 @@ fn to_screen(camera: &Camera, camera_transform: &Transform, world: Vec3) -> Opti
 fn place_nameplates(
     mut commands: Commands,
     camera: Single<(&Camera, &Transform), With<FollowCamera>>,
-    characters: Query<(&Transform, &Health, Has<ElsewhereZone>), Without<FollowCamera>>,
+    characters: Query<(&Transform, Option<&Health>, Has<ElsewhereZone>), Without<FollowCamera>>,
     mut plates: Query<(Entity, &Nameplate, &mut Node, &mut Visibility)>,
     mut fills: Query<(&NameplateFill, &mut Node), Without<Nameplate>>,
 ) {
@@ -172,7 +192,7 @@ fn place_nameplates(
         }
     }
     for (fill, mut node) in &mut fills {
-        if let Ok((_, health, _)) = characters.get(fill.of) {
+        if let Ok((_, Some(health), _)) = characters.get(fill.of) {
             node.width = percent(health.fraction() * 100.0);
         }
     }

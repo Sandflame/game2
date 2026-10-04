@@ -240,7 +240,7 @@ fn spawn_level(
 }
 
 /// Colour of each `ground` look used in zone data.
-fn ground_color(key: &str) -> Color {
+pub fn ground_color(key: &str) -> Color {
     match key {
         "moss" => Color::srgb(0.30, 0.50, 0.32),
         "stone" => Color::srgb(0.62, 0.60, 0.58),
