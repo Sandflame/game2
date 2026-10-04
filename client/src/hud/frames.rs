@@ -1,9 +1,13 @@
-//! Unit frames (your health, your target's health) and your cast bar.
+//! Unit frames (you and your target): name, class, health, shield, and
+//! buffs/debuffs. Also your cast bar (spells and flame changes).
 
 use bevy::prelude::*;
+use server::{Defeated, FlameChange};
+use shared::classes::{CurrentClass, Stats};
 use shared::combat::{ActionState, Health};
 use shared::components::{CharacterName, Faction};
 use shared::gamedata::GameData;
+use shared::statuses::{StatusKind, Statuses};
 
 use super::{font, game_now, palette, spawn_bar};
 use crate::characters::LocalPlayer;
@@ -13,28 +17,29 @@ pub struct FramesPlugin;
 
 impl Plugin for FramesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_frames).add_systems(
-            Update,
-            (update_player_frame, update_target_frame, update_cast_bar),
-        );
+        app.add_systems(Startup, spawn_frames)
+            .add_systems(Update, (update_frames, update_cast_bar));
     }
 }
 
 /// Which character a frame shows.
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum FrameOf {
     Player,
     Target,
 }
 
+/// The parts of one frame, found by entity.
 #[derive(Component)]
-struct FrameRoot(FrameOf);
-#[derive(Component)]
-struct FrameName(FrameOf);
-#[derive(Component)]
-struct FrameFill(FrameOf);
-#[derive(Component)]
-struct FrameNumbers(FrameOf);
+struct Frame {
+    of: FrameOf,
+    name: Entity,
+    detail: Entity,
+    health_fill: Entity,
+    shield_fill: Entity,
+    numbers: Entity,
+    chips: Vec<(Entity, Entity)>,
+}
 
 #[derive(Component)]
 struct CastBarRoot;
@@ -43,25 +48,32 @@ struct CastBarFill;
 #[derive(Component)]
 struct CastBarLabel;
 
-const PLAYER_BAR_WIDTH: f32 = 220.0;
+const PLAYER_BAR_WIDTH: f32 = 240.0;
 const TARGET_BAR_WIDTH: f32 = 320.0;
 const CAST_BAR_WIDTH: f32 = 280.0;
+/// Buff/debuff chips shown per frame.
+const CHIPS: usize = 8;
 
 fn spawn_frames(mut commands: Commands) {
-    spawn_frame(
-        &mut commands,
-        FrameOf::Player,
-        Node {
+    // Your frame, top-left.
+    let player_root = commands
+        .spawn(Node {
             position_type: PositionType::Absolute,
             top: px(16),
             left: px(16),
-            ..frame_node()
-        },
+            ..default()
+        })
+        .id();
+    spawn_frame(
+        &mut commands,
+        player_root,
+        FrameOf::Player,
         PLAYER_BAR_WIDTH,
         palette::HEALTH,
     );
-    // The target frame is centred along the top of the screen.
-    commands
+
+    // Target frame, centred along the top.
+    let target_root = commands
         .spawn(Node {
             position_type: PositionType::Absolute,
             top: px(16),
@@ -69,22 +81,14 @@ fn spawn_frames(mut commands: Commands) {
             justify_content: JustifyContent::Center,
             ..default()
         })
-        .with_children(|row| {
-            let frame = row.spawn_empty().id();
-            row.commands().entity(frame).insert((
-                FrameRoot(FrameOf::Target),
-                frame_node(),
-                BackgroundColor(palette::PANEL),
-                Visibility::Hidden,
-            ));
-            frame_contents(
-                &mut row.commands(),
-                frame,
-                FrameOf::Target,
-                TARGET_BAR_WIDTH,
-                palette::ENEMY_HEALTH,
-            );
-        });
+        .id();
+    spawn_frame(
+        &mut commands,
+        target_root,
+        FrameOf::Target,
+        TARGET_BAR_WIDTH,
+        palette::ENEMY_HEALTH,
+    );
 
     // Cast bar, just above the hotbar.
     commands
@@ -113,146 +117,300 @@ fn spawn_frames(mut commands: Commands) {
                     font(14.0),
                     TextColor(palette::TEXT),
                 ));
-                let fill = super::spawn_bar(bar, CAST_BAR_WIDTH, 10.0, palette::CAST);
+                let fill = spawn_bar(bar, CAST_BAR_WIDTH, 10.0, palette::CAST);
                 bar.commands().entity(fill).insert(CastBarFill);
             });
         });
 }
 
-fn frame_node() -> Node {
-    Node {
-        flex_direction: FlexDirection::Column,
-        padding: UiRect::all(px(8)),
-        row_gap: px(4),
-        ..default()
-    }
-}
-
-fn spawn_frame(commands: &mut Commands, of: FrameOf, node: Node, width: f32, color: Color) {
-    let frame = commands
-        .spawn((FrameRoot(of), node, BackgroundColor(palette::PANEL)))
-        .id();
-    frame_contents(commands, frame, of, width, color);
-}
-
-fn frame_contents(commands: &mut Commands, frame: Entity, of: FrameOf, width: f32, color: Color) {
-    commands.entity(frame).with_children(|parent| {
-        parent.spawn((
-            FrameName(of),
-            Text::new(""),
-            font(15.0),
-            TextColor(palette::TEXT),
+fn spawn_frame(commands: &mut Commands, parent: Entity, of: FrameOf, width: f32, color: Color) {
+    let mut parts = None;
+    commands.entity(parent).with_children(|root| {
+        let mut panel = root.spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(px(8)),
+                row_gap: px(3),
+                ..default()
+            },
+            BackgroundColor(palette::PANEL),
         ));
-        let fill = spawn_bar(parent, width, 12.0, color);
-        parent.commands().entity(fill).insert(FrameFill(of));
-        parent.spawn((
-            FrameNumbers(of),
-            Text::new(""),
-            font(12.0),
-            TextColor(palette::TEXT_DIM),
-        ));
+        if of == FrameOf::Target {
+            panel.insert(Visibility::Hidden);
+        }
+        let frame_entity = panel.id();
+        panel.with_children(|frame| {
+            let name = frame
+                .spawn((Text::new(""), font(15.0), TextColor(palette::TEXT)))
+                .id();
+            let detail = frame
+                .spawn((Text::new(""), font(12.0), TextColor(palette::TEXT_DIM)))
+                .id();
+            let health_fill = spawn_bar(frame, width, 12.0, color);
+            let shield_fill = spawn_bar(frame, width, 4.0, palette::SHIELD);
+            let numbers = frame
+                .spawn((Text::new(""), font(12.0), TextColor(palette::TEXT_DIM)))
+                .id();
+            let mut chips = Vec::new();
+            frame
+                .spawn(Node {
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: px(4),
+                    row_gap: px(4),
+                    max_width: px(width),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for _ in 0..CHIPS {
+                        let mut text = Entity::PLACEHOLDER;
+                        let chip = row
+                            .spawn((
+                                Node {
+                                    padding: UiRect::axes(px(5), px(2)),
+                                    border: UiRect::all(px(1)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                                BorderColor::all(palette::BUFF),
+                                Visibility::Hidden,
+                            ))
+                            .with_children(|chip| {
+                                text = chip
+                                    .spawn((Text::new(""), font(11.0), TextColor(palette::TEXT)))
+                                    .id();
+                            })
+                            .id();
+                        chips.push((chip, text));
+                    }
+                });
+            parts = Some(Frame {
+                of,
+                name,
+                detail,
+                health_fill,
+                shield_fill,
+                numbers,
+                chips,
+            });
+        });
+        if let Some(parts) = parts.take() {
+            root.commands().entity(frame_entity).insert(parts);
+        }
     });
 }
 
-type FrameTexts<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static mut Text,
-        Option<&'static FrameName>,
-        Option<&'static FrameNumbers>,
-    ),
-    Or<(With<FrameName>, With<FrameNumbers>)>,
->;
-
-fn show_in_frame(
-    of: FrameOf,
-    name: &str,
-    health: &Health,
-    texts: &mut FrameTexts,
-    fills: &mut Query<(&FrameFill, &mut Node)>,
-) {
-    for (mut text, name_tag, numbers_tag) in texts.iter_mut() {
-        if name_tag.is_some_and(|t| t.0 == of) {
-            text.0 = name.to_owned();
-        } else if numbers_tag.is_some_and(|t| t.0 == of) {
-            text.0 = format!("{} / {}", health.current, health.max);
-        }
-    }
-    for (fill, mut node) in fills.iter_mut() {
-        if fill.0 == of {
-            node.width = percent(health.fraction() * 100.0);
-        }
-    }
+/// What a frame shows about one character.
+struct Shown<'a> {
+    name: &'a str,
+    detail: String,
+    health: Health,
+    shield: u32,
+    statuses: Option<&'a Statuses>,
+    enemy: bool,
 }
 
-fn update_player_frame(
-    player: Option<Single<(&CharacterName, &Health), With<LocalPlayer>>>,
-    mut texts: FrameTexts,
-    mut fills: Query<(&FrameFill, &mut Node)>,
-) {
-    if let Some(player) = player {
-        let (name, health) = *player;
-        show_in_frame(FrameOf::Player, &name.0, health, &mut texts, &mut fills);
-    }
-}
-
-fn update_target_frame(
+fn update_frames(
+    fixed: Res<Time<Fixed>>,
+    data: Res<GameData>,
     target: Res<CurrentTarget>,
-    characters: Query<(&CharacterName, &Health, &Faction)>,
-    mut roots: Query<(&FrameRoot, &mut Visibility)>,
-    mut texts: FrameTexts,
-    mut fills: Query<(&FrameFill, &mut Node)>,
-    mut colors: Query<(&FrameFill, &mut BackgroundColor)>,
+    player: Option<Single<Entity, With<LocalPlayer>>>,
+    characters: Query<(
+        &CharacterName,
+        &Health,
+        &Faction,
+        Option<&Statuses>,
+        Option<&CurrentClass>,
+        Option<&Stats>,
+        Has<Defeated>,
+    )>,
+    frames: Query<(&Frame, Entity)>,
+    mut visibility: Query<&mut Visibility>,
+    mut texts: Query<&mut Text>,
+    mut text_colors: Query<&mut TextColor>,
+    mut nodes: Query<&mut Node>,
+    mut colors: Query<&mut BackgroundColor>,
+    mut borders: Query<&mut BorderColor>,
+    parents: Query<&ChildOf>,
 ) {
-    let shown = target.0.and_then(|t| characters.get(t).ok());
-    for (root, mut visibility) in &mut roots {
-        if root.0 == FrameOf::Target {
-            *visibility = if shown.is_some() {
+    let now = game_now(&fixed);
+    for (frame, frame_entity) in &frames {
+        let who = match frame.of {
+            FrameOf::Player => player.as_deref().copied(),
+            FrameOf::Target => target.0,
+        };
+        let shown = who.and_then(|e| characters.get(e).ok()).map(
+            |(name, health, faction, statuses, class, _stats, defeated)| {
+                let class_text = class
+                    .and_then(|c| {
+                        let def = data.classes.get(&c.class)?;
+                        let spec = def.spec(&c.spec).map_or("", |s| s.name.as_str());
+                        Some(format!("{} - {}  ({})", def.name, spec, def.role.label()))
+                    })
+                    .unwrap_or_else(|| {
+                        if *faction == Faction::Enemy {
+                            "Enemy".into()
+                        } else {
+                            String::new()
+                        }
+                    });
+                Shown {
+                    name: &name.0,
+                    detail: if defeated {
+                        "Defeated".to_owned()
+                    } else {
+                        class_text
+                    },
+                    health: *health,
+                    shield: statuses.map_or(0, Statuses::total_absorb),
+                    statuses,
+                    enemy: *faction == Faction::Enemy,
+                }
+            },
+        );
+        if let Ok(mut vis) = visibility.get_mut(frame_entity) {
+            *vis = if shown.is_some() {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
             };
         }
-    }
-    let Some((name, health, faction)) = shown else {
-        return;
-    };
-    show_in_frame(FrameOf::Target, &name.0, health, &mut texts, &mut fills);
-    for (fill, mut color) in &mut colors {
-        if fill.0 == FrameOf::Target {
-            color.0 = if *faction == Faction::Enemy {
+        let Some(shown) = shown else {
+            continue;
+        };
+        set_text(&mut texts, frame.name, shown.name);
+        set_text(&mut texts, frame.detail, &shown.detail);
+        let numbers = if shown.shield > 0 {
+            format!(
+                "{} / {}   +{} shield",
+                shown.health.current, shown.health.max, shown.shield
+            )
+        } else {
+            format!("{} / {}", shown.health.current, shown.health.max)
+        };
+        set_text(&mut texts, frame.numbers, &numbers);
+        if let Ok(mut node) = nodes.get_mut(frame.health_fill) {
+            node.width = percent(shown.health.fraction() * 100.0);
+        }
+        if let Ok(mut color) = colors.get_mut(frame.health_fill) {
+            color.0 = if shown.enemy {
                 palette::ENEMY_HEALTH
             } else {
                 palette::HEALTH
             };
         }
+        if let Ok(mut node) = nodes.get_mut(frame.shield_fill) {
+            let fraction = (shown.shield as f32 / shown.health.max.max(1) as f32).min(1.0);
+            node.width = percent(fraction * 100.0);
+        }
+        // The shield bar only shows while there is a shield.
+        if let Ok(bar) = parents.get(frame.shield_fill)
+            && let Ok(mut node) = nodes.get_mut(bar.parent())
+        {
+            node.display = if shown.shield > 0 {
+                Display::Flex
+            } else {
+                Display::None
+            };
+        }
+
+        // Buffs first, then debuffs, each soonest-ending first.
+        let mut active: Vec<_> = shown
+            .statuses
+            .map(|s| {
+                s.0.iter()
+                    .filter_map(|a| Some((a, data.statuses.get(&a.id)?)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        active.sort_by(|a, b| {
+            (a.1.kind == StatusKind::Debuff)
+                .cmp(&(b.1.kind == StatusKind::Debuff))
+                .then(a.0.expires.total_cmp(&b.0.expires))
+        });
+        for (i, (chip, text)) in frame.chips.iter().enumerate() {
+            let Ok(mut vis) = visibility.get_mut(*chip) else {
+                continue;
+            };
+            match active.get(i) {
+                Some((status, def)) => {
+                    *vis = Visibility::Inherited;
+                    let label = if status.is_shield {
+                        format!(
+                            "{} {}  {:.0}s",
+                            def.name,
+                            status.absorb,
+                            status.remaining(now).ceil()
+                        )
+                    } else {
+                        format!("{}  {:.0}s", def.name, status.remaining(now).ceil())
+                    };
+                    set_text(&mut texts, *text, &label);
+                    let tint = if def.kind == StatusKind::Buff {
+                        palette::BUFF
+                    } else {
+                        palette::DEBUFF
+                    };
+                    if let Ok(mut border) = borders.get_mut(*chip) {
+                        *border = BorderColor::all(tint);
+                    }
+                    if let Ok(mut color) = text_colors.get_mut(*text) {
+                        color.0 = tint.mix(&palette::TEXT, 0.6);
+                    }
+                }
+                None => *vis = Visibility::Hidden,
+            }
+        }
+    }
+}
+
+fn set_text(texts: &mut Query<&mut Text>, entity: Entity, value: &str) {
+    if let Ok(mut text) = texts.get_mut(entity)
+        && text.0 != value
+    {
+        text.0 = value.to_owned();
     }
 }
 
 fn update_cast_bar(
     fixed: Res<Time<Fixed>>,
     data: Res<GameData>,
-    player: Option<Single<&ActionState, With<LocalPlayer>>>,
+    player: Option<Single<(&ActionState, Option<&FlameChange>), With<LocalPlayer>>>,
     mut root: Single<&mut Visibility, With<CastBarRoot>>,
     mut fill: Single<&mut Node, With<CastBarFill>>,
     mut label: Single<&mut Text, With<CastBarLabel>>,
 ) {
     let now = game_now(&fixed);
-    let cast = player.and_then(|actions| {
-        let cast = actions.cast.clone()?;
-        Some((cast, actions.cast_progress(now)?))
+    let bar = player.and_then(|player| {
+        let (actions, flame_change) = *player;
+        if let Some(change) = flame_change {
+            let total = f64::from(data.config.combat.flame_change_time).max(1e-6);
+            let progress = (1.0 - (change.ends - now) / total).clamp(0.0, 1.0) as f32;
+            let class = data
+                .classes
+                .get(&change.class)
+                .map_or(change.class.as_str(), |c| c.name.as_str());
+            return Some((
+                format!("Changing flame: {class}"),
+                progress,
+                change.ends - now,
+            ));
+        }
+        let cast = actions.cast.as_ref()?;
+        let name = data
+            .abilities
+            .get(&cast.ability)
+            .map_or(cast.ability.as_str(), |a| a.name.as_str());
+        Some((
+            name.to_owned(),
+            actions.cast_progress(now)?,
+            cast.ends - now,
+        ))
     });
-    let Some((cast, progress)) = cast else {
+    let Some((name, progress, remaining)) = bar else {
         **root = Visibility::Hidden;
         return;
     };
     **root = Visibility::Visible;
     fill.width = percent(progress * 100.0);
-    let name = data
-        .abilities
-        .get(&cast.ability)
-        .map_or(cast.ability.as_str(), |a| a.name.as_str());
-    let remaining = (cast.ends - now).max(0.0);
-    label.0 = format!("{name}  {remaining:.1}s");
+    label.0 = format!("{name}  {:.1}s", remaining.max(0.0));
 }

@@ -1,0 +1,25 @@
+// Blademaster — damage. Flame: crimson.
+(
+    name: "Blademaster",
+    description: "A swordfighter who strikes in fast combos up close.",
+    flame: "crimson",
+    role: Damage,
+    max_health: 10000,
+    // 100 = normal damage and healing.
+    power: 110,
+    // Threat per point of damage or healing.
+    threat_multiplier: 1.0,
+    // Hotbar slots 1-5.
+    core: ["bm_slash", "bm_rending_cut", "bm_finishing_edge", "bm_whirlwind", "bm_battle_focus"],
+    // Each specialization fills slots 6-8. (Scissors, one-handed sword and
+    // dual blades arrive in Milestone 10.)
+    specializations: [
+        (
+            id: "greatsword",
+            name: "Greatsword",
+            description: "Slow, crushing blows that also hit nearby enemies.",
+            abilities: ["bm_earthsplitter", "bm_overhead_crush", "bm_iron_will"],
+        ),
+    ],
+    default_spec: "greatsword",
+)

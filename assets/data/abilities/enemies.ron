@@ -1,0 +1,10 @@
+// Abilities used by enemies.
+[
+    (
+        id: "dummy_swat", name: "Swat",
+        description: "The sparring dummy swings its arm.",
+        on_gcd: false, range: 30.0, target: Enemy,
+        effects: [(effect: Damage(potency: 450))],
+        vfx: "slash",
+    ),
+]

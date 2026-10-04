@@ -1,6 +1,6 @@
-//! Combat rules: ability definitions, the global cooldown, personal
-//! cooldowns, cast times, the animation lock, the input queue, damage and
-//! range checks.
+//! Combat timing rules: the global cooldown, personal cooldowns, cast
+//! times, the animation lock, the input queue and combos; plus health and
+//! range checks. (Abilities themselves are in `abilities.rs`.)
 //!
 //! All times are seconds on the authority's game clock (`f64`).
 
@@ -10,9 +10,10 @@ use bevy::math::Vec3;
 use bevy::prelude::{Component, Entity};
 use serde::{Deserialize, Serialize};
 
+use crate::abilities::AbilityDef;
 use crate::data::{Problems, Validate};
 
-/// Tunable combat timing (`assets/data/config/combat.ron`).
+/// Tunable combat settings (`assets/data/config/combat.ron`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct CombatConfig {
     /// Global cooldown shared by all GCD abilities.
@@ -23,8 +24,24 @@ pub struct CombatConfig {
     pub cast_lock: f32,
     /// Pressing an ability this close to it being ready queues it.
     pub queue_window: f32,
-    /// Damage dealt per point of potency (a stand-in until stats exist).
-    pub damage_per_potency: f32,
+    /// A combo continues if its next step comes within this many seconds.
+    pub combo_window: f32,
+    /// Damage/healing per point of potency at normal power.
+    pub potency_scale: f32,
+    /// Chance (0–1) that a hit or heal is critical.
+    pub crit_chance: f32,
+    /// Critical hits and heals are multiplied by this.
+    pub crit_multiplier: f32,
+    /// Seconds between damage-over-time / healing-over-time ticks.
+    pub tick_interval: f32,
+    /// You leave combat this long after the last hostile action.
+    pub combat_timeout: f32,
+    /// Seconds to change the flame in your lantern (switch class).
+    pub flame_change_time: f32,
+    /// Out of combat, you heal this fraction of your health per second.
+    pub out_of_combat_regen: f32,
+    /// Seconds before a defeated player gets back up (until raising arrives).
+    pub revive_after: f32,
     /// Tab targeting only considers enemies within this distance.
     pub tab_target_range: f32,
 }
@@ -36,63 +53,22 @@ impl Validate for CombatConfig {
         p.non_negative("animation_lock", self.animation_lock);
         p.non_negative("cast_lock", self.cast_lock);
         p.non_negative("queue_window", self.queue_window);
-        p.positive("damage_per_potency", self.damage_per_potency);
+        p.non_negative("combo_window", self.combo_window);
+        p.positive("potency_scale", self.potency_scale);
+        if !(0.0..=1.0).contains(&self.crit_chance) {
+            p.push(format!(
+                "`crit_chance` must be between 0 and 1 (got {})",
+                self.crit_chance
+            ));
+        }
+        p.positive("crit_multiplier", self.crit_multiplier);
+        p.positive("tick_interval", self.tick_interval);
+        p.non_negative("combat_timeout", self.combat_timeout);
+        p.non_negative("flame_change_time", self.flame_change_time);
+        p.non_negative("out_of_combat_regen", self.out_of_combat_regen);
+        p.non_negative("revive_after", self.revive_after);
         p.positive("tab_target_range", self.tab_target_range);
         p.0
-    }
-}
-
-/// Who an ability can be used on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum TargetKind {
-    /// Needs a hostile target.
-    Enemy,
-    /// Only affects the user; no target needed.
-    Myself,
-}
-
-/// One ability, as written in `assets/data/abilities/*.ron`.
-/// (Milestone 3 replaces `potency` with a list of effects.)
-#[derive(Debug, Clone, Deserialize)]
-pub struct AbilityDef {
-    pub id: String,
-    pub name: String,
-    #[serde(default)]
-    pub description: String,
-    /// Uses (and is blocked by) the global cooldown.
-    pub on_gcd: bool,
-    /// Seconds to cast; 0 means instant.
-    #[serde(default)]
-    pub cast_time: f32,
-    /// The ability's own cooldown in seconds; 0 means none.
-    #[serde(default)]
-    pub cooldown: f32,
-    /// Metres, measured to the edge of the target.
-    pub range: f32,
-    pub target: TargetKind,
-    pub potency: u32,
-    /// Visual effect name (client only).
-    #[serde(default)]
-    pub vfx: String,
-}
-
-impl AbilityDef {
-    pub fn is_instant(&self) -> bool {
-        self.cast_time <= 0.0
-    }
-
-    /// Problems with this ability, each prefixed with its id.
-    pub fn problems(&self) -> Vec<String> {
-        let mut p = Problems::default();
-        if self.id.trim().is_empty() {
-            p.push("an ability has an empty `id`");
-        }
-        p.non_negative("cast_time", self.cast_time);
-        p.non_negative("cooldown", self.cooldown);
-        p.non_negative("range", self.range);
-        p.0.into_iter()
-            .map(|m| format!("ability `{}`: {m}", self.id))
-            .collect()
     }
 }
 
@@ -108,6 +84,10 @@ pub enum Reject {
     UnknownAbility,
     NotOnHotbar,
     Dead,
+    InCombat,
+    UnknownClass,
+    AlreadyThatClass,
+    Busy,
 }
 
 impl Reject {
@@ -123,6 +103,10 @@ impl Reject {
             Reject::UnknownAbility => "Unknown ability.",
             Reject::NotOnHotbar => "That ability isn't on your hotbar.",
             Reject::Dead => "You can't do that while defeated.",
+            Reject::InCombat => "You can't change your flame during combat.",
+            Reject::UnknownClass => "Unknown class.",
+            Reject::AlreadyThatClass => "That flame is already burning.",
+            Reject::Busy => "You're busy.",
         }
     }
 }
@@ -139,6 +123,8 @@ pub struct Cast {
     pub target: Option<Entity>,
     pub started: f64,
     pub ends: f64,
+    /// Whether this cast continues a combo (decided when it started).
+    pub combo: bool,
 }
 
 /// A request waiting for the GCD or a cooldown to come back.
@@ -152,7 +138,7 @@ pub struct Queued {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Started {
     /// An instant ability: resolve its effects now.
-    Instant,
+    Instant { combo: bool },
     /// A cast began; effects resolve when it finishes.
     Casting,
 }
@@ -168,6 +154,8 @@ pub struct ActionState {
     pub cooldowns: HashMap<String, (f64, f64)>,
     pub cast: Option<Cast>,
     pub queued: Option<Queued>,
+    /// The last GCD ability started and when (for combos).
+    pub last_gcd: Option<(String, f64)>,
 }
 
 impl ActionState {
@@ -232,9 +220,11 @@ impl ActionState {
         now: f64,
         config: &CombatConfig,
     ) -> Started {
+        let combo = self.combo_ready(ability, now, config);
         if ability.on_gcd {
             self.gcd_start = now;
             self.gcd_end = now + f64::from(config.gcd);
+            self.last_gcd = Some((ability.id.clone(), now));
         }
         if ability.cooldown > 0.0 {
             self.cooldowns
@@ -242,7 +232,7 @@ impl ActionState {
         }
         if ability.is_instant() {
             self.lock_until = now + f64::from(config.animation_lock);
-            Started::Instant
+            Started::Instant { combo }
         } else {
             let ends = now + f64::from(ability.cast_time);
             self.lock_until = ends + f64::from(config.cast_lock);
@@ -251,9 +241,23 @@ impl ActionState {
                 target,
                 started: now,
                 ends,
+                combo,
             });
             Started::Casting
         }
+    }
+
+    /// Would using `ability` now continue a combo?
+    pub fn combo_ready(&self, ability: &AbilityDef, now: f64, config: &CombatConfig) -> bool {
+        let (Some(combo), Some((last, at))) = (&ability.combo, &self.last_gcd) else {
+            return false;
+        };
+        *last == combo.after && now - at <= f64::from(config.combo_window)
+    }
+
+    /// Forget all timers (used when changing class).
+    pub fn reset(&mut self) {
+        *self = Self::default();
     }
 
     /// If the current cast has finished, end it and return it.
@@ -332,6 +336,20 @@ impl Health {
         Self { current: max, max }
     }
 
+    /// Add up to `amount` (never above max) and return how much was added.
+    pub fn heal(&mut self, amount: u32) -> u32 {
+        let added = amount.min(self.max - self.current);
+        self.current += added;
+        added
+    }
+
+    /// Change the maximum, keeping the same fraction of health.
+    pub fn set_max(&mut self, max: u32) {
+        let fraction = self.fraction();
+        self.max = max;
+        self.current = ((max as f32 * fraction).round() as u32).min(max);
+    }
+
     /// Remove up to `amount` and return how much was actually removed.
     pub fn damage(&mut self, amount: u32) -> u32 {
         let dealt = amount.min(self.current);
@@ -352,11 +370,6 @@ impl Health {
     }
 }
 
-/// Damage from an ability's potency. (Stats, crits and variance arrive later.)
-pub fn potency_damage(potency: u32, config: &CombatConfig) -> u32 {
-    (potency as f32 * config.damage_per_potency).round() as u32
-}
-
 /// Is the target within `range`? Distance is measured on the ground, from
 /// the user's centre to the edge of the target's hit circle (like FFXIV's
 /// target rings), so big monsters can be hit from further away.
@@ -369,34 +382,39 @@ pub fn horizontal_distance(a: Vec3, b: Vec3) -> f32 {
     (d.x * d.x + d.z * d.z).sqrt()
 }
 
+/// Combat settings for tests: no crits, simple numbers.
+#[cfg(test)]
+pub fn test_config() -> CombatConfig {
+    CombatConfig {
+        gcd: 1.5,
+        animation_lock: 0.6,
+        cast_lock: 0.1,
+        queue_window: 0.5,
+        combo_window: 15.0,
+        potency_scale: 1.0,
+        crit_chance: 0.0,
+        crit_multiplier: 1.5,
+        tick_interval: 3.0,
+        combat_timeout: 6.0,
+        flame_change_time: 2.0,
+        out_of_combat_regen: 0.1,
+        revive_after: 5.0,
+        tab_target_range: 40.0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::abilities::Combo;
+    use crate::abilities::test_support::damage_ability;
 
     fn config() -> CombatConfig {
-        CombatConfig {
-            gcd: 1.5,
-            animation_lock: 0.6,
-            cast_lock: 0.1,
-            queue_window: 0.5,
-            damage_per_potency: 1.0,
-            tab_target_range: 40.0,
-        }
+        test_config()
     }
 
     fn ability(id: &str, on_gcd: bool, cast_time: f32, cooldown: f32) -> AbilityDef {
-        AbilityDef {
-            id: id.into(),
-            name: id.into(),
-            description: String::new(),
-            on_gcd,
-            cast_time,
-            cooldown,
-            range: 3.0,
-            target: TargetKind::Enemy,
-            potency: 100,
-            vfx: String::new(),
-        }
+        damage_ability(id, on_gcd, cast_time, cooldown)
     }
 
     fn strike() -> AbilityDef {
@@ -413,7 +431,10 @@ mod tests {
     fn instant_gcd_starts_gcd_and_lock() {
         let mut s = ActionState::default();
         assert_eq!(s.check(&strike(), 10.0), Ok(()));
-        assert_eq!(s.begin(&strike(), None, 10.0, &config()), Started::Instant);
+        assert_eq!(
+            s.begin(&strike(), None, 10.0, &config()),
+            Started::Instant { combo: false }
+        );
         assert_eq!(s.gcd_end, 11.5);
         assert!((s.lock_until - 10.6).abs() < 1e-6);
         assert_eq!(s.check(&strike(), 11.0), Err(Reject::NotReady));
@@ -534,12 +555,48 @@ mod tests {
     }
 
     #[test]
-    fn damage_scales_with_potency() {
-        let cfg = CombatConfig {
-            damage_per_potency: 2.5,
-            ..config()
+    fn healing_never_exceeds_max() {
+        let mut h = Health {
+            current: 900,
+            max: 1000,
         };
-        assert_eq!(potency_damage(200, &cfg), 500);
+        assert_eq!(h.heal(500), 100);
+        assert_eq!(h.current, 1000);
+    }
+
+    #[test]
+    fn changing_max_health_keeps_the_fraction() {
+        let mut h = Health {
+            current: 500,
+            max: 1000,
+        };
+        h.set_max(2000);
+        assert_eq!(
+            h,
+            Health {
+                current: 1000,
+                max: 2000
+            }
+        );
+    }
+
+    #[test]
+    fn combos_need_the_right_previous_gcd_in_time() {
+        let mut s = ActionState::default();
+        let mut second = ability("second", true, 0.0, 0.0);
+        second.combo = Some(Combo {
+            after: "strike".into(),
+            potency: 300,
+        });
+        assert!(!s.combo_ready(&second, 0.0, &config()));
+        s.begin(&strike(), None, 0.0, &config());
+        assert!(s.combo_ready(&second, 2.0, &config()));
+        assert!(!s.combo_ready(&second, 20.0, &config()), "too late");
+        s.begin(&bolt(), None, 2.0, &config());
+        assert!(
+            !s.combo_ready(&second, 4.0, &config()),
+            "another GCD broke the combo"
+        );
     }
 
     #[test]
@@ -551,13 +608,5 @@ mod tests {
             "4 m away, 1 m radius, 3 m range"
         );
         assert!(!in_range(user, target, 0.5, 3.0));
-    }
-
-    #[test]
-    fn ability_validation() {
-        assert!(strike().problems().is_empty());
-        let bad = ability("bad", true, -1.0, 0.0);
-        assert_eq!(bad.problems().len(), 1);
-        assert!(bad.problems()[0].contains("`bad`"));
     }
 }

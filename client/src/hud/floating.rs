@@ -10,6 +10,7 @@ use super::{font, palette, spawn_bar, text_shadow};
 use crate::camera::FollowCamera;
 use crate::characters::{DisplayMotion, LocalPlayer};
 use crate::session::{LocalPlayerId, Received};
+use shared::gamedata::GameData;
 
 /// Nameplates are hidden beyond this distance from the camera.
 const NAMEPLATE_RANGE: f32 = 45.0;
@@ -145,7 +146,7 @@ fn spawn_message_line(mut commands: Commands) {
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
-            top: percent(22),
+            top: percent(30),
             width: percent(100),
             justify_content: JustifyContent::Center,
             ..default()
@@ -159,60 +160,152 @@ fn spawn_message_line(mut commands: Commands) {
         ));
 }
 
+/// A floating number to show.
+struct Popup {
+    target: Entity,
+    text: String,
+    color: Color,
+    size: f32,
+}
+
 fn show_events(
     mut commands: Commands,
     mut received: MessageReader<Received>,
     me: Res<LocalPlayerId>,
+    data: Res<GameData>,
     player: Option<Single<Entity, With<LocalPlayer>>>,
     characters: Query<&Transform>,
     mut message: Single<(&mut Text, &mut TextColor, &mut MessageLine)>,
     mut count: Local<u32>,
 ) {
     let my_entity = player.map(|p| *p);
+    let mut say = |text: String, tint: Color| {
+        let (line_text, color, line) = &mut *message;
+        line_text.0 = text;
+        color.0 = tint;
+        line.age = 0.0;
+    };
     for Received(event) in received.read() {
-        match event {
-            ServerEvent::Damage { target, amount, .. } => {
-                let Ok(transform) = characters.get(*target) else {
-                    continue;
+        let popup = match event {
+            ServerEvent::Damage {
+                target,
+                amount,
+                absorbed,
+                crit,
+                tick,
+                ..
+            } => {
+                let mut text = if *crit {
+                    format!("{amount}!")
+                } else {
+                    amount.to_string()
                 };
-                *count = count.wrapping_add(1);
-                let nudge = [0.0, 18.0, -18.0, 9.0, -9.0][(*count % 5) as usize];
+                if *absorbed > 0 {
+                    text = format!("{text} ({absorbed} absorbed)");
+                }
                 let color = if Some(*target) == my_entity {
                     palette::WARNING
+                } else if *tick {
+                    Color::srgb(1.0, 0.75, 0.45)
                 } else {
                     Color::srgb(1.0, 0.95, 0.75)
                 };
-                commands.spawn((
-                    DamageNumber {
-                        at: transform.translation + Vec3::Y * 1.8,
-                        age: 0.0,
-                        nudge,
-                    },
-                    Text::new(amount.to_string()),
-                    font(26.0),
-                    TextColor(color),
-                    text_shadow(),
-                    Node {
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
-                    Visibility::Hidden,
-                ));
+                Some(Popup {
+                    target: *target,
+                    text,
+                    color,
+                    size: number_size(*crit, *tick),
+                })
             }
+            ServerEvent::Heal {
+                target,
+                amount,
+                crit,
+                tick,
+                ..
+            } => Some(Popup {
+                target: *target,
+                text: if *crit {
+                    format!("+{amount}!")
+                } else {
+                    format!("+{amount}")
+                },
+                color: palette::HEAL,
+                size: number_size(*crit, *tick),
+            }),
             ServerEvent::Rejected { player, reason } if *player == me.0 => {
-                let (text, color, line) = &mut *message;
-                text.0 = reason.message().to_owned();
-                color.0 = palette::WARNING;
-                line.age = 0.0;
+                say(reason.message().to_owned(), palette::WARNING);
+                None
             }
             ServerEvent::CastInterrupted { user, .. } if Some(*user) == my_entity => {
-                let (text, color, line) = &mut *message;
-                text.0 = "Interrupted!".to_owned();
-                color.0 = palette::CAST;
-                line.age = 0.0;
+                say("Interrupted!".to_owned(), palette::CAST);
+                None
             }
-            _ => {}
-        }
+            ServerEvent::FlameChangeStarted { user, class } if Some(*user) == my_entity => {
+                let name = data
+                    .classes
+                    .get(class)
+                    .map_or(class.as_str(), |c| c.name.as_str());
+                say(
+                    format!("Changing your flame to {name}... (moving cancels)"),
+                    palette::CAST,
+                );
+                None
+            }
+            ServerEvent::ClassChanged { user, class } if Some(*user) == my_entity => {
+                let name = data
+                    .classes
+                    .get(class)
+                    .map_or(class.as_str(), |c| c.name.as_str());
+                say(
+                    format!("Your lantern now burns with the {name} flame."),
+                    palette::HEAL,
+                );
+                None
+            }
+            ServerEvent::Defeated { entity } if Some(*entity) == my_entity => {
+                say("You have been defeated.".to_owned(), palette::WARNING);
+                None
+            }
+            ServerEvent::Revived { entity } if Some(*entity) == my_entity => {
+                say("You get back on your feet.".to_owned(), palette::HEAL);
+                None
+            }
+            _ => None,
+        };
+        let Some(popup) = popup else {
+            continue;
+        };
+        let Ok(transform) = characters.get(popup.target) else {
+            continue;
+        };
+        *count = count.wrapping_add(1);
+        let nudge = [0.0, 22.0, -22.0, 11.0, -11.0][(*count % 5) as usize];
+        commands.spawn((
+            DamageNumber {
+                at: transform.translation + Vec3::Y * 1.8,
+                age: 0.0,
+                nudge,
+            },
+            Text::new(popup.text),
+            font(popup.size),
+            TextColor(popup.color),
+            text_shadow(),
+            Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// Crits are big, damage/healing over time small.
+fn number_size(crit: bool, tick: bool) -> f32 {
+    match (crit, tick) {
+        (true, _) => 34.0,
+        (false, true) => 18.0,
+        (false, false) => 24.0,
     }
 }
 

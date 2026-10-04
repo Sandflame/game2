@@ -39,5 +39,7 @@
         (enemy: "training_dummy", position: (-3.0, 0.0, -4.0), yaw: 0.0),
         (enemy: "training_dummy", position: (0.0, 0.0, -6.0), yaw: 0.0),
         (enemy: "training_dummy", position: (3.0, 0.0, -4.0), yaw: 0.0),
+        // This one hits back.
+        (enemy: "sparring_dummy", position: (-9.0, 0.0, 2.0), yaw: 1.2),
     ],
 )

@@ -3,8 +3,11 @@
 //! player's movement keys, and small reactions such as hit wobbles.
 
 use bevy::prelude::*;
+use server::{Defeated, EnemyKind, FlameChange};
+use shared::classes::CurrentClass;
 use shared::combat::ActionState;
 use shared::components::{Motion, PlayerId, VisualKey};
+use shared::gamedata::GameData;
 use shared::movement::{MoveInput, MoveState};
 use shared::protocol::{ClientRequest, Link, ServerEvent};
 
@@ -28,7 +31,10 @@ impl Plugin for CharactersPlugin {
                 interpolate_transforms.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
             ),
         )
-        .add_systems(Update, animate_lanterns);
+        .add_systems(
+            Update,
+            (animate_lanterns, show_defeated.after(animate_reactions)),
+        );
     }
 }
 
@@ -49,6 +55,9 @@ pub struct DisplayMotion {
 struct LanternFlame {
     owner: Entity,
     material: Handle<ToonMaterial>,
+    /// The flame's colour and glow, set by the owner's class.
+    color: Color,
+    glow: LinearRgba,
     /// Extra brightness after using an ability; fades quickly.
     flare: f32,
 }
@@ -57,8 +66,20 @@ struct LanternFlame {
 #[derive(Component)]
 struct HitWobble(f32);
 
-/// The lantern flame's normal glow.
+/// The lantern flame's glow before a class is known.
 const FLAME_GLOW: LinearRgba = LinearRgba::rgb(4.0, 1.8, 0.4);
+
+/// Colour and glow of each class's lantern flame (the `flame` key in
+/// class data). Looks only, so it lives in the client.
+pub fn flame_look(key: &str) -> (Color, LinearRgba) {
+    match key {
+        "crimson" => (Color::srgb(1.0, 0.35, 0.3), LinearRgba::rgb(5.0, 0.7, 0.5)),
+        "amber" => (Color::srgb(1.0, 0.7, 0.3), LinearRgba::rgb(4.5, 2.0, 0.3)),
+        "azure" => (Color::srgb(0.4, 0.7, 1.0), LinearRgba::rgb(0.6, 1.8, 5.0)),
+        "pearl" => (Color::srgb(1.0, 0.97, 0.88), LinearRgba::rgb(3.5, 3.3, 2.6)),
+        _ => (Color::srgb(1.0, 0.7, 0.3), FLAME_GLOW),
+    }
+}
 
 fn spawn_visuals(
     mut commands: Commands,
@@ -81,7 +102,18 @@ fn spawn_visuals(
         }
         match key.0.as_str() {
             "player" => build_player(&mut commands, &mut toon, entity),
-            "training_dummy" => build_training_dummy(&mut commands, &mut toon, entity),
+            "training_dummy" => build_training_dummy(
+                &mut commands,
+                &mut toon,
+                entity,
+                Color::srgb(0.80, 0.22, 0.20),
+            ),
+            "sparring_dummy" => build_training_dummy(
+                &mut commands,
+                &mut toon,
+                entity,
+                Color::srgb(0.20, 0.40, 0.85),
+            ),
             other => {
                 warn!("no placeholder look for visual `{other}`");
                 let material = toon.material(Color::srgb(1.0, 0.0, 1.0));
@@ -162,15 +194,22 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
     commands.entity(flame_part).insert(LanternFlame {
         owner: player,
         material: flame,
+        color: Color::srgb(1.0, 0.7, 0.3),
+        glow: FLAME_GLOW,
         flare: 0.0,
     });
 }
 
 /// Placeholder training dummy: a straw figure on a wooden post.
-fn build_training_dummy(commands: &mut Commands, toon: &mut ToonAssets, dummy: Entity) {
+fn build_training_dummy(
+    commands: &mut Commands,
+    toon: &mut ToonAssets,
+    dummy: Entity,
+    sash: Color,
+) {
     let wood = toon.material(Color::srgb(0.48, 0.33, 0.22));
     let straw = toon.material(Color::srgb(0.90, 0.78, 0.45));
-    let cloth = toon.material(Color::srgb(0.80, 0.22, 0.20));
+    let cloth = toon.material(sash);
 
     toon.spawn_part(
         commands,
@@ -286,6 +325,7 @@ fn react_to_events(
     mut commands: Commands,
     mut received: MessageReader<Received>,
     mut flames: Query<&mut LanternFlame>,
+    enemies: Query<(), With<EnemyKind>>,
 ) {
     for Received(event) in received.read() {
         match event {
@@ -293,6 +333,19 @@ fn react_to_events(
                 for mut flame in &mut flames {
                     if flame.owner == *user {
                         flame.flare = 1.0;
+                    }
+                }
+                // Enemies give a little lurch when they attack.
+                if enemies.contains(*user)
+                    && let Ok(mut entity) = commands.get_entity(*user)
+                {
+                    entity.insert(HitWobble(0.8));
+                }
+            }
+            ServerEvent::ClassChanged { user, .. } => {
+                for mut flame in &mut flames {
+                    if flame.owner == *user {
+                        flame.flare = 2.0;
                     }
                 }
             }
@@ -326,11 +379,13 @@ fn animate_reactions(
     }
 }
 
-/// Lantern flames flicker, glow brighter while casting, and flare on use.
+/// Lantern flames take their class's colour, flicker, glow brighter while
+/// casting, flare on use, and sputter while the flame is being changed.
 fn animate_lanterns(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
-    casters: Query<&ActionState>,
+    data: Res<GameData>,
+    owners: Query<(&ActionState, Option<&CurrentClass>, Has<FlameChange>)>,
     mut flames: Query<&mut LanternFlame>,
     mut materials: ResMut<Assets<ToonMaterial>>,
 ) {
@@ -339,14 +394,30 @@ fn animate_lanterns(
     let flicker = 1.0 + 0.12 * (t * 9.0).sin() + 0.08 * (t * 23.0 + 1.3).sin();
     for mut flame in &mut flames {
         flame.flare = (flame.flare - time.delta_secs() * 3.0).max(0.0);
-        let casting = casters
-            .get(flame.owner)
-            .ok()
-            .and_then(|a| a.cast_progress(now))
-            .unwrap_or(0.0);
-        let boost = 1.0 + casting * 1.5 + flame.flare * 3.0;
-        if let Some(mut material) = materials.get_mut(&flame.material) {
-            material.base.emissive = FLAME_GLOW * flicker * boost;
+        let Ok((actions, class, changing)) = owners.get(flame.owner) else {
+            continue;
+        };
+        if let Some(class) = class.and_then(|c| data.classes.get(&c.class)) {
+            (flame.color, flame.glow) = flame_look(&class.flame);
         }
+        let casting = actions.cast_progress(now).unwrap_or(0.0);
+        let sputter = if changing {
+            0.6 + 0.6 * (t * 30.0).sin()
+        } else {
+            1.0
+        };
+        let boost = (1.0 + casting * 1.5 + flame.flare * 3.0) * sputter;
+        if let Some(mut material) = materials.get_mut(&flame.material) {
+            material.base.base_color = flame.color;
+            material.base.emissive = flame.glow * flicker * boost;
+        }
+    }
+}
+
+/// Defeated characters lie down.
+fn show_defeated(mut fallen: Query<&mut Transform, With<Defeated>>) {
+    for mut transform in &mut fallen {
+        transform.rotation *= Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+        transform.translation.y += 0.35;
     }
 }

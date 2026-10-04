@@ -3,7 +3,8 @@
 //! and a tooltip on hover.
 
 use bevy::prelude::*;
-use shared::combat::{AbilityDef, ActionState, TargetKind, in_range};
+use shared::abilities::{AbilityDef, TargetKind};
+use shared::combat::{ActionState, in_range};
 use shared::components::{HOTBAR_SLOTS, HitRadius, Hotbar, Motion};
 use shared::gamedata::GameData;
 use shared::protocol::{ClientRequest, Link};
@@ -216,10 +217,18 @@ fn update_slots(
 
     for (mut slot, mut border) in &mut slots {
         slot.flash = (slot.flash - time.delta_secs() * 5.0).max(0.0);
-        let queued = ability_in(slot.index)
-            .is_some_and(|a| actions.queued.as_ref().is_some_and(|q| q.ability == a.id));
+        let ability = ability_in(slot.index);
+        let queued =
+            ability.is_some_and(|a| actions.queued.as_ref().is_some_and(|q| q.ability == a.id));
+        let combo = ability.is_some_and(|a| actions.combo_ready(a, now, &data.config.combat));
         let base = if queued {
             palette::QUEUED
+        } else if combo {
+            // A soft pulse shows which ability continues your combo.
+            palette::COMBO.mix(
+                &palette::PANEL_BORDER,
+                0.5 + 0.5 * (time.elapsed_secs() * 6.0).sin(),
+            )
         } else {
             palette::PANEL_BORDER
         };
@@ -290,19 +299,30 @@ fn update_tooltip(
     match ability {
         Some(a) => {
             **tooltip = Visibility::Visible;
-            let cast = if a.is_instant() {
+            let mut facts = vec![if a.is_instant() {
                 "Instant".to_owned()
             } else {
                 format!("Cast {:.1}s", a.cast_time)
-            };
-            let recast = if a.on_gcd {
+            }];
+            facts.push(if a.on_gcd {
                 "Global cooldown".to_owned()
             } else {
                 format!("Cooldown {:.0}s", a.cooldown)
-            };
+            });
+            if a.target != TargetKind::Myself {
+                facts.push(format!("Range {:.0}m", a.range));
+            }
+            let summary = a.summary(|id| {
+                data.statuses
+                    .get(id)
+                    .map_or_else(|| id.to_owned(), |s| s.name.clone())
+            });
             text.0 = format!(
-                "{}\n{} · {} · Range {:.0}m · Potency {}\n\n{}",
-                a.name, cast, recast, a.range, a.potency, a.description
+                "{}\n{}\n\n{}\n\n{}",
+                a.name,
+                facts.join("   "),
+                a.description,
+                summary
             );
         }
         None => **tooltip = Visibility::Hidden,

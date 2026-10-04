@@ -4,6 +4,7 @@
 mod floating;
 mod frames;
 mod hotbar;
+pub mod lantern;
 
 use bevy::prelude::*;
 
@@ -11,11 +12,14 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_help).add_plugins((
-            hotbar::HotbarPlugin,
-            frames::FramesPlugin,
-            floating::FloatingPlugin,
-        ));
+        app.add_systems(Startup, spawn_help)
+            .add_systems(Update, toggle_help)
+            .add_plugins((
+                hotbar::HotbarPlugin,
+                frames::FramesPlugin,
+                floating::FloatingPlugin,
+                lantern::LanternPlugin,
+            ));
     }
 }
 
@@ -33,6 +37,11 @@ pub mod palette {
     pub const CAST: Color = Color::srgb(0.95, 0.70, 0.30);
     pub const WARNING: Color = Color::srgb(1.0, 0.40, 0.35);
     pub const QUEUED: Color = Color::srgb(1.0, 0.85, 0.30);
+    pub const COMBO: Color = Color::srgb(0.45, 0.90, 1.0);
+    pub const HEAL: Color = Color::srgb(0.45, 1.0, 0.55);
+    pub const SHIELD: Color = Color::srgb(0.85, 0.90, 1.0);
+    pub const BUFF: Color = Color::srgb(0.40, 0.70, 1.0);
+    pub const DEBUFF: Color = Color::srgb(0.95, 0.40, 0.35);
 }
 
 /// The current time on the game clock, smoothed between ticks.
@@ -90,13 +99,18 @@ pub fn spawn_bar(
     fill
 }
 
+/// The controls list; H shows or hides it.
+#[derive(Component)]
+struct HelpLines;
+
 fn spawn_help(mut commands: Commands) {
     let lines = [
-        "WASD: move   Space: jump   Wheel: zoom",
-        "Left-drag: look   Right-drag: look and turn",
+        "WASD move   Space jump   Wheel zoom",
+        "Left-drag look   Right-drag look + turn",
         "Both mouse buttons: run forward",
-        "Tab or click: target   Esc: clear target",
-        "1-0 or click the hotbar: use abilities",
+        "Tab/click target   F1 yourself   Esc clear",
+        "1-0 or click hotbar: abilities",
+        "L: lantern (change class)",
     ];
     commands
         .spawn((
@@ -104,15 +118,40 @@ fn spawn_help(mut commands: Commands) {
                 position_type: PositionType::Absolute,
                 top: px(16),
                 right: px(16),
-                padding: UiRect::all(px(8)),
+                padding: UiRect::all(px(6)),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
             BackgroundColor(Color::srgba(0.05, 0.04, 0.10, 0.55)),
         ))
         .with_children(|parent| {
-            for line in lines {
-                parent.spawn((Text::new(line), font(13.0), TextColor(palette::TEXT_DIM)));
-            }
+            parent.spawn((
+                Text::new("H: show/hide controls"),
+                font(12.0),
+                TextColor(palette::TEXT),
+            ));
+            parent
+                .spawn((
+                    HelpLines,
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        ..default()
+                    },
+                ))
+                .with_children(|list| {
+                    for line in lines {
+                        list.spawn((Text::new(line), font(12.0), TextColor(palette::TEXT_DIM)));
+                    }
+                });
         });
+}
+
+fn toggle_help(keys: Res<ButtonInput<KeyCode>>, mut help: Single<&mut Node, With<HelpLines>>) {
+    if keys.just_pressed(KeyCode::KeyH) {
+        help.display = if help.display == Display::None {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
 }

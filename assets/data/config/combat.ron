@@ -1,4 +1,4 @@
-// Combat timing. Times in seconds, distances in metres.
+// Combat settings. Times in seconds, distances in metres.
 (
     // Global cooldown shared by all GCD abilities.
     gcd: 1.5,
@@ -8,8 +8,23 @@
     cast_lock: 0.1,
     // Pressing an ability this close to it being ready queues it.
     queue_window: 0.5,
-    // Damage per point of potency (until stats arrive in later milestones).
-    damage_per_potency: 1.0,
+    // A combo continues if the next step comes within this time.
+    combo_window: 15.0,
+    // Damage or healing per point of potency, at normal power (100).
+    potency_scale: 1.0,
+    // Chance of a critical hit or heal (0.1 = 10%), and how much stronger it is.
+    crit_chance: 0.1,
+    crit_multiplier: 1.5,
+    // Time between damage-over-time and healing-over-time ticks.
+    tick_interval: 3.0,
+    // You leave combat this long after your last hostile action.
+    combat_timeout: 6.0,
+    // Time to change the flame in your lantern (switch class).
+    flame_change_time: 2.0,
+    // Out of combat you heal this fraction of your health every second.
+    out_of_combat_regen: 0.08,
+    // Until raising arrives (Milestone 4), defeated players get up after this.
+    revive_after: 5.0,
     // Tab only picks enemies within this distance.
     tab_target_range: 40.0,
 )

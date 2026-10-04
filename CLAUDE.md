@@ -4,8 +4,9 @@ Guide for working in this repository (for Claude and for humans).
 
 ## Project status
 - Done: **M0** (plan), **M1** (scene, toon shading, movement), **M2** (targeting,
-  GCD, hotbar, training dummies, rules/screen split).
-- Next: **M3** (data-driven abilities, four classes). See `MILESTONES.md`.
+  GCD, hotbar, training dummies, rules/screen split), **M3** (effects, statuses,
+  four classes, threat, sparring dummy, flame switching).
+- Next: **M4** (first trial boss). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -54,8 +55,8 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   (search order: next to the program, current folder, project folder).
 - `LANTERNFLAME_SCREENSHOT=<file.png>` — client saves a screenshot after 2 s
   of game time and quits (`client/src/devtools.rs`).
-- `LANTERNFLAME_DEMO=1` (with the above) — scripted fight on a dummy; saves
-  `<file>-1.png` (mid-cast) and `<file>-2.png` (after the hit).
+- `LANTERNFLAME_DEMO=1` (with the above) — scripted scene (lantern panel, switch
+  to Elementalist, fight the sparring dummy); saves `<file>-1.png` … `-3.png`.
 
 ### Linux build dependencies
 `libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev` (and for headless
@@ -67,21 +68,36 @@ extra beyond the Rust toolchain.
 - `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
 - `shared/src/level.rs` — `Level` geometry: ground, boxes, cylinders; collision.
 - `shared/src/movement.rs` — `step()`: the one movement function used everywhere.
-- `shared/src/combat.rs` — `AbilityDef`, `CombatConfig`, `ActionState` (GCD,
-  cooldowns, casts, animation lock, queue), `Health`, damage, range.
+- `shared/src/combat.rs` — `CombatConfig`, `ActionState` (GCD, cooldowns, casts,
+  animation lock, queue, combos), `Health`, `Reject`, range.
+- `shared/src/abilities.rs` — `AbilityDef`: timing + list of `EffectEntry`
+  (`Effect` × `Recipients`), combos, tooltip summary.
+- `shared/src/statuses.rs` — `StatusDef`, `Modifiers`, `Statuses` component
+  (apply/refresh, shields absorbing, ticks, expiry).
+- `shared/src/formulas.rs` — damage/healing maths, crits, `Rng` (SplitMix64).
+- `shared/src/threat.rs` — `ThreatTable` (top, taunt, forget).
+- `shared/src/classes.rs` — `ClassDef`, `Role`, specializations, `CurrentClass`, `Stats`, hotbar layout.
 - `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
 - `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`.
 - `shared/src/targeting.rs` — Tab-target ordering.
-- `shared/src/gamedata.rs` — `GameData`: loads config, abilities, enemies; checks references.
+- `shared/src/gamedata.rs` — `GameData`: loads config, abilities, statuses, classes,
+  enemies; checks every cross-file reference.
 - `server/src/lib.rs` — `AuthorityPlugin`, tick order (`AuthoritySystems`).
-- `server/src/{requests,actions,characters}.rs` — handling requests, using
-  abilities/applying damage, spawning/moving characters, dummy resets.
+- `server/src/requests.rs` — reads `ClientRequest`s.
+- `server/src/actions.rs` — target validation, using/queueing abilities, finishing casts.
+- `server/src/effects.rs` — effects landing (damage, heal, shield, status, taunt),
+  status ticks, threat from damage and healing.
+- `server/src/enemies.rs` — enemy spawning, `EnemyBrain` rotations, facing, idle resets.
+- `server/src/classes.rs` — flame changes (class switching).
+- `server/src/characters.rs` — players: joining, movement, combat clock, defeat,
+  revive, out-of-combat regen.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining, `Received` event messages.
 - `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
   sending movement, hit wobble, lantern glow.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
-- `client/src/hud/` — hotbar, unit frames + cast bar, nameplates, damage numbers, messages.
+- `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
+  status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — builds visuals for a `Level` (visual keys → placeholder meshes).
@@ -104,6 +120,12 @@ extra beyond the Rust toolchain.
   (normal for Bevy systems).
 - Dependencies build without debug info (`Cargo.toml` profile) to save disk space.
 - Data files are validated at load; errors must name the file and field.
+  Cross-file references (ability → status, class → ability…) are checked in
+  `GameData::check_references`.
+- New ability behaviour = new data. Only add an `Effect`/`Recipients` variant
+  when no combination of existing ones can express it.
+- Server tests (`server/tests/authority.rs`) use their own RON data in the test
+  file, so balancing `assets/data` never breaks them.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
 - Database access goes through one module in `server/` and runs off the
   main game thread.

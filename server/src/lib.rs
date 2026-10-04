@@ -12,12 +12,18 @@
 
 mod actions;
 mod characters;
+mod classes;
+mod effects;
+mod enemies;
 mod requests;
 
 use bevy::prelude::*;
+use shared::formulas::Rng;
 use shared::protocol::Link;
 
-pub use characters::{EnemyKind, PlayerIndex, PlayerInput};
+pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput};
+pub use classes::FlameChange;
+pub use enemies::{EnemyKind, ResetWhenIdle};
 
 /// Ordered steps of one authority tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -26,10 +32,24 @@ pub enum AuthoritySystems {
     Receive,
     /// Move characters.
     Move,
-    /// Finish casts, run queued actions, apply damage.
+    /// Enemies decide, casts finish, effects land, statuses tick.
     Act,
-    /// Housekeeping such as training dummies resetting.
+    /// Housekeeping: class changes, regeneration, revives, resets.
     Maintain,
+}
+
+/// Random numbers for critical hits.
+#[derive(Resource)]
+pub struct CombatRng(pub Rng);
+
+impl Default for CombatRng {
+    fn default() -> Self {
+        // Seeded from the clock so each session differs.
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0x5EED, |d| d.as_nanos() as u64);
+        Self(Rng::new(seed))
+    }
 }
 
 pub struct AuthorityPlugin;
@@ -38,7 +58,8 @@ impl Plugin for AuthorityPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Link>()
             .init_resource::<PlayerIndex>()
-            .init_resource::<actions::PendingHits>()
+            .init_resource::<CombatRng>()
+            .init_resource::<effects::PendingEffects>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -49,16 +70,30 @@ impl Plugin for AuthorityPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Startup, characters::spawn_enemies)
+            .add_systems(Startup, enemies::spawn_enemies)
             .add_systems(
                 FixedUpdate,
                 (
                     requests::receive_requests.in_set(AuthoritySystems::Receive),
                     characters::move_characters.in_set(AuthoritySystems::Move),
-                    (actions::process_actions, actions::apply_hits)
+                    (
+                        enemies::enemy_brains,
+                        enemies::face_targets,
+                        actions::process_actions,
+                        effects::resolve_effects,
+                        effects::tick_statuses,
+                        characters::handle_defeats,
+                    )
                         .chain()
                         .in_set(AuthoritySystems::Act),
-                    characters::reset_dummies.in_set(AuthoritySystems::Maintain),
+                    (
+                        classes::finish_flame_changes,
+                        characters::regenerate,
+                        characters::revive,
+                        enemies::reset_idle_enemies,
+                    )
+                        .chain()
+                        .in_set(AuthoritySystems::Maintain),
                 ),
             );
     }

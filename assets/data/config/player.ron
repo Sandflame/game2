@@ -1,7 +1,7 @@
-// Player character settings. (Milestone 3 moves these into class data.)
+// Player character settings.
 (
-    max_health: 10000,
+    // Size of a player's target ring, in metres.
     hit_radius: 0.5,
-    // Abilities on hotbar slots 1, 2, 3… (ids from assets/data/abilities/).
-    hotbar: ["strike", "lantern_bolt", "flare_burst"],
+    // The class new characters start as (a file name in assets/data/classes/).
+    start_class: "blademaster",
 )

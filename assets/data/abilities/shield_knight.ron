@@ -1,0 +1,66 @@
+// Shield Knight: durable front-liner who holds enemies' attention.
+[
+    // ---- Core ----
+    (
+        id: "sk_shield_bash", name: "Shield Bash",
+        description: "Slam your shield into the target. Starts your combo.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 180))],
+        vfx: "bash",
+    ),
+    (
+        id: "sk_riposte", name: "Riposte",
+        description: "A swift counter-thrust. Much stronger right after Shield Bash.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 120))],
+        combo: Some((after: "sk_shield_bash", potency: 300)),
+        vfx: "slash",
+    ),
+    (
+        id: "sk_taunt", name: "Taunt",
+        description: "Challenge the target so it attacks you.",
+        on_gcd: false, cooldown: 30.0, range: 20.0, target: Enemy,
+        effects: [(effect: Taunt)],
+        vfx: "taunt",
+    ),
+    (
+        id: "sk_rampart", name: "Rampart",
+        description: "Raise your guard, taking much less damage for a while.",
+        on_gcd: false, cooldown: 90.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "rampart"))],
+        vfx: "buff_grey",
+    ),
+    (
+        id: "sk_shield_sweep", name: "Shield Sweep",
+        description: "Sweep your shield around you, striking every nearby enemy.",
+        on_gcd: true, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(potency: 120))],
+        vfx: "spin",
+    ),
+
+    // ---- Bulwark specialization ----
+    (
+        id: "sk_stalwart_guard", name: "Stalwart Guard",
+        description: "Brace behind your shield, gaining a barrier.",
+        on_gcd: false, cooldown: 60.0, target: Myself,
+        effects: [(effect: Shield(potency: 2500, status: "stalwart_guard"))],
+        vfx: "shield_light",
+    ),
+    (
+        id: "sk_holdfast", name: "Holdfast",
+        description: "Strike the target and recover some of your strength.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [
+            (effect: Damage(potency: 150)),
+            (to: Myself, effect: Heal(potency: 350)),
+        ],
+        vfx: "bash",
+    ),
+    (
+        id: "sk_iron_bastion", name: "Iron Bastion",
+        description: "Become an unbreakable wall for a few seconds.",
+        on_gcd: false, cooldown: 120.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "iron_bastion"))],
+        vfx: "buff_grey",
+    ),
+]

@@ -44,12 +44,14 @@ Earlier changes to your original list:
   headless test that plays through the rules end to end.
 - **Test:** hit the dummy; casts cancel when you move.
 
-## M3 — Data-driven abilities, four classes, class switching
+## M3 — Data-driven abilities, four classes, class switching ✅
 - Ability, status, and class data files; effects system (DESIGN.md §5.3).
 - Blademaster/Greatsword, Elementalist/Fire, Shield Knight/Bulwark,
   Priest/Mender, each with 5 core + 3 spec abilities.
 - Statuses: buffs, debuffs, DoT/HoT, shields, threat basics.
 - Lantern flame switching out of combat.
+- Added: a sparring dummy that hits back (to test healing, shields and
+  mitigation), critical hits, combos, simple defeat/auto-revive.
 - **Test:** switch between all four classes and use every ability.
 
 ## M4 — First trial boss

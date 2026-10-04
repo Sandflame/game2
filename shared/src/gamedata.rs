@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use bevy::prelude::Resource;
 use serde::Deserialize;
 
-use crate::combat::AbilityDef;
-use crate::components::HOTBAR_SLOTS;
+use crate::abilities::AbilityDef;
+use crate::classes::ClassDef;
 use crate::config::GameConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
 use crate::level::Level;
+use crate::statuses::{StatusDef, StatusFile};
 
 /// An enemy type (`assets/data/enemies/<id>.ron`; the id is the file name).
 #[derive(Debug, Clone, Deserialize)]
@@ -25,6 +26,23 @@ pub struct EnemyDef {
     /// Training dummies: heal to full after this many seconds without being hit.
     #[serde(default)]
     pub reset_after: Option<f32>,
+    /// Scales the enemy's damage (100 = normal).
+    #[serde(default = "normal_power")]
+    pub power: f32,
+    /// Abilities the enemy uses on whoever it is most angry at.
+    #[serde(default)]
+    pub actions: Vec<EnemyAction>,
+}
+
+fn normal_power() -> f32 {
+    crate::formulas::BASE_POWER
+}
+
+/// "Use this ability every so many seconds."
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnemyAction {
+    pub ability: String,
+    pub every: f32,
 }
 
 impl Validate for EnemyDef {
@@ -36,6 +54,10 @@ impl Validate for EnemyDef {
         p.positive("hit_radius", self.hit_radius);
         if let Some(reset) = self.reset_after {
             p.positive("reset_after", reset);
+        }
+        p.positive("power", self.power);
+        for (i, action) in self.actions.iter().enumerate() {
+            p.positive(&format!("actions[{i}].every"), action.every);
         }
         p.0
     }
@@ -53,25 +75,17 @@ impl Validate for AbilityFile {
 }
 
 /// Player character settings (`assets/data/config/player.ron`).
-/// Milestone 3 moves health and hotbars into class data.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlayerConfig {
-    pub max_health: u32,
     pub hit_radius: f32,
-    /// Ability ids for hotbar slots 1, 2, 3… (at most 10).
-    pub hotbar: Vec<String>,
+    /// The class (file name in `assets/data/classes/`) new characters start as.
+    pub start_class: String,
 }
 
 impl Validate for PlayerConfig {
     fn validate(&self) -> Vec<String> {
         let mut p = Problems::default();
-        if self.max_health == 0 {
-            p.push("`max_health` must be greater than 0");
-        }
         p.positive("hit_radius", self.hit_radius);
-        if self.hotbar.len() > HOTBAR_SLOTS {
-            p.push(format!("`hotbar` has more than {HOTBAR_SLOTS} slots"));
-        }
         p.0
     }
 }
@@ -82,6 +96,8 @@ pub struct GameData {
     pub config: GameConfig,
     pub player: PlayerConfig,
     pub abilities: HashMap<String, AbilityDef>,
+    pub statuses: HashMap<String, StatusDef>,
+    pub classes: HashMap<String, ClassDef>,
     pub enemies: HashMap<String, EnemyDef>,
 }
 
@@ -104,32 +120,110 @@ impl GameData {
             }
         }
 
-        let mut enemies = HashMap::new();
-        for (path, enemy) in load_dir::<EnemyDef>(&data.join("enemies"))? {
-            let id = path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned();
-            enemies.insert(id, enemy);
-        }
-
-        let player_path = data.join("config").join("player.ron");
-        for id in &player.hotbar {
-            if !abilities.contains_key(id) {
-                return Err(invalid(
-                    &player_path,
-                    format!("hotbar names unknown ability `{id}`"),
-                ));
+        let mut statuses = HashMap::new();
+        for (path, file) in load_dir::<StatusFile>(&data.join("statuses"))? {
+            for status in file.0 {
+                if statuses.contains_key(&status.id) {
+                    return Err(invalid(
+                        &path,
+                        format!("status id `{}` is used twice", status.id),
+                    ));
+                }
+                statuses.insert(status.id.clone(), status);
             }
         }
 
-        Ok(Self {
+        let classes: HashMap<String, ClassDef> = load_dir::<ClassDef>(&data.join("classes"))?
+            .into_iter()
+            .map(|(path, class)| (file_id(&path), class))
+            .collect();
+        let enemies: HashMap<String, EnemyDef> = load_dir::<EnemyDef>(&data.join("enemies"))?
+            .into_iter()
+            .map(|(path, enemy)| (file_id(&path), enemy))
+            .collect();
+
+        let game = Self {
             config,
             player,
             abilities,
+            statuses,
+            classes,
             enemies,
-        })
+        };
+        game.check_references(&data)?;
+        Ok(game)
+    }
+
+    /// Make sure every name one file uses for something in another file exists.
+    fn check_references(&self, data: &Path) -> Result<(), DataError> {
+        let ability = |id: &str| self.abilities.contains_key(id);
+        let status = |id: &str| self.statuses.contains_key(id);
+
+        for a in self.abilities.values() {
+            let mut problems: Vec<String> = a
+                .statuses()
+                .filter(|s| !status(s))
+                .map(|s| format!("ability `{}` uses unknown status `{s}`", a.id))
+                .collect();
+            if let Some(combo) = &a.combo
+                && !ability(&combo.after)
+            {
+                problems.push(format!(
+                    "ability `{}` combos after unknown ability `{}`",
+                    a.id, combo.after
+                ));
+            }
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: data.join("abilities"),
+                    problems,
+                });
+            }
+        }
+        for (id, class) in &self.classes {
+            let problems: Vec<String> = class
+                .all_abilities()
+                .filter(|a| !ability(a))
+                .map(|a| format!("uses unknown ability `{a}`"))
+                .collect();
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: data.join("classes").join(format!("{id}.ron")),
+                    problems,
+                });
+            }
+        }
+        for (id, enemy) in &self.enemies {
+            let problems: Vec<String> = enemy
+                .actions
+                .iter()
+                .filter(|a| !ability(&a.ability))
+                .map(|a| format!("uses unknown ability `{}`", a.ability))
+                .collect();
+            if !problems.is_empty() {
+                return Err(DataError::Invalid {
+                    path: data.join("enemies").join(format!("{id}.ron")),
+                    problems,
+                });
+            }
+        }
+        if !self.classes.contains_key(&self.player.start_class) {
+            return Err(invalid(
+                &data.join("config").join("player.ron"),
+                format!(
+                    "`start_class` names unknown class `{}`",
+                    self.player.start_class
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Classes in display order (by role, then name).
+    pub fn class_list(&self) -> Vec<(&String, &ClassDef)> {
+        let mut list: Vec<_> = self.classes.iter().collect();
+        list.sort_by_key(|(_, c)| (c.role as u8, c.name.clone()));
+        list
     }
 
     /// Load a zone and check that everything it refers to exists.
@@ -150,6 +244,13 @@ impl GameData {
             })
         }
     }
+}
+
+fn file_id(path: &Path) -> String {
+    path.file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn invalid(path: &Path, problem: String) -> DataError {
@@ -189,7 +290,7 @@ mod tests {
         let assets = find_assets_dir().unwrap();
         let data = GameData::load(&assets).unwrap();
         assert!(data.enemies.contains_key("training_dummy"));
-        assert!(!data.player.hotbar.is_empty());
+        assert_eq!(data.classes.len(), 4);
         let level = data.load_level(&assets, "sandbox").unwrap();
         assert!(!level.spawns.is_empty());
     }

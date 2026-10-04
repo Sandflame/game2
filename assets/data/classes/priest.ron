@@ -1,0 +1,21 @@
+// Priest — sustain. Flame: pearl.
+(
+    name: "Priest",
+    description: "A healer who keeps friends standing with holy light.",
+    flame: "pearl",
+    role: Sustain,
+    max_health: 9000,
+    power: 100,
+    threat_multiplier: 1.0,
+    core: ["pr_stone", "pr_mend", "pr_renew", "pr_sanctuary", "pr_smite"],
+    // Warden (barriers) and Judge (damage that heals) arrive in Milestone 10.
+    specializations: [
+        (
+            id: "mender",
+            name: "Mender",
+            description: "Big, reliable heals.",
+            abilities: ["pr_benediction", "pr_grace", "pr_blessing"],
+        ),
+    ],
+    default_spec: "mender",
+)

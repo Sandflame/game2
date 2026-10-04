@@ -1,0 +1,13 @@
+// A sparring dummy: like a training dummy, but it hits back, so you can
+// practise healing, shields and damage reduction. It heals to full and
+// calms down when left alone.
+(
+    name: "Sparring Dummy",
+    max_health: 60000,
+    hit_radius: 0.7,
+    visual: "sparring_dummy",
+    reset_after: 10.0,
+    power: 100,
+    // Every 3 seconds it swats whoever it is angriest at (within 30 m).
+    actions: [(ability: "dummy_swat", every: 3.0)],
+)

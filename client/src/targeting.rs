@@ -87,9 +87,19 @@ fn tab_target(
     .or(target.0);
 }
 
-fn clear_target(keys: Res<ButtonInput<KeyCode>>, mut target: ResMut<CurrentTarget>) {
+/// Esc clears the target; F1 targets yourself (for heals and buffs).
+fn clear_target(
+    keys: Res<ButtonInput<KeyCode>>,
+    player: Option<Single<Entity, With<LocalPlayer>>>,
+    mut target: ResMut<CurrentTarget>,
+) {
     if keys.just_pressed(KeyCode::Escape) {
         target.0 = None;
+    }
+    if keys.just_pressed(KeyCode::F1)
+        && let Some(player) = player
+    {
+        target.0 = Some(*player);
     }
 }
 

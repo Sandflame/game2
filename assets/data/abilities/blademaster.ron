@@ -1,0 +1,64 @@
+// Blademaster: close-range damage with a three-step combo.
+[
+    // ---- Core (every specialization) ----
+    (
+        id: "bm_slash", name: "Slash",
+        description: "A quick cut. Starts your combo.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 200))],
+        vfx: "slash",
+    ),
+    (
+        id: "bm_rending_cut", name: "Rending Cut",
+        description: "A deeper cut. Much stronger right after Slash.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 140))],
+        combo: Some((after: "bm_slash", potency: 300)),
+        vfx: "slash",
+    ),
+    (
+        id: "bm_finishing_edge", name: "Finishing Edge",
+        description: "Ends the combo with a heavy blow. Much stronger right after Rending Cut.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 140))],
+        combo: Some((after: "bm_rending_cut", potency: 420)),
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "bm_whirlwind", name: "Whirlwind",
+        description: "Spin, striking every enemy around you.",
+        on_gcd: true, target: Myself,
+        effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(potency: 130))],
+        vfx: "spin",
+    ),
+    (
+        id: "bm_battle_focus", name: "Battle Focus",
+        description: "Steady your breathing to strike harder for a while.",
+        on_gcd: false, cooldown: 60.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "battle_focus"))],
+        vfx: "buff_red",
+    ),
+
+    // ---- Greatsword specialization ----
+    (
+        id: "bm_earthsplitter", name: "Earthsplitter",
+        description: "Bring the greatsword down, hitting your target and enemies near it.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(to: EnemiesAround(centre: Target, radius: 4.0), effect: Damage(potency: 260))],
+        vfx: "slam",
+    ),
+    (
+        id: "bm_overhead_crush", name: "Overhead Crush",
+        description: "A crushing overhead blow, woven between other attacks.",
+        on_gcd: false, cooldown: 30.0, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(potency: 480))],
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "bm_iron_will", name: "Iron Will",
+        description: "Brace behind the flat of the blade, taking less damage.",
+        on_gcd: false, cooldown: 90.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "iron_will"))],
+        vfx: "buff_grey",
+    ),
+]
