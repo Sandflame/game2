@@ -13,6 +13,11 @@ use bevy::window::{CursorGrabMode, CursorOptions};
 
 use shared::gamedata::Zones;
 
+use std::f32::consts::{PI, TAU};
+
+use server::Riding;
+use shared::components::Motion;
+
 use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
 use crate::hud::options::OptionsMenu;
 use crate::world::CurrentZone;
@@ -64,6 +69,12 @@ impl CameraShake {
         self.0 = (self.0 + amount).min(1.0);
     }
 }
+
+/// On a ride: how fast the camera swings behind the rider, how far it
+/// looks down, and how close it stays.
+const RIDE_TURN: f32 = 4.0;
+const RIDE_PITCH: f32 = 0.22;
+const RIDE_DISTANCE: f32 = 6.0;
 
 /// How far the strongest shake moves the camera (metres), and how fast it fades.
 const SHAKE_SIZE: f32 = 0.18;
@@ -190,26 +201,38 @@ fn follow_player(
     current: Res<CurrentZone>,
     zones: Res<Zones>,
     mut shake: ResMut<CameraShake>,
-    player: Single<&Transform, (With<LocalPlayer>, Without<FollowCamera>)>,
+    player: Single<(&Transform, &Motion, Has<Riding>), (With<LocalPlayer>, Without<FollowCamera>)>,
     camera: Single<(&mut FollowCamera, &mut Transform)>,
 ) {
     let (mut follow, mut transform) = camera.into_inner();
+    let (player, motion, riding) = *player;
     // Ease the zoom so wheel steps feel smooth.
     let ease = 1.0 - (-12.0 * time.delta_secs()).exp();
     follow.distance += (follow.target_distance - follow.distance) * ease;
 
     let focus = player.translation + Vec3::Y * FOCUS_HEIGHT;
-    let rotation = Quat::from_euler(EulerRot::YXZ, follow.yaw, -follow.pitch, 0.0);
+    // On a ride the camera swings round behind the rider, close and low.
+    let (pitch, mut distance) = if riding {
+        let turn = 1.0 - (-RIDE_TURN * time.delta_secs()).exp();
+        let difference = (motion.0.yaw - follow.yaw + PI).rem_euclid(TAU) - PI;
+        follow.yaw += difference * turn;
+        (RIDE_PITCH, RIDE_DISTANCE)
+    } else {
+        (follow.pitch, follow.distance)
+    };
+    let rotation = Quat::from_euler(EulerRot::YXZ, follow.yaw, -pitch, 0.0);
     let direction = rotation * Vec3::Z;
-    let mut distance = follow.distance;
-    if let Some(level) = current.0.as_deref().and_then(|zone| zones.get(zone))
+    let level = current.0.as_deref().and_then(|zone| zones.get(zone));
+    if let Some(level) = level
         && !level.border.is_empty()
     {
         distance = room_before_wall(focus, direction, distance, level.half_size - WALL_MARGIN);
     }
     let mut position = focus + direction * distance;
-    // Never dip below the ground.
-    position.y = position.y.max(0.3);
+    // Never dip below the ground (where there is one).
+    if level.is_none_or(|l| l.ground != "none") {
+        position.y = position.y.max(0.3);
+    }
     *transform = Transform::from_translation(position).looking_at(focus, Vec3::Y);
     if shake.0 > 0.0 {
         let t = time.elapsed_secs();

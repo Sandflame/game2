@@ -1,0 +1,14 @@
+// A walking mushroom that spits spores from a distance.
+(
+    name: "Spore Cap",
+    max_health: 2000,
+    hit_radius: 0.8,
+    visual: "spore_cap",
+    actions: [(ability: "spore_bolt", every: 3.2)],
+    xp: 90,
+    move_speed: 3.0,
+    aggro_radius: 11.0,
+    leash_radius: 30.0,
+    assist_radius: 10.0,
+    reset_after: 25.0,
+)

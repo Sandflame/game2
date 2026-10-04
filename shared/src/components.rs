@@ -29,6 +29,8 @@ pub struct Zone(pub String);
 pub enum Faction {
     Player,
     Enemy,
+    /// Townsfolk and other people you talk to: nobody fights them.
+    Neutral,
 }
 
 impl Faction {
@@ -36,7 +38,7 @@ impl Faction {
     /// (A rule function rather than a hard-coded check, so duels and PvP
     /// can change it later.)
     pub fn can_harm(self, other: Faction) -> bool {
-        self != other
+        self != other && self != Faction::Neutral && other != Faction::Neutral
     }
 }
 

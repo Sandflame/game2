@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
 use shared::combat::ActionState;
-use shared::components::{Motion, PlayerId, Zone};
+use shared::components::{CharacterName, Motion, PlayerId, Zone};
 use shared::gamedata::GameData;
 use shared::gamedata::Zones;
 use shared::protocol::{ClientRequest, Link};
@@ -16,6 +16,7 @@ use crate::classes;
 use crate::database::Database;
 use crate::effects::PendingEffects;
 use crate::progression::{GearRequest, PendingGear};
+use crate::travel::{Npc, Riding, busy_riding};
 
 pub fn receive_requests(
     mut commands: Commands,
@@ -29,6 +30,7 @@ pub fn receive_requests(
     mut gear: ResMut<PendingGear>,
     mut joining: ResMut<PendingJoins>,
     database: Option<Res<Database>>,
+    riders: Query<(), With<Riding>>,
     mut actors: Actors,
     targets: Targets,
     class_state: Query<(&CurrentClass, &CombatClock, Has<Defeated>)>,
@@ -66,6 +68,18 @@ pub fn receive_requests(
         let Some(&entity) = index.0.get(&player) else {
             continue;
         };
+        // On a ride you can only steer the camera.
+        if riders.contains(entity)
+            && matches!(
+                request,
+                ClientRequest::UseAbility { .. }
+                    | ClientRequest::ChangeClass { .. }
+                    | ClientRequest::Interact
+            )
+        {
+            busy_riding(ctx.link, player);
+            continue;
+        }
         match request {
             ClientRequest::Join { .. } => {}
             ClientRequest::Interact => interactions.0.push((player, entity)),
@@ -159,7 +173,8 @@ pub fn handle_interactions(
     zones: Res<Zones>,
     mut link: ResMut<Link>,
     mut pending: ResMut<PendingInteractions>,
-    mut players: Query<(&Zone, &mut Motion, &CombatClock, Has<Defeated>)>,
+    mut players: Query<(&Zone, &mut Motion, &CombatClock, Has<Defeated>), With<PlayerId>>,
+    mut npcs: Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
 ) {
     let now = time.elapsed_secs_f64();
     for (player, entity) in pending.0.drain(..) {
@@ -173,6 +188,7 @@ pub fn handle_interactions(
                 player,
                 entity,
                 (zone, &mut motion, clock, defeated),
+                &mut npcs,
             );
         }
     }

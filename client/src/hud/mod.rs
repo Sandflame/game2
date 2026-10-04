@@ -9,6 +9,7 @@ mod hotbar;
 pub mod lantern;
 pub mod options;
 mod secondary;
+mod speech;
 
 use bevy::prelude::*;
 
@@ -26,6 +27,7 @@ impl Plugin for HudPlugin {
                 options::OptionsPlugin,
                 character::CharacterPanelPlugin,
                 secondary::SecondaryPlugin,
+                speech::SpeechPlugin,
                 banner::BannerPlugin,
             ));
     }
@@ -121,7 +123,7 @@ fn spawn_help(mut commands: Commands) {
         "Tab/click target   F1 yourself   Esc clear",
         "1-0, -, = or click hotbar: abilities (9, 0: borrowed)",
         "L: lantern (class, secondary)   C: character, gear",
-        "E: use a portal   M: mute sound",
+        "E: use a portal or talk   M: mute sound",
         "O (or Esc): options, sound volume",
     ];
     commands

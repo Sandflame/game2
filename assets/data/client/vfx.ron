@@ -70,5 +70,7 @@
 
     // Places (these never stop).
     "portal":        (style: Particles, color: (0.5, 1.2, 1.6), size: 1.0, particles: ["portal_motes"]),
+    "campfire":      (style: Particles, color: (1.6, 0.7, 0.2), size: 1.0, particles: ["campfire_embers"]),
+    "lantern_motes": (style: Particles, color: (1.3, 1.0, 0.5), size: 1.0, particles: ["lantern_motes"]),
     "pollen":        (style: Particles, color: (1.0, 1.0, 0.6), size: 1.0, particles: ["pollen"]),
 }

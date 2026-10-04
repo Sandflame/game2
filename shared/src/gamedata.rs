@@ -16,6 +16,7 @@ use crate::encounters::EncounterDef;
 use crate::items::{ItemDef, ItemFile};
 use crate::level::Level;
 use crate::progression::ProgressionDef;
+use crate::rides::RideDef;
 use crate::statuses::{StatusDef, StatusFile};
 use crate::synergy::SynergyDef;
 
@@ -39,6 +40,18 @@ pub struct EnemyDef {
     /// Experience for each player who fought it when it is defeated.
     #[serde(default)]
     pub xp: u32,
+    /// Walking speed in metres per second (0: never moves, like dummies).
+    #[serde(default)]
+    pub move_speed: f32,
+    /// Notices players who come this close (0: only fights when attacked).
+    #[serde(default)]
+    pub aggro_radius: f32,
+    /// Gives up and walks home if pulled this far from home (0: never).
+    #[serde(default)]
+    pub leash_radius: f32,
+    /// Joins the fight when a friend this close is fighting (0: never).
+    #[serde(default)]
+    pub assist_radius: f32,
 }
 
 fn normal_power() -> f32 {
@@ -63,6 +76,14 @@ impl Validate for EnemyDef {
             p.positive("reset_after", reset);
         }
         p.positive("power", self.power);
+        for (name, value) in [
+            ("move_speed", self.move_speed),
+            ("aggro_radius", self.aggro_radius),
+            ("leash_radius", self.leash_radius),
+            ("assist_radius", self.assist_radius),
+        ] {
+            p.non_negative(name, value);
+        }
         for (i, action) in self.actions.iter().enumerate() {
             p.positive(&format!("actions[{i}].every"), action.every);
         }
@@ -96,6 +117,13 @@ pub struct PlayerConfig {
     /// Items new characters start with; they put on what they can.
     #[serde(default)]
     pub start_items: Vec<String>,
+    /// How close (metres) you must be to talk to someone.
+    #[serde(default = "default_talk_distance")]
+    pub talk_distance: f32,
+}
+
+fn default_talk_distance() -> f32 {
+    3.5
 }
 
 impl Validate for PlayerConfig {
@@ -135,6 +163,7 @@ pub struct GameData {
     pub progression: ProgressionDef,
     pub items: HashMap<String, ItemDef>,
     pub synergy: SynergyDef,
+    pub rides: HashMap<String, RideDef>,
 }
 
 impl GameData {
@@ -186,6 +215,10 @@ impl GameData {
 
         let progression: ProgressionDef = load_ron(&data.join("progression.ron"))?;
         let synergy: SynergyDef = load_ron(&data.join("synergy.ron"))?;
+        let rides: HashMap<String, RideDef> = load_dir::<RideDef>(&data.join("rides"))?
+            .into_iter()
+            .map(|(path, ride)| (file_id(&path), ride))
+            .collect();
         let mut items = HashMap::new();
         for (path, file) in load_dir::<ItemFile>(&data.join("items"))? {
             for (id, item) in file.0 {
@@ -207,6 +240,7 @@ impl GameData {
             progression,
             items,
             synergy,
+            rides,
         };
         game.check_references(&data)?;
         Ok(game)
@@ -370,13 +404,15 @@ impl GameData {
                 .filter(|s| !self.enemies.contains_key(&s.enemy))
                 .map(|s| format!("spawn names unknown enemy `{}`", s.enemy))
                 .collect();
-            problems.extend(
-                level
-                    .portals
-                    .iter()
-                    .filter(|p| !zones.contains_key(&p.to))
-                    .map(|p| format!("portal leads to unknown zone `{}`", p.to)),
-            );
+            for portal in &level.portals {
+                if let Some(ride) = &portal.ride {
+                    if !self.rides.contains_key(ride) {
+                        problems.push(format!("portal uses unknown ride `{ride}`"));
+                    }
+                } else if portal.closed.is_none() && !zones.contains_key(&portal.to) {
+                    problems.push(format!("portal leads to unknown zone `{}`", portal.to));
+                }
+            }
             if let Some(encounter) = &level.encounter
                 && !self.encounters.contains_key(encounter)
             {
@@ -386,6 +422,22 @@ impl GameData {
                 return Err(DataError::Invalid {
                     path: Level::path(assets_dir, id),
                     problems,
+                });
+            }
+        }
+        for (id, ride) in &self.rides {
+            let missing: Vec<String> = [&ride.zone, &ride.to]
+                .into_iter()
+                .filter(|z| !zones.contains_key(*z))
+                .map(|z| format!("names unknown zone `{z}`"))
+                .collect();
+            if !missing.is_empty() {
+                return Err(DataError::Invalid {
+                    path: assets_dir
+                        .join("data")
+                        .join("rides")
+                        .join(format!("{id}.ron")),
+                    problems: missing,
                 });
             }
         }

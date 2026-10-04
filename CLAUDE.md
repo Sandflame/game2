@@ -11,8 +11,10 @@ Guide for working in this repository (for Claude and for humans).
   animation, arena dressing, sounds). **M5** (levels 1–30 per class, XP,
   gear + loot, level sync, SQLite saving, character panel). **M6** (secondary
   class: 2 borrowed abilities + small stat bonus; party synergy bonuses;
-  12-slot hotbar).
-- Next: **M7** (hub city and the first world). See `MILESTONES.md`.
+  12-slot hotbar). **M7** (Lanternhold hub with closed district gates and
+  townsfolk, the root slide ride, Whisperwood forest; enemies that notice,
+  chase, assist, leash and respawn at home).
+- Next: **M8** (first dungeon). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -71,7 +73,10 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
 - `LANTERNFLAME_DEMO=trial` (with the above) — scripted scene: switch to
   Elementalist, walk through the portal, pull the Rootwarden, dodge a marker.
   `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy.
-  `LANTERNFLAME_DEMO=progress` — character panel + a bramble sprout. Saves
+  `LANTERNFLAME_DEMO=progress` — character panel + a bramble sprout.
+  `LANTERNFLAME_DEMO=world` — hub, talk to a townsperson, root slide,
+  Whisperwood, a thornwolf pack. Each demo starts in its own zone
+  (`devtools::demo_start_zone`). Saves
   `<file>-1.png`, `<file>-2.png`, …
 
 ### Linux build dependencies
@@ -83,7 +88,11 @@ extra beyond the Rust toolchain.
 - `shared/src/data.rs` — RON loading, `Validate` trait, `find_assets_dir()`.
 - `shared/src/config.rs` — `GameConfig` (`assets/data/config/*.ron`).
 - `shared/src/level.rs` — `Level` = one zone: geometry, collision, enemy spawns,
-  portals, `revive_in_place`, optional encounter.
+  portals (`to`/`ride`/`closed` gates, `arrive_yaw`, `visual`), `npcs`,
+  `decorations` (looks only), `revive_in_place`, `level_sync`, optional encounter.
+- `shared/src/enemy_ai.rs` — notice / leash / approach / stop-distance rules.
+- `shared/src/rides.rs` — `RideDef` (`rides/*.ron`): scripted rides along a
+  Catmull-Rom path (the root slide).
 - `shared/src/movement.rs` — `step()`: the one movement function used everywhere.
 - `shared/src/combat.rs` — `CombatConfig`, `ActionState` (GCD, cooldowns, casts,
   animation lock, queue, combos), `Health`, `Reject`, range.
@@ -123,7 +132,11 @@ extra beyond the Rust toolchain.
   status, taunt, raise), telegraphs going off/following players, status ticks, threat.
 - `server/src/encounters.rs` — boss fight director (pull, phases, timeline queue,
   adds, enrage, victory, wipe → reset at the entrance).
-- `server/src/enemies.rs` — enemy spawning, `EnemyBrain` rotations, facing, idle resets.
+- `server/src/enemies.rs` — enemy spawning (`EnemyHome`, `Roaming`), `notice_players`
+  (aggro + assist), `move_enemies` (chase, leash → `Returning` home and heal),
+  `EnemyBrain` rotations (waits until in range), facing, idle resets / respawn at home.
+- `server/src/travel.rs` — `use_portal` (closed gates speak, rides, arrive yaw),
+  NPCs (`Npc`, `talk` cycles lines), `Riding` + `advance_rides`.
 - `server/src/classes.rs` — flame changes (class switching).
 - `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
   gear + secondary requests, `refresh_stats` (stats + hotbar from class/level/gear/
@@ -145,12 +158,17 @@ extra beyond the Rust toolchain.
   status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L),
   options menu (O, or Esc with nothing targeted: volume slider, mute, quit),
   character panel (C: levels, stats, secondary, party bonuses, worn gear, bag) + XP
-  bar, secondary flame picker (`secondary.rs`, inside the lantern panel).
+  bar, secondary flame picker (`secondary.rs`, inside the lantern panel), speech box +
+  zone fade (`speech.rs`), `[E]` prompt for portals and people (`banner.rs`).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
-- `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
-  zone `border` dressing and `ambience` particles, hides things in other zones
-  (`ElsewhereZone`).
+- `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change (sky/fog
+  per `ground`; `"none"` = no floor), portals, decorations, zone `border` dressing
+  and `ambience` particles, hides things in other zones (`ElsewhereZone`).
+- `client/src/props.rs` — scenery builders by `visual` key: houses, towers,
+  fountain, giant root, ancient tree, pines, rocks, lamps, campfires, city wall,
+  root tunnel (built along the ride path), root entrance, district gates.
+- `client/src/creatures.rs` — thornwolf, spore cap, townsfolk bodies.
 - `client/src/telegraphs.rs` — ground markers with `MarkerMaterial`
   (`assets/shaders/marker.wgsl`, shape maths in the shader); bursts and a fading
   flash when one goes off.
@@ -165,7 +183,7 @@ extra beyond the Rust toolchain.
 - `client/src/animation.rs` — hit flashes, `BossRig` (sway, wind-up, slam, sink), `Hop`.
 - `client/src/hud/banner.rs` — big banners (boss speech, victory, wipes) + portal prompt.
 - `client/src/camera.rs` — FFXIV-style follow camera; stays inside zones with a
-  `border`; `CameraShake`.
+  `border`; swings behind the rider on rides; `CameraShake`.
 - `server/src/main.rs` — placeholder until M11: validates data and exits.
 
 ## Conventions
@@ -200,6 +218,11 @@ extra beyond the Rust toolchain.
   reacts to class, level, gear, secondary and zone changes); don't assign
   `Stats`/`Hotbar` elsewhere.
 - Lasting statuses (synergy) have `expires = INFINITY`; the HUD shows no timer.
+- Enemies only move if their data gives `move_speed`; aggro/assist/leash radii
+  of 0 mean "never". Roaming enemies use `reset_after` only to get back up after
+  defeat; alive, they leash instead.
+- New characters start in `hub` (Lanternhold); "party" (synergy) is still
+  everyone in the same zone until M11.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
 - Database access goes through one module in `server/` (`database.rs`) and runs
   off the main game thread. Schema changes = a new entry in `MIGRATIONS`

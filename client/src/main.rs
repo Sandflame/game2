@@ -8,9 +8,11 @@ mod animation;
 mod audio;
 mod camera;
 mod characters;
+mod creatures;
 mod devtools;
 mod hud;
 mod particles;
+mod props;
 mod session;
 mod settings;
 mod targeting;
@@ -35,13 +37,17 @@ fn main() -> AppExit {
         let sounds = audio::SoundLibrary::load(&assets)?;
         Ok((assets, data, zones, vfx, particles, sounds))
     });
-    let (assets_dir, data, zones, vfx, particles, sounds) = match loaded {
+    let (assets_dir, mut data, zones, vfx, particles, sounds) = match loaded {
         Ok(loaded) => loaded,
         Err(error) => {
             eprintln!("Lanternflame could not start: {error}");
             return AppExit::error();
         }
     };
+    // Scripted screenshot demos start where they need to be.
+    if let Some(zone) = devtools::demo_start_zone() {
+        data.player.start_zone = zone.to_owned();
+    }
     // The save file. Scripted screenshot demos always start fresh.
     let database = if devtools::demo_mode() {
         None

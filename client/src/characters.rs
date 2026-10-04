@@ -13,6 +13,7 @@ use shared::protocol::{ClientRequest, Link, ServerEvent};
 
 use crate::animation::{BossRig, Hop, NoFlash};
 use crate::camera::FollowCamera;
+use crate::creatures;
 use crate::session::{LocalPlayerId, Received, send};
 use crate::toon::{Outline, ToonAssets, ToonMaterial};
 
@@ -166,6 +167,11 @@ fn spawn_visuals(
             ),
             "rootwarden" => build_rootwarden(&mut commands, &mut toon, entity),
             "thornling" => build_thornling(&mut commands, &mut toon, entity),
+            "thornwolf" => creatures::thornwolf(&mut commands, &mut toon, entity),
+            "spore_cap" => creatures::spore_cap(&mut commands, &mut toon, entity),
+            townsfolk if townsfolk.starts_with("townsfolk") => {
+                creatures::townsfolk(&mut commands, &mut toon, entity, townsfolk)
+            }
             other => {
                 warn!("no placeholder look for visual `{other}`");
                 let material = toon.material(Color::srgb(1.0, 0.0, 1.0));

@@ -1,0 +1,14 @@
+// A wolf with a coat of thorns. Hunts in packs: hit one and its friends come too.
+(
+    name: "Thornwolf",
+    max_health: 2600,
+    hit_radius: 0.9,
+    visual: "thornwolf",
+    actions: [(ability: "wolf_bite", every: 2.2)],
+    xp: 100,
+    move_speed: 5.0,      // metres per second (players walk at 6)
+    aggro_radius: 9.0,    // notices players this close
+    leash_radius: 30.0,   // gives up this far from home
+    assist_radius: 10.0,  // joins pack-mates fighting this close
+    reset_after: 25.0,    // gets back up at home this long after its last hit
+)

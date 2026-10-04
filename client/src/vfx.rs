@@ -76,6 +76,7 @@ pub const BUILT_IN_LOOKS: &[&str] = &[
     "revived",
     "victory",
     "level_up",
+    "campfire",
 ];
 
 impl VfxLibrary {

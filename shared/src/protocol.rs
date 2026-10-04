@@ -116,6 +116,12 @@ pub enum ServerEvent {
     },
     /// A character got an item (e.g. boss loot).
     ItemReceived { entity: Entity, item: String },
+    /// Someone (or something, like a closed gate) says a line to a player.
+    Speech {
+        player: PlayerId,
+        speaker: String,
+        text: String,
+    },
 }
 
 /// The in-process connection between the client and the authority.

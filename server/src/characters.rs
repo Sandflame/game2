@@ -19,6 +19,7 @@ use shared::threat::ThreatTable;
 use crate::classes::FlameChange;
 use crate::database::CharacterSave;
 use crate::progression::{Build, player_hotbar, player_stats, restore, starting_gear};
+use crate::travel::{Npc, Riding, talk, use_portal};
 
 /// Finds a player's character from their id.
 #[derive(Resource, Default, Debug)]
@@ -88,18 +89,28 @@ pub fn spawn_player(
         .map(|s| s.class.clone())
         .filter(|c| data.classes.contains_key(c))
         .unwrap_or_else(|| data.player.start_class.clone());
-    let saved_zone = save.filter(|s| zones.get(&s.zone).is_some());
-    let zone = saved_zone.map_or_else(|| data.player.start_zone.clone(), |s| s.zone.clone());
+    // Someone who quit in the middle of a ride arrives at its end.
+    let ride_end = save.and_then(|s| data.rides.values().find(|r| r.zone == s.zone));
+    let saved_zone = save.filter(|s| zones.get(&s.zone).is_some() && ride_end.is_none());
+    let zone = match (ride_end, saved_zone) {
+        (Some(ride), _) => ride.to.clone(),
+        (None, Some(s)) => s.zone.clone(),
+        (None, None) => data.player.start_zone.clone(),
+    };
     // Both checked when the data was loaded.
     let (Some(class), Some(level)) = (data.classes.get(&class_id), zones.get(&zone)) else {
         return;
     };
-    let motion = match saved_zone {
-        Some(s) => MoveState {
+    let motion = match (ride_end, saved_zone) {
+        (Some(ride), _) => MoveState {
+            yaw: ride.arrive_yaw,
+            ..MoveState::spawn_at(ride.arrive)
+        },
+        (None, Some(s)) => MoveState {
             yaw: s.yaw,
             ..MoveState::spawn_at(s.position)
         },
-        None => MoveState::spawn_at(level.spawn_point),
+        (None, None) => MoveState::spawn_at(level.spawn_point),
     };
     let (levels, bag, worn, secondaries) = match save {
         Some(save) => restore(save, data),
@@ -156,15 +167,18 @@ pub fn move_characters(
     data: Res<GameData>,
     zones: Res<Zones>,
     mut link: ResMut<Link>,
-    mut characters: Query<(
-        Entity,
-        &Zone,
-        &mut PlayerInput,
-        &mut Motion,
-        &mut ActionState,
-        Has<Defeated>,
-        Option<&FlameChange>,
-    )>,
+    mut characters: Query<
+        (
+            Entity,
+            &Zone,
+            &mut PlayerInput,
+            &mut Motion,
+            &mut ActionState,
+            Has<Defeated>,
+            Option<&FlameChange>,
+        ),
+        Without<Riding>,
+    >,
 ) {
     let now = time.elapsed_secs_f64();
     let dt = time.delta_secs();
@@ -250,7 +264,8 @@ pub fn revive(
     }
 }
 
-/// A player pressed the interact key: use the portal they are standing in.
+/// A player pressed the interact key: use the portal they are standing
+/// in, or talk to someone nearby.
 pub fn interact(
     commands: &mut Commands,
     link: &mut Link,
@@ -260,6 +275,7 @@ pub fn interact(
     player: PlayerId,
     entity: Entity,
     state: (&Zone, &mut Motion, &CombatClock, bool),
+    npcs: &mut Query<(&mut Npc, &CharacterName, &Zone, &Motion), Without<PlayerId>>,
 ) {
     let (zone, motion, clock, defeated) = state;
     let reject = |link: &mut Link, reason| {
@@ -270,20 +286,18 @@ pub fn interact(
         .get(&zone.0)
         .and_then(|level| level.portal_at(motion.0.position));
     let Some(portal) = portal else {
-        return reject(link, Reject::NothingHere);
+        if !talk(link, data, player, zone, motion.0.position, npcs) {
+            reject(link, Reject::NothingHere);
+        }
+        return;
     };
     if defeated {
         return reject(link, Reject::Dead);
     }
-    if clock.in_combat(now, data.config.combat.combat_timeout) {
+    if portal.closed.is_none() && clock.in_combat(now, data.config.combat.combat_timeout) {
         return reject(link, Reject::InCombat);
     }
-    motion.0 = MoveState::spawn_at(portal.arrive);
-    commands.entity(entity).insert(Zone(portal.to.clone()));
-    link.to_client.push(ServerEvent::ZoneChanged {
-        entity,
-        zone: portal.to.clone(),
-    });
+    use_portal(commands, link, data, now, player, entity, motion, portal);
 }
 
 /// Characters who left a zone are forgotten by its enemies.

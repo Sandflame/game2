@@ -6,10 +6,15 @@
 use bevy::light::{CascadeShadowConfigBuilder, NotShadowCaster};
 use bevy::prelude::*;
 use shared::components::Zone;
-use shared::gamedata::Zones;
+use std::collections::HashMap;
+
+use bevy::pbr::DistanceFog;
+use shared::gamedata::{GameData, Zones};
 use shared::level::{Level, Obstacle, Portal, Shape};
+use shared::rides::RideDef;
 
 use crate::characters::LocalPlayer;
+use crate::props::{self, scatter};
 use crate::toon::{Outline, ToonAssets};
 use crate::vfx::Looks;
 
@@ -87,7 +92,10 @@ fn rebuild_scenery(
     mut commands: Commands,
     current: Res<CurrentZone>,
     zones: Res<Zones>,
+    data: Res<GameData>,
     shown: Query<(Entity, &ZoneScenery)>,
+    mut sky: ResMut<ClearColor>,
+    mut fog: Query<&mut DistanceFog>,
     mut toon: ToonAssets,
     mut standard: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -101,7 +109,35 @@ fn rebuild_scenery(
         commands.entity(entity).despawn();
     }
     if let Some(level) = zones.get(zone) {
-        spawn_level(&mut commands, zone, level, &mut toon, &mut standard);
+        let (clear, haze) = sky_colors(&level.ground);
+        sky.0 = clear;
+        for mut fog in &mut fog {
+            fog.color = haze;
+        }
+        spawn_level(
+            &mut commands,
+            zone,
+            level,
+            &data.rides,
+            &mut toon,
+            &mut standard,
+        );
+    }
+}
+
+/// Sky and distance-haze colours for each `ground` look.
+fn sky_colors(ground: &str) -> (Color, Color) {
+    match ground {
+        // Inside the root: dark, warm.
+        "none" => (
+            Color::srgb(0.05, 0.035, 0.025),
+            Color::srgb(0.08, 0.05, 0.03),
+        ),
+        "forest" | "moss" => (Color::srgb(0.55, 0.75, 0.80), Color::srgb(0.55, 0.70, 0.66)),
+        _ => (
+            Color::srgb(0.55, 0.78, 0.95),
+            Color::srgba(0.70, 0.85, 0.97, 1.0),
+        ),
     }
 }
 
@@ -135,6 +171,7 @@ fn spawn_level(
     commands: &mut Commands,
     id: &str,
     level: &Level,
+    rides: &HashMap<String, RideDef>,
     toon: &mut ToonAssets,
     standard: &mut Assets<StandardMaterial>,
 ) {
@@ -147,19 +184,37 @@ fn spawn_level(
         ))
         .id();
 
-    // Ground.
-    let ground = toon.ground(ground_color(&level.ground));
-    let size = level.half_size * 2.0;
-    toon.spawn_part(
-        commands,
-        root,
-        Plane3d::default().mesh().size(size, size),
-        ground,
-        Outline::None,
-        Transform::default(),
-    );
-    if !level.border.is_empty() {
+    // Ground ("none": no floor at all, e.g. inside the root).
+    if level.ground != "none" {
+        let ground = toon.ground(ground_color(&level.ground));
+        let size = level.half_size * 2.0;
+        toon.spawn_part(
+            commands,
+            root,
+            Plane3d::default().mesh().size(size, size),
+            ground,
+            Outline::None,
+            Transform::default(),
+        );
+    }
+    if !level.border.is_empty() && !props::border(commands, toon, root, level, id, rides) {
         spawn_border(commands, toon, root, level);
+    }
+    for decoration in &level.decorations {
+        let transform = Transform::from_translation(decoration.position)
+            .with_rotation(Quat::from_rotation_y(decoration.yaw))
+            .with_scale(Vec3::splat(decoration.scale));
+        if !props::decoration(commands, toon, root, &decoration.visual, transform) {
+            warn!("no look for decoration `{}`", decoration.visual);
+        }
+        if decoration.visual == "campfire" {
+            commands.spawn((
+                LastingParticles("campfire".to_owned(), 0.4),
+                Transform::from_translation(decoration.position),
+                Visibility::default(),
+                ChildOf(root),
+            ));
+        }
     }
     if !level.ambience.is_empty() {
         commands.spawn((
@@ -183,6 +238,8 @@ fn ground_color(key: &str) -> Color {
     match key {
         "moss" => Color::srgb(0.30, 0.50, 0.32),
         "stone" => Color::srgb(0.62, 0.60, 0.58),
+        "plaza" => Color::srgb(0.74, 0.70, 0.64),
+        "forest" => Color::srgb(0.32, 0.52, 0.30),
         _ => Color::srgb(0.45, 0.72, 0.36),
     }
 }
@@ -195,6 +252,19 @@ fn spawn_portal(
     root: Entity,
     portal: &Portal,
 ) {
+    if !portal.visual.is_empty()
+        && props::portal(commands, toon, root, &portal.visual, portal.position)
+    {
+        if portal.closed.is_none() {
+            commands.spawn((
+                LastingParticles("portal".to_owned(), 0.1),
+                Transform::from_translation(portal.position),
+                Visibility::default(),
+                ChildOf(root),
+            ));
+        }
+        return;
+    }
     let glow = toon.glowing(Color::srgb(0.5, 0.9, 1.0), LinearRgba::rgb(0.8, 2.6, 3.4));
     let base = commands
         .spawn((
@@ -266,16 +336,6 @@ fn add_lasting_particles(
     for (entity, lasting) in &new {
         looks.attach_lasting_particles(&lasting.0, Vec3::Y * lasting.1, entity);
     }
-}
-
-/// A repeatable "random" number from 0 to 1 for the `i`th piece of scenery,
-/// so borders look natural but the same every time.
-fn scatter(i: u32, salt: u32) -> f32 {
-    let mut x = i.wrapping_mul(0x9E37_79B9) ^ salt.wrapping_mul(0x85EB_CA6B);
-    x ^= x >> 15;
-    x = x.wrapping_mul(0x2C1B_3C6D);
-    x ^= x >> 12;
-    (x % 10_000) as f32 / 10_000.0
 }
 
 /// Dressing around the edge of a zone so it doesn't end in sky.
@@ -440,6 +500,24 @@ fn spawn_obstacle(
     root: Entity,
     obstacle: &Obstacle,
 ) {
+    let size = match obstacle.shape {
+        Shape::Box {
+            half_x,
+            half_z,
+            height,
+        } => Vec3::new(half_x * 2.0, height, half_z * 2.0),
+        Shape::Cylinder { radius, height } => Vec3::new(radius, height, radius),
+    };
+    if props::obstacle(
+        commands,
+        toon,
+        root,
+        &obstacle.visual,
+        obstacle.position,
+        size,
+    ) {
+        return;
+    }
     let base = Transform::from_translation(obstacle.position);
     match (obstacle.visual.as_str(), obstacle.shape) {
         ("tree", Shape::Cylinder { radius, height }) => {

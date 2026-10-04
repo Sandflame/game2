@@ -100,11 +100,19 @@ Earlier changes to your original list:
   lasting bonus statuses from `synergy.ron` (party = same zone until M11;
   solo = party of one). Unit tests for party mixes.
 
-## M7 — Hub city and the first world
-- Magitech hub city with districts (only Rootwell open).
-- Zones/instances system, loading, spawn points.
-- The giant root and the scripted slide ride to the forest.
-- Forest zone: regular enemies with aggro/leash, camps, NPCs.
+## M7 — Hub city and the first world ✅
+- Lanternhold, the magitech hub (new characters start here): plaza and
+  lantern fountain, houses, towers, city wall; Rootwell's giant root open;
+  Harbour, Railyard, Skydock and Clockwork Quarter gates closed (they say so).
+- Zones: arrival facing, a fade between zones, per-zone sky; townsfolk you
+  talk to (E) whose lines cycle; scenery decorations. Separate instances per
+  group are left for M8/M11 (only needed once there are several parties).
+- The giant root and the scripted 8-second slide ride (a path through a
+  tunnel zone, camera behind) to the forest.
+- Whisperwood: thornwolves, spore caps and bramble sprouts in camps that
+  notice you, call their friends, chase, give up and walk home if pulled too
+  far, and get back up at home after being defeated; Ranger Oak; the
+  Rootwarden's Hollow moved here. The training meadow is reached from the hub.
 
 ## M8 — First dungeon
 - Duty board to enter a dungeon (scaled 1–4).

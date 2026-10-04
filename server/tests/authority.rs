@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind};
+use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind, Returning, Riding};
 use shared::classes::{ClassDef, CurrentClass, SecondaryChoice, Stats};
 use shared::combat::{Health, Reject};
 use shared::components::{CharacterName, Hotbar, Motion, PlayerId, Zone};
@@ -19,10 +19,11 @@ use shared::encounters::EncounterDef;
 use shared::formulas::Rng;
 use shared::gamedata::{AbilityFile, EnemyDef, GameData, PlayerConfig, Zones};
 use shared::items::{Bag, Equipment, ItemFile, Slot};
-use shared::level::{EnemySpawn, Level, Portal};
+use shared::level::{EnemySpawn, Level, NpcDef, Portal};
 use shared::movement::MoveInput;
 use shared::progression::ClassLevels;
 use shared::protocol::{ClientRequest, Link, ServerEvent};
+use shared::rides::RideDef;
 use shared::statuses::{StatusFile, Statuses};
 use shared::telegraphs::Telegraph;
 
@@ -78,6 +79,8 @@ const ABILITIES: &str = r#"[
     (id: "seeds", name: "Seeds", on_gcd: false, cast_time: 2.0, range: 60.0, target: Enemy,
      telegraph: Some((shape: Circle(radius: 4.0), placement: SpreadOnEveryone)),
      effects: [(to: InTelegraph, effect: Damage(amount: 200))]),
+    (id: "bite", name: "Bite", on_gcd: false, range: 2.0, target: Enemy,
+     effects: [(effect: Damage(amount: 10))]),
     (id: "quake", name: "Quake", on_gcd: false, cast_time: 1.0, target: Myself,
      effects: [(to: EnemiesAround(centre: Me, radius: 60.0), effect: Damage(amount: 50))]),
 ]"#;
@@ -105,6 +108,15 @@ const TRIAL: &str = r#"(
     xp: 250,
     loot: [(item: "cap", chance: 100)],
 )"#;
+
+/// A pack animal: notices players within 5 m, chases, calls friends within
+/// 6 m, gives up 15 m from home.
+const WOLF: &str = r#"(name: "Wolf", max_health: 500, hit_radius: 0.5, visual: "thornwolf",
+    actions: [(ability: "bite", every: 1.0)], move_speed: 5.0, aggro_radius: 5.0,
+    leash_radius: 15.0, assist_radius: 6.0, reset_after: 3.0)"#;
+
+const RIDE: &str = r#"(zone: "tunnel", path: [(0.0, 0.0, 0.0), (0.0, -10.0, -10.0)], duration: 2.0,
+    to: "test", arrive: (10.0, 0.0, 10.0), arrive_yaw: 1.0)"#;
 
 const SPROUT: &str = r#"(name: "Sprout", max_health: 100, hit_radius: 0.5, visual: "thornling",
     reset_after: 10.0, xp: 150)"#;
@@ -181,6 +193,7 @@ fn test_data() -> GameData {
             start_zone: "test".into(),
             shared_abilities: vec!["second_wind".into(), "rekindle".into()],
             start_items: Vec::new(),
+            talk_distance: 3.5,
         },
         abilities: abilities.0.into_iter().map(|a| (a.id.clone(), a)).collect(),
         statuses: statuses.0.into_iter().map(|s| (s.id.clone(), s)).collect(),
@@ -194,11 +207,13 @@ fn test_data() -> GameData {
             ("warden".to_owned(), parse::<EnemyDef>(WARDEN)),
             ("sapling".to_owned(), parse::<EnemyDef>(SAPLING)),
             ("sprout".to_owned(), parse::<EnemyDef>(SPROUT)),
+            ("wolf".to_owned(), parse::<EnemyDef>(WOLF)),
         ]),
         encounters: HashMap::from([("trial".to_owned(), parse::<EncounterDef>(TRIAL))]),
         progression: parse(PROGRESSION),
         items: parse::<ItemFile>(ITEMS).0,
         synergy: parse("(covered_at: 0.5, missing: {})"),
+        rides: HashMap::from([("slide".to_owned(), parse::<RideDef>(RIDE))]),
     }
 }
 
@@ -216,13 +231,41 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
                 yaw: 0.0,
             })
             .collect(),
-        portals: vec![Portal {
-            position: PORTAL,
-            radius: 1.5,
-            to: "arena".into(),
-            arrive: ARENA_ENTRANCE,
-            label: "To the arena".into(),
+        portals: vec![
+            Portal {
+                position: PORTAL,
+                radius: 1.5,
+                to: "arena".into(),
+                arrive: ARENA_ENTRANCE,
+                label: "To the arena".into(),
+                ..portal()
+            },
+            Portal {
+                position: GATE,
+                radius: 1.5,
+                label: "Harbour".into(),
+                closed: Some("Not open yet.".into()),
+                ..portal()
+            },
+            Portal {
+                position: SLIDE,
+                radius: 1.5,
+                label: "Slide".into(),
+                ride: Some("slide".into()),
+                ..portal()
+            },
+        ],
+        npcs: vec![NpcDef {
+            name: "Ilsa".into(),
+            visual: "townsfolk".into(),
+            position: Vec3::new(30.0, 0.0, 30.0),
+            yaw: 0.0,
+            lines: vec!["Hello!".into(), "Goodbye!".into()],
         }],
+        ..Level::empty()
+    };
+    let tunnel = Level {
+        name: "tunnel".into(),
         ..Level::empty()
     };
     let arena = Level {
@@ -237,14 +280,35 @@ fn test_zones(enemies: &[(&str, Vec3)]) -> Zones {
             to: "test".into(),
             arrive: Vec3::ZERO,
             label: "Back".into(),
+            ..portal()
         }],
         ..Level::empty()
     };
     Zones(HashMap::from([
         ("test".to_owned(), field),
         ("arena".to_owned(), arena),
+        ("tunnel".to_owned(), tunnel),
     ]))
 }
+
+/// A portal with nothing set (fill in what matters).
+fn portal() -> Portal {
+    Portal {
+        position: Vec3::ZERO,
+        radius: 1.0,
+        to: String::new(),
+        arrive: Vec3::ZERO,
+        arrive_yaw: 0.0,
+        label: String::new(),
+        ride: None,
+        closed: None,
+        visual: String::new(),
+    }
+}
+
+const GATE: Vec3 = Vec3::new(-6.0, 0.0, 6.0);
+const SLIDE: Vec3 = Vec3::new(6.0, 0.0, 6.0);
+const NPC_AT: Vec3 = Vec3::new(30.0, 0.0, 30.0);
 
 const PORTAL: Vec3 = Vec3::new(0.0, 0.0, 6.0);
 const ARENA_ENTRANCE: Vec3 = Vec3::new(0.0, 0.0, 8.0);
@@ -1472,4 +1536,190 @@ fn synergy_bonuses_change_the_numbers() {
     let data = game.app.world().resource::<GameData>();
     let modifiers = statuses.modifiers(|id| data.statuses.get(id));
     assert!((modifiers.damage_taken - 0.9).abs() < 1e-6);
+}
+
+// ---- The world: roaming enemies, talking, gates and rides (Milestone 7) ----
+
+impl Game {
+    fn place(&mut self, entity: Entity, position: Vec3) {
+        self.app
+            .world_mut()
+            .get_mut::<Motion>(entity)
+            .unwrap()
+            .0
+            .position = position;
+    }
+
+    fn position(&mut self, entity: Entity) -> Vec3 {
+        self.app.world().get::<Motion>(entity).unwrap().0.position
+    }
+
+    fn threat_on(&mut self, enemy: Entity) -> Vec<Entity> {
+        self.app
+            .world()
+            .get::<shared::threat::ThreatTable>(enemy)
+            .unwrap()
+            .0
+            .keys()
+            .copied()
+            .collect()
+    }
+
+    fn speech(&self) -> Vec<(String, String)> {
+        self.events
+            .iter()
+            .filter_map(|e| match e {
+                ServerEvent::Speech { speaker, text, .. } => Some((speaker.clone(), text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn enemies_notice_players_who_come_close_and_chase_them() {
+    let mut game = Game::with_enemies(&[("wolf", Vec3::new(0.0, 0.0, -12.0))]);
+    let wolf = game.enemy("Wolf");
+    game.run(0.5);
+    assert!(game.threat_on(wolf).is_empty(), "12 m away: not noticed");
+    let me = game.me();
+    game.place(me, Vec3::new(0.0, 0.0, -8.0));
+    game.run(1.5);
+    assert_eq!(game.threat_on(wolf), vec![me]);
+    let distance = game.position(wolf).distance(game.position(me));
+    assert!(distance < 3.0, "it came to bite: {distance}");
+    assert!(!game.damage_from(me, "bite").is_empty(), "and bit");
+}
+
+#[test]
+fn pack_mates_join_the_fight() {
+    let mut game = Game::with_enemies(&[
+        ("wolf", Vec3::new(0.0, 0.0, -10.0)),
+        ("wolf", Vec3::new(4.0, 0.0, -14.0)),
+    ]);
+    let me = game.me();
+    game.place(me, Vec3::new(0.0, 0.0, -6.0));
+    game.run(0.5);
+    let world = game.app.world_mut();
+    let mut wolves = world.query_filtered::<&shared::threat::ThreatTable, With<EnemyKind>>();
+    let angry = wolves.iter(world).filter(|t| !t.is_empty()).count();
+    assert_eq!(
+        angry, 2,
+        "the second wolf was too far to notice, but its friend called it"
+    );
+}
+
+#[test]
+fn enemies_give_up_and_go_home_when_pulled_too_far() {
+    let mut game = Game::with_enemies(&[("wolf", Vec3::new(0.0, 0.0, -10.0))]);
+    let wolf = game.enemy("Wolf");
+    let me = game.me();
+    game.place(me, Vec3::new(0.0, 0.0, -6.0));
+    game.run(0.3);
+    game.set_health(wolf, 100);
+    // Run far away: the wolf follows until 15 m from home, then turns back.
+    game.place(me, Vec3::new(0.0, 0.0, 60.0));
+    game.run(4.0);
+    assert!(game.app.world().get::<Returning>(wolf).is_some() || game.threat_on(wolf).is_empty());
+    game.run(6.0);
+    let home = Vec3::new(0.0, 0.0, -10.0);
+    let at = game.position(wolf);
+    assert!(at.distance(home) < 1.0, "back home: {at}");
+    assert!(game.threat_on(wolf).is_empty());
+    assert_eq!(game.health(wolf).current, 500, "healed on the way home");
+    assert!(game.app.world().get::<Returning>(wolf).is_none());
+}
+
+#[test]
+fn defeated_enemies_get_back_up_at_home() {
+    let mut game = Game::with_enemies(&[("wolf", Vec3::new(0.0, 0.0, -10.0))]);
+    let wolf = game.enemy("Wolf");
+    let me = game.me();
+    game.place(me, Vec3::new(0.0, 0.0, -6.0));
+    game.run(1.0);
+    game.set_health(wolf, 1);
+    game.use_on(BURST, Some(wolf));
+    game.run(0.3);
+    assert!(game.app.world().get::<Defeated>(wolf).is_some());
+    // Walk away so it isn't noticed again straight away.
+    game.place(me, Vec3::new(0.0, 0.0, 40.0));
+    game.run(4.0);
+    assert!(game.app.world().get::<Defeated>(wolf).is_none());
+    assert!(game.position(wolf).distance(Vec3::new(0.0, 0.0, -10.0)) < 0.1);
+}
+
+#[test]
+fn talking_to_people_cycles_their_lines() {
+    let mut game = Game::new();
+    let me = game.me();
+    game.place(me, NPC_AT + Vec3::new(1.0, 0.0, 0.0));
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    let said: Vec<String> = game.speech().into_iter().map(|(_, t)| t).collect();
+    assert_eq!(said, vec!["Hello!", "Goodbye!", "Hello!"]);
+    assert_eq!(game.speech()[0].0, "Ilsa");
+}
+
+#[test]
+fn nothing_to_do_far_from_people_and_portals() {
+    let mut game = Game::new();
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::NothingHere]);
+}
+
+#[test]
+fn people_cannot_be_attacked() {
+    let mut game = Game::new();
+    let world = game.app.world_mut();
+    let npc = world
+        .query_filtered::<Entity, With<server::Npc>>()
+        .single(world)
+        .unwrap();
+    let me = game.me();
+    game.place(me, NPC_AT + Vec3::new(1.0, 0.0, 0.0));
+    game.use_on(STRIKE, Some(npc));
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::InvalidTarget]);
+}
+
+#[test]
+fn closed_gates_explain_themselves() {
+    let mut game = Game::new();
+    let me = game.me();
+    game.place(me, GATE);
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    assert_eq!(
+        game.speech(),
+        vec![("Harbour".to_owned(), "Not open yet.".to_owned())]
+    );
+    assert_eq!(game.zone_of(me), "test");
+}
+
+#[test]
+fn rides_carry_you_to_their_destination() {
+    let mut game = Game::new();
+    let me = game.me();
+    game.place(me, SLIDE);
+    game.send(ClientRequest::Interact);
+    game.run(0.1);
+    assert_eq!(game.zone_of(me), "tunnel");
+    assert!(game.app.world().get::<Riding>(me).is_some());
+    // Halfway down the slide, following the path.
+    game.run(0.9);
+    let y = game.position(me).y;
+    assert!(y < -3.0 && y > -7.0, "{y}");
+    // No fighting on the way.
+    game.use_slot(STRIKE);
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::Busy]);
+    game.run(1.2);
+    assert_eq!(game.zone_of(me), "test");
+    assert!(game.position(me).distance(Vec3::new(10.0, 0.0, 10.0)) < 0.1);
+    assert!(game.app.world().get::<Riding>(me).is_none());
 }

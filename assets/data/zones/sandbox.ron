@@ -2,7 +2,7 @@
 // through them but can stand on top. `position` is the centre of the
 // object's bottom face. `visual` picks the placeholder look (client only).
 (
-    name: "Sandbox Meadow",
+    name: "Training Grounds",
     half_size: 60.0,
     spawn_point: (0.0, 0.0, 8.0),
     obstacles: [
@@ -50,7 +50,7 @@
 
     // Doorways to other zones (stand inside and press E).
     portals: [
-        (position: (18.0, 0.0, 18.0), radius: 1.8, to: "trial_rootwarden", arrive: (0.0, 0.0, 16.0),
-         label: "Enter the Rootwarden's Hollow (trial)"),
+        (position: (18.0, 0.0, 18.0), radius: 1.8, to: "hub", arrive: (0.0, 0.0, 40.0),
+         arrive_yaw: 0.0, label: "Back to Lanternhold"),
     ],
 )

@@ -1,0 +1,10 @@
+// Inside the giant root: the slide down to Whisperwood. Characters here are
+// on the `root_slide` ride (assets/data/rides/); the tunnel is drawn along
+// its path.
+(
+    name: "Inside the Giant Root",
+    half_size: 120.0,
+    spawn_point: (0.0, 0.0, 0.0),
+    ground: "none",
+    border: "root_tunnel",
+)

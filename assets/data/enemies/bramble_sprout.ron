@@ -1,5 +1,5 @@
-// Small thorny sprouts in the meadow: easy experience. Defeated sprouts
-// grow back after a while.
+// Small thorny sprouts: easy experience. They fling thorns at anyone who
+// comes close, and grow back a while after being defeated.
 (
     name: "Bramble Sprout",
     max_health: 3000,
@@ -9,4 +9,8 @@
     reset_after: 20.0,
     actions: [(ability: "thorn_prick", every: 3.0)],
     xp: 90,
+    move_speed: 3.0,
+    aggro_radius: 7.0,
+    leash_radius: 25.0,
+    assist_radius: 7.0,
 )

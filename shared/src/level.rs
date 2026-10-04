@@ -131,11 +131,53 @@ pub struct Portal {
     /// How close (metres) you must be to use it.
     pub radius: f32,
     /// The zone it leads to (file name in `assets/data/zones/`).
+    #[serde(default)]
     pub to: String,
-    /// Where you appear in that zone.
+    /// Where you appear in that zone, and which way you face (radians).
+    #[serde(default)]
     pub arrive: Vec3,
+    #[serde(default)]
+    pub arrive_yaw: f32,
     /// Shown to the player, e.g. "Enter the Rootwarden's Hollow".
     pub label: String,
+    /// Instead of jumping straight there, take this ride
+    /// (`assets/data/rides/`), e.g. the slide down the giant root.
+    #[serde(default)]
+    pub ride: Option<String>,
+    /// A gate that isn't open yet: using it shows this message instead.
+    #[serde(default)]
+    pub closed: Option<String>,
+    /// Look of the doorway (client only): "" for the glowing ring.
+    #[serde(default)]
+    pub visual: String,
+}
+
+/// Someone to talk to (press E nearby).
+#[derive(Debug, Clone, Deserialize)]
+pub struct NpcDef {
+    pub name: String,
+    /// Look (client only).
+    pub visual: String,
+    pub position: Vec3,
+    #[serde(default)]
+    pub yaw: f32,
+    /// What they say; each time you talk they say the next line.
+    pub lines: Vec<String>,
+}
+
+/// Scenery that is only for looks (no collision), e.g. bushes, lamps.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Decoration {
+    pub visual: String,
+    pub position: Vec3,
+    #[serde(default)]
+    pub yaw: f32,
+    #[serde(default = "one")]
+    pub scale: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 /// One zone (`assets/data/zones/<id>.ron`): its solid geometry, enemies,
@@ -168,6 +210,12 @@ pub struct Level {
     /// fight resets when everyone falls.
     #[serde(default = "yes")]
     pub revive_in_place: bool,
+    /// People to talk to.
+    #[serde(default)]
+    pub npcs: Vec<NpcDef>,
+    /// Scenery without collision (client only).
+    #[serde(default)]
+    pub decorations: Vec<Decoration>,
     /// Level sync: characters above this level fight at it here (so friends
     /// of any level can play together).
     #[serde(default)]
@@ -199,6 +247,8 @@ impl Level {
             spawns: Vec::new(),
             portals: Vec::new(),
             revive_in_place: true,
+            npcs: Vec::new(),
+            decorations: Vec::new(),
             level_sync: None,
             encounter: None,
         }
@@ -287,6 +337,19 @@ impl Validate for Level {
                 p.push(format!("portals[{i}] is outside the level"));
             }
             p.positive(&format!("portals[{i}].radius"), portal.radius);
+            if portal.to.is_empty() && portal.ride.is_none() && portal.closed.is_none() {
+                p.push(format!(
+                    "portals[{i}] needs a `to` zone, a `ride`, or a `closed` message"
+                ));
+            }
+        }
+        for (i, npc) in self.npcs.iter().enumerate() {
+            if outside(npc.position) {
+                p.push(format!("npcs[{i}] is outside the level"));
+            }
+            if npc.lines.is_empty() {
+                p.push(format!("npcs[{i}] (`{}`) has nothing to say", npc.name));
+            }
         }
         for (i, o) in self.obstacles.iter().enumerate() {
             match o.shape {

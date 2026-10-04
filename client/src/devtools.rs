@@ -27,6 +27,19 @@ use shared::classes::SecondaryChoice;
 
 const SCREENSHOT_ENV: &str = "LANTERNFLAME_SCREENSHOT";
 
+/// The zone a scripted demo starts in (new characters normally start in
+/// the hub).
+pub fn demo_start_zone() -> Option<&'static str> {
+    if !demo_mode() {
+        return None;
+    }
+    match std::env::var(DEMO_ENV).as_deref() {
+        Ok("classes" | "progress") => Some("sandbox"),
+        Ok("world") | Err(_) => None,
+        Ok(_) => Some("trial_rootwarden"),
+    }
+}
+
 /// Is the game running a scripted screenshot (which never saves)?
 pub fn demo_mode() -> bool {
     std::env::var_os(SCREENSHOT_ENV).is_some()
@@ -61,31 +74,47 @@ enum Step {
     Shot,
 }
 
-/// Walk from the meadow start (0, 8) to the trial portal (18, 18).
-const TO_PORTAL: (f32, f32) = (0.874, 0.486);
-
+/// Starts in the trial (see `demo_start_zone`).
 const TRIAL_DEMO: &[(f32, Step)] = &[
     (0.3, Step::ChangeClass("elementalist")),
-    (2.6, Step::Walk(Some(TO_PORTAL))),
-    (5.9, Step::Shot), // the portal in the meadow, with rising motes
-    (6.0, Step::Walk(None)),
-    (6.3, Step::Interact),
-    (6.6, Step::Target("rootwarden")),
-    (6.7, Step::Camera(0.25, 9.0)),
-    (7.6, Step::Shot), // the arena, its root wall and the boss, with the zone name
-    (7.7, Step::Walk(Some((0.0, -1.0)))),
-    (8.5, Step::Walk(None)),
-    (8.6, Step::Camera(0.5, 13.0)),
-    (8.7, Step::Target("rootwarden")),
-    (8.8, Step::Press(1)), // Kindle: pulls the boss
-    (9.6, Step::Press(0)), // Firebolt
-    (13.2, Step::Shot),    // Root Slam's marker under us; the boss winds up
-    (13.3, Step::Walk(Some((1.0, 0.0)))),
-    (14.5, Step::Walk(None)),
-    (15.05, Step::Shot), // Root Slam going off: dust over its area
-    (15.3, Step::Target("rootwarden")),
-    (15.4, Step::Press(0)), // Firebolt
-    (20.0, Step::Shot),     // Crushing Bough's cone
+    (3.1, Step::Target("rootwarden")),
+    (3.2, Step::Camera(0.25, 9.0)),
+    (4.1, Step::Shot), // the arena, its root wall and the boss, with the zone name
+    (4.2, Step::Walk(Some((0.0, -1.0)))),
+    (5.0, Step::Walk(None)),
+    (5.1, Step::Camera(0.5, 13.0)),
+    (5.2, Step::Target("rootwarden")),
+    (5.3, Step::Press(1)), // Kindle: pulls the boss
+    (6.1, Step::Press(0)), // Firebolt
+    (9.7, Step::Shot),     // Root Slam's marker under us; the boss winds up
+    (9.8, Step::Walk(Some((1.0, 0.0)))),
+    (11.0, Step::Walk(None)),
+    (11.55, Step::Shot), // Root Slam going off: dust over its area
+    (11.8, Step::Target("rootwarden")),
+    (11.9, Step::Press(0)), // Firebolt
+    (16.5, Step::Shot),     // Crushing Bough's cone
+];
+
+/// Starts in Lanternhold: talk to the lamplighter, walk to the giant root,
+/// slide down it, and arrive in Whisperwood.
+const WORLD_DEMO: &[(f32, Step)] = &[
+    (0.2, Step::Camera(0.35, 14.0)),
+    (1.6, Step::Shot), // the plaza, fountain and the giant root beyond
+    (1.7, Step::Walk(Some((1.0, 0.0)))),
+    (2.5, Step::Walk(None)),
+    (2.7, Step::Interact), // talk to Lamplighter Ilsa
+    (3.4, Step::Shot),     // her speech box
+    (3.5, Step::Walk(Some((0.0, -1.0)))),
+    (10.7, Step::Walk(Some((-1.0, 0.0)))),
+    (11.3, Step::Walk(None)),
+    (11.5, Step::Shot), // at the root's entrance, with its prompt
+    (11.6, Step::Interact),
+    (14.0, Step::Shot), // sliding down inside the root
+    (17.0, Step::Shot), // further down
+    (20.6, Step::Shot), // arriving in Whisperwood
+    (20.7, Step::Walk(Some((0.6, -0.8)))),
+    (25.6, Step::Walk(None)),
+    (26.4, Step::Shot), // the thornwolf pack notices us and comes running
 ];
 
 /// The character panel, then a fight with a bramble sprout in the meadow.
@@ -133,6 +162,7 @@ impl Plugin for DevToolsPlugin {
         let steps: Vec<(f32, Step)> = match std::env::var(DEMO_ENV).as_deref() {
             Ok("classes") => CLASSES_DEMO.to_vec(),
             Ok("progress") => PROGRESS_DEMO.to_vec(),
+            Ok("world") => WORLD_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };

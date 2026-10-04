@@ -1,0 +1,17 @@
+// Abilities of the creatures of Whisperwood.
+[
+    (
+        id: "wolf_bite", name: "Bite",
+        description: "A thornwolf snaps at you.",
+        on_gcd: false, range: 3.0, target: Enemy,
+        effects: [(effect: Damage(amount: 170))],
+        vfx: "slash",
+    ),
+    (
+        id: "spore_bolt", name: "Spore Bolt",
+        description: "A spore cap spits a puff of stinging spores.",
+        on_gcd: false, cast_time: 1.2, range: 18.0, target: Enemy,
+        effects: [(effect: Damage(amount: 220))],
+        vfx: "bolt_nature",
+    ),
+]

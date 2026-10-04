@@ -20,7 +20,7 @@
         (shape: Cylinder(radius: 1.2, height: 5.0), position: (19.0, 0.0, 19.0), visual: "standing_stone"),
     ],
     portals: [
-        (position: (16.0, 0.0, 17.0), radius: 1.8, to: "sandbox", arrive: (15.0, 0.0, 14.0),
-         label: "Leave the Hollow"),
+        (position: (16.0, 0.0, 17.0), radius: 1.8, to: "whisperwood", arrive: (-46.0, 0.0, -50.0),
+         arrive_yaw: -2.4, label: "Leave the Hollow"),
     ],
 )

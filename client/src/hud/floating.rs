@@ -20,6 +20,8 @@ fn nameplate_height(visual: &str) -> f32 {
     match visual {
         "rootwarden" => 8.0,
         "thornling" => 1.8,
+        "thornwolf" => 1.9,
+        "spore_cap" => 2.2,
         _ => 2.4,
     }
 }
@@ -105,10 +107,10 @@ fn spawn_nameplates(
                 ZIndex(-1),
             ))
             .with_children(|plate| {
-                let color = if *faction == Faction::Enemy {
-                    Color::srgb(1.0, 0.75, 0.65)
-                } else {
-                    Color::srgb(0.75, 0.90, 1.0)
+                let color = match faction {
+                    Faction::Enemy => Color::srgb(1.0, 0.75, 0.65),
+                    Faction::Neutral => Color::srgb(0.70, 1.0, 0.70),
+                    Faction::Player => Color::srgb(0.75, 0.90, 1.0),
                 };
                 plate.spawn((
                     Text::new(name.0.clone()),
@@ -116,6 +118,10 @@ fn spawn_nameplates(
                     TextColor(color),
                     text_shadow(),
                 ));
+                // People you talk to have no health bar.
+                if *faction == Faction::Neutral {
+                    return;
+                }
                 let fill = spawn_bar(plate, 70.0, 5.0, palette::ENEMY_HEALTH);
                 plate
                     .commands()
@@ -243,6 +249,12 @@ fn show_events(
                     size: number_size(*crit, *tick),
                 })
             }
+            // Healing over time on someone already at full health: nothing to show.
+            ServerEvent::Heal {
+                amount: 0,
+                tick: true,
+                ..
+            } => None,
             ServerEvent::Heal {
                 target,
                 amount,

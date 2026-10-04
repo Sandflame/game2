@@ -19,6 +19,7 @@ mod encounters;
 mod enemies;
 pub mod progression;
 mod requests;
+pub mod travel;
 
 use bevy::prelude::*;
 use shared::formulas::Rng;
@@ -28,7 +29,8 @@ pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput};
 pub use classes::FlameChange;
 pub use database::Database;
 pub use encounters::{Encounter, FightState};
-pub use enemies::{EnemyKind, ResetWhenIdle};
+pub use enemies::{EnemyHome, EnemyKind, ResetWhenIdle, Returning};
+pub use travel::{Npc, Riding};
 
 /// Ordered steps of one authority tick.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -83,7 +85,11 @@ impl Plugin for AuthorityPlugin {
             )
             .add_systems(
                 Startup,
-                (enemies::spawn_enemies, encounters::setup_encounters),
+                (
+                    enemies::spawn_enemies,
+                    encounters::setup_encounters,
+                    travel::spawn_npcs,
+                ),
             )
             .add_systems(
                 FixedUpdate,
@@ -96,10 +102,17 @@ impl Plugin for AuthorityPlugin {
                     )
                         .chain()
                         .in_set(AuthoritySystems::Receive),
-                    characters::move_characters.in_set(AuthoritySystems::Move),
+                    (
+                        travel::advance_rides,
+                        characters::move_characters,
+                        enemies::move_enemies,
+                    )
+                        .chain()
+                        .in_set(AuthoritySystems::Move),
                     (
                         encounters::run_encounters,
                         encounters::apply_encounter_changes,
+                        enemies::notice_players,
                         enemies::enemy_brains,
                         enemies::face_targets,
                         actions::process_actions,

@@ -451,7 +451,8 @@ of the world it leads to and has a unique way there:
 | Clockwork Quarter | (later) | Time machine |
 
 Only Rootwell is built in this plan; others are placeholders (closed
-gates) so the layout is ready.
+gates) so the layout is ready. (Built in M7 as **Lanternhold**; new
+characters start there. The training meadow is reached from its south gate.)
 
 **The root slide** is a short scripted ride along a fixed path
 (a spline), not physics: you walk in, the camera follows you down a

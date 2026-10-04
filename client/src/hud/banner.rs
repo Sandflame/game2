@@ -3,8 +3,9 @@
 //! Also the "E: Enter …" prompt when standing in a portal.
 
 use bevy::prelude::*;
-use shared::components::{Motion, Zone};
-use shared::gamedata::Zones;
+use shared::components::{CharacterName, Faction, Motion, Zone};
+use shared::enemy_ai::ground_distance;
+use shared::gamedata::{GameData, Zones};
 use shared::protocol::ServerEvent;
 
 use super::{font, palette, text_shadow};
@@ -180,15 +181,30 @@ fn banner_alpha(age: f32, life: f32) -> f32 {
 /// "E  Enter the Rootwarden's Hollow" while standing in a portal.
 fn update_prompt(
     zones: Res<Zones>,
+    data: Res<GameData>,
     player: Option<Single<(&Motion, &Zone), With<LocalPlayer>>>,
+    people: Query<(&CharacterName, &Faction, &Motion, &Zone), Without<LocalPlayer>>,
     mut prompt: Single<(&mut Text, &mut Visibility), With<Prompt>>,
 ) {
     let label = player.and_then(|player| {
         let (motion, zone) = *player;
-        zones
-            .get(&zone.0)?
-            .portal_at(motion.0.position)
-            .map(|portal| format!("[E]  {}", portal.label))
+        let here = motion.0.position;
+        if let Some(portal) = zones.get(&zone.0)?.portal_at(here) {
+            return Some(format!("[E]  {}", portal.label));
+        }
+        // Someone to talk to?
+        people
+            .iter()
+            .filter(|(_, faction, m, z)| {
+                **faction == Faction::Neutral
+                    && *z == zone
+                    && ground_distance(m.0.position, here) <= data.player.talk_distance
+            })
+            .min_by(|a, b| {
+                ground_distance(a.2.0.position, here)
+                    .total_cmp(&ground_distance(b.2.0.position, here))
+            })
+            .map(|(name, ..)| format!("[E]  Talk to {}", name.0))
     });
     let (text, visibility) = &mut *prompt;
     match label {
