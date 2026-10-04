@@ -1,0 +1,13 @@
+// Party synergy bonuses (see synergy.ron). They last as long as the
+// party is missing the role; `duration` is ignored for them.
+[
+    (id: "synergy_steadfast", name: "Steadfast", kind: Buff, duration: 10.0,
+     description: "No durable fighter here: you take 10% less damage.",
+     modifiers: (damage_taken: 0.9)),
+    (id: "synergy_inner_light", name: "Inner Light", kind: Buff, duration: 10.0,
+     description: "No healer here: you slowly heal, and healing on you is 10% stronger.",
+     tick: Some(Heal(amount: 60)), modifiers: (healing_received: 1.1)),
+    (id: "synergy_battle_fury", name: "Battle Fury", kind: Buff, duration: 10.0,
+     description: "No damage dealer here: you deal 15% more damage.",
+     modifiers: (damage_dealt: 1.15)),
+]

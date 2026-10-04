@@ -30,6 +30,10 @@ pub struct LanternPanel {
 #[derive(Component)]
 struct PanelRoot;
 
+/// Where the secondary flame picker goes.
+#[derive(Component)]
+pub struct SecondarySection;
+
 /// A button that changes to this class.
 #[derive(Component)]
 struct FlameButton(String);
@@ -60,7 +64,7 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
                     padding: UiRect::all(px(12)),
                     row_gap: px(7),
                     border: UiRect::all(px(2)),
-                    width: px(460),
+                    width: px(860),
                     ..default()
                 },
                 BackgroundColor(palette::PANEL.with_alpha(0.92)),
@@ -79,74 +83,112 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
                     font(12.0),
                     TextColor(palette::TEXT_DIM),
                 ));
-                for (id, class) in data.class_list() {
-                    let (flame, _) = flame_look(&class.flame);
-                    let spec = class
-                        .spec(&class.default_spec)
-                        .map_or("", |s| s.name.as_str());
-                    panel
-                        .spawn((
-                            Button,
-                            FlameButton(id.clone()),
-                            Node {
-                                flex_direction: FlexDirection::Column,
-                                padding: UiRect::all(px(8)),
-                                border: UiRect::all(px(2)),
-                                row_gap: px(2),
-                                ..default()
-                            },
-                            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
-                            BorderColor::all(palette::PANEL_BORDER),
-                        ))
-                        .with_children(|button| {
-                            button.spawn((
-                                Text::new(format!("{}   ({})", class.name, class.role.label())),
-                                font(16.0),
-                                TextColor(flame),
-                            ));
-                            button.spawn((
-                                Text::new(class.description.clone()),
-                                font(12.0),
-                                TextColor(palette::TEXT_DIM),
-                            ));
-                            button.spawn((
-                                Text::new(format!(
-                                    "{spec}   Health {}   Power {:.0}%",
-                                    class.max_health, class.power
-                                )),
-                                font(12.0),
-                                TextColor(palette::TEXT_DIM),
-                            ));
-                        });
-                }
                 panel
-                    .spawn((
-                        Button,
-                        ShowLanternButton,
-                        Node {
-                            padding: UiRect::all(px(6)),
-                            border: UiRect::all(px(1)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
-                        BorderColor::all(palette::PANEL_BORDER),
-                    ))
-                    .with_child((
-                        ShowLanternLabel,
-                        Text::new(""),
-                        font(13.0),
-                        TextColor(palette::TEXT),
-                    ));
-                panel.spawn((
+                    .spawn(Node {
+                        column_gap: px(16),
+                        ..default()
+                    })
+                    .with_children(|columns| {
+                        columns
+                            .spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(7),
+                                width: px(420),
+                                ..default()
+                            })
+                            .with_children(|panel| {
+                                for (id, class) in data.class_list() {
+                                    let (flame, _) = flame_look(&class.flame);
+                                    let spec = class
+                                        .spec(&class.default_spec)
+                                        .map_or("", |s| s.name.as_str());
+                                    panel
+                                        .spawn((
+                                            Button,
+                                            FlameButton(id.clone()),
+                                            Node {
+                                                flex_direction: FlexDirection::Column,
+                                                padding: UiRect::all(px(8)),
+                                                border: UiRect::all(px(2)),
+                                                row_gap: px(2),
+                                                ..default()
+                                            },
+                                            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
+                                            BorderColor::all(palette::PANEL_BORDER),
+                                        ))
+                                        .with_children(|button| {
+                                            button.spawn((
+                                                Text::new(format!(
+                                                    "{}   ({})",
+                                                    class.name,
+                                                    class.role.label()
+                                                )),
+                                                font(16.0),
+                                                TextColor(flame),
+                                            ));
+                                            button.spawn((
+                                                Text::new(class.description.clone()),
+                                                font(12.0),
+                                                TextColor(palette::TEXT_DIM),
+                                            ));
+                                            button.spawn((
+                                                Text::new(format!(
+                                                    "{spec}   Health {}   Power {:.0}%",
+                                                    class.max_health, class.power
+                                                )),
+                                                font(12.0),
+                                                TextColor(palette::TEXT_DIM),
+                                            ));
+                                        });
+                                }
+                            });
+                        columns
+                            .spawn(Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(7),
+                                width: px(400),
+                                ..default()
+                            })
+                            .with_children(|panel| {
+                                // Filled in by `secondary.rs`.
+                                panel.spawn((
+                                    SecondarySection,
+                                    Node {
+                                        flex_direction: FlexDirection::Column,
+                                        row_gap: px(5),
+                                        ..default()
+                                    },
+                                ));
+                                panel
+                                    .spawn((
+                                        Button,
+                                        ShowLanternButton,
+                                        Node {
+                                            padding: UiRect::all(px(6)),
+                                            border: UiRect::all(px(1)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
+                                        BorderColor::all(palette::PANEL_BORDER),
+                                    ))
+                                    .with_child((
+                                        ShowLanternLabel,
+                                        Text::new(""),
+                                        font(13.0),
+                                        TextColor(palette::TEXT),
+                                    ));
+                                panel.spawn((
                     Text::new("Power 100% = the amounts listed on abilities; 110% = 10% more."),
                     font(11.0),
                     TextColor(palette::TEXT_DIM),
                 ));
-                panel.spawn((
-                    Text::new("Press L to close."),
-                    font(12.0),
-                    TextColor(palette::TEXT_DIM),
-                ));
+                                panel.spawn((
+                                    Text::new("Press L to close."),
+                                    font(12.0),
+                                    TextColor(palette::TEXT_DIM),
+                                ));
+                            });
+                    });
             });
         });
 }

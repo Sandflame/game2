@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use shared::classes::CurrentClass;
+use shared::classes::{CurrentClass, Secondaries};
 use shared::combat::Reject;
 use shared::combat::{ActionState, Health};
 use shared::components::{
@@ -18,7 +18,7 @@ use shared::threat::ThreatTable;
 
 use crate::classes::FlameChange;
 use crate::database::CharacterSave;
-use crate::progression::{player_stats, restore, starting_gear};
+use crate::progression::{Build, player_hotbar, player_stats, restore, starting_gear};
 
 /// Finds a player's character from their id.
 #[derive(Resource, Default, Debug)]
@@ -101,16 +101,27 @@ pub fn spawn_player(
         },
         None => MoveState::spawn_at(level.spawn_point),
     };
-    let (levels, bag, worn) = match save {
+    let (levels, bag, worn, secondaries) = match save {
         Some(save) => restore(save, data),
         None => {
             let (bag, worn) = starting_gear(data);
-            (ClassLevels::default(), bag, worn)
+            (ClassLevels::default(), bag, worn, Secondaries::default())
         }
     };
-    let Some(stats) = player_stats(data, zones, &class_id, &zone, &levels, &bag, &worn) else {
+    let build = Build {
+        levels: &levels,
+        bag: &bag,
+        worn: &worn,
+        secondaries: &secondaries,
+    };
+    let Some(stats) = player_stats(data, zones, &class_id, &zone, &build) else {
         return;
     };
+    let current = CurrentClass {
+        class: class_id,
+        spec: class.default_spec.clone(),
+    };
+    let hotbar = player_hotbar(data, &current, &levels, &secondaries);
     let entity = commands
         .spawn((
             (
@@ -129,13 +140,10 @@ pub fn spawn_player(
                 ActionState::default(),
                 Statuses::default(),
                 CombatClock::default(),
-                Hotbar(data.hotbar(class, &class.default_spec)),
-                CurrentClass {
-                    class: class_id,
-                    spec: class.default_spec.clone(),
-                },
+                Hotbar(hotbar),
+                current,
             ),
-            (levels, bag, worn),
+            (levels, bag, worn, secondaries),
         ))
         .id();
     index.0.insert(player, entity);

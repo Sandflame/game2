@@ -21,4 +21,12 @@
         ),
     ],
     default_spec: "bulwark",
+    // Abilities other classes can borrow (secondary class), once this
+    // class reaches the level shown.
+    lendable: [
+        (ability: "sk_rampart", level: 1),
+        (ability: "sk_stalwart_guard", level: 5),
+        (ability: "sk_taunt", level: 10),
+        (ability: "sk_shield_sweep", level: 15),
+    ],
 )

@@ -3,7 +3,7 @@
 (
     name: "The Rootwarden",
     // Health for one player (more is added per extra player, see the encounter).
-    max_health: 32000,
+    max_health: 8000,
     hit_radius: 2.5,
     visual: "rootwarden",
     actions: [(ability: "thorn_lash", every: 3.0)],

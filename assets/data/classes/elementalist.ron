@@ -20,4 +20,12 @@
         ),
     ],
     default_spec: "fire",
+    // Abilities other classes can borrow (secondary class), once this
+    // class reaches the level shown.
+    lendable: [
+        (ability: "el_kindle", level: 1),
+        (ability: "el_ember_shield", level: 5),
+        (ability: "el_fire_snap", level: 10),
+        (ability: "el_pyre_heart", level: 15),
+    ],
 )

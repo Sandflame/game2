@@ -19,4 +19,9 @@
     max_guard: 30.0,
     // How many items a character can carry, worn gear included.
     bag_size: 40,
+    // Your secondary class's level also strengthens your main class a
+    // little: per secondary level, this much Power (percentage points)...
+    secondary_power_per_level: 0.2,
+    // ...and this much health (percent of your class's level-1 health).
+    secondary_health_per_level: 0.3,
 )

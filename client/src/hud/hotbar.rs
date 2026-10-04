@@ -29,8 +29,11 @@ const KEYS: [KeyCode; HOTBAR_SLOTS] = [
     KeyCode::Digit8,
     KeyCode::Digit9,
     KeyCode::Digit0,
+    KeyCode::Minus,
+    KeyCode::Equal,
 ];
-const KEY_LABELS: [&str; HOTBAR_SLOTS] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const KEY_LABELS: [&str; HOTBAR_SLOTS] =
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
 
 pub struct HotbarPlugin;
 

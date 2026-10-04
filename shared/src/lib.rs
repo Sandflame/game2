@@ -18,6 +18,7 @@ pub mod movement;
 pub mod progression;
 pub mod protocol;
 pub mod statuses;
+pub mod synergy;
 pub mod targeting;
 pub mod telegraphs;
 pub mod threat;

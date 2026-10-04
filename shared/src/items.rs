@@ -267,9 +267,12 @@ pub fn discard(bag: &mut Bag, equipment: &mut Equipment, id: u64) -> Result<(), 
 /// A character's stats from their class, level and worn gear.
 /// `level` is the level they fight at (after level sync); gear above that
 /// level counts for proportionally less.
+/// `secondary_level` is the level of the secondary class, if one is chosen
+/// (also lowered by level sync).
 pub fn character_stats(
     class: &ClassDef,
     level: u32,
+    secondary_level: Option<u32>,
     worn: &[&ItemDef],
     rules: &ProgressionDef,
     base_crit: f32,
@@ -286,9 +289,13 @@ pub fn character_stats(
         crit += item.crit * scale;
         guard += item.guard * scale;
     }
+    let (secondary_health, secondary_power) =
+        secondary_level.map_or((0.0, 0.0), |l| rules.secondary_bonus(l));
     Stats {
-        max_health: (class.max_health as f32 * rules.health_scale(level) + health).round() as u32,
-        power: class.power + rules.power_bonus(level) + power,
+        max_health: (class.max_health as f32 * (rules.health_scale(level) + secondary_health)
+            + health)
+            .round() as u32,
+        power: class.power + rules.power_bonus(level) + secondary_power + power,
         threat_multiplier: class.threat_multiplier,
         crit_chance: (base_crit + crit / 100.0).clamp(0.0, 1.0),
         guard: guard.min(rules.max_guard),
@@ -360,8 +367,10 @@ mod tests {
                 name: "Main".into(),
                 description: String::new(),
                 abilities: Vec::new(),
+                roles: HashMap::new(),
             }],
             default_spec: "main".into(),
+            lendable: Vec::new(),
         }
     }
 
@@ -419,7 +428,7 @@ mod tests {
         let rules = test_rules();
         let items = items();
         let helm = &items["helm"];
-        let stats = character_stats(&class(), 3, &[helm], &rules, 0.05);
+        let stats = character_stats(&class(), 3, None, &[helm], &rules, 0.05);
         // 1000 × 1.2 (two levels at 10%) + 100 from the helm.
         assert_eq!(stats.max_health, 1300);
         // 100 + 2 levels × 2 + 4.
@@ -430,14 +439,23 @@ mod tests {
     }
 
     #[test]
+    fn a_secondary_class_adds_a_little_power_and_health() {
+        let rules = test_rules();
+        // Level 4 secondary: +4% health, +2 power.
+        let stats = character_stats(&class(), 1, Some(4), &[], &rules, 0.0);
+        assert_eq!(stats.max_health, 1040);
+        assert!((stats.power - 102.0).abs() < 1e-4);
+    }
+
+    #[test]
     fn guard_is_capped_and_synced_gear_is_scaled() {
         let rules = test_rules();
         let items = items();
         let big = &items["big_helm"];
         // A level 10 helm at level 5 counts half.
-        let stats = character_stats(&class(), 5, &[big, big], &rules, 0.0);
+        let stats = character_stats(&class(), 5, None, &[big, big], &rules, 0.0);
         assert_eq!(stats.guard, 20.0);
-        let capped = character_stats(&class(), 10, &[big, big], &rules, 0.0);
+        let capped = character_stats(&class(), 10, None, &[big, big], &rules, 0.0);
         assert_eq!(capped.guard, rules.max_guard);
     }
 

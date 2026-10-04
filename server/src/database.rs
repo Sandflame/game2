@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use rusqlite::{Connection, OptionalExtension, params};
+use shared::classes::SecondaryChoice;
 use shared::components::PlayerId;
 use shared::progression::ClassProgress;
 
@@ -41,6 +42,15 @@ pub const MIGRATIONS: &[&str] = &[
         character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
         item TEXT NOT NULL,
         worn TEXT
+    );",
+    // 2: each class's secondary class and its two borrowed abilities.
+    "CREATE TABLE secondary_choices (
+        character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+        main_class TEXT NOT NULL,
+        secondary_class TEXT NOT NULL,
+        first_ability TEXT,
+        second_ability TEXT,
+        PRIMARY KEY (character_id, main_class)
     );",
 ];
 
@@ -82,6 +92,8 @@ pub struct CharacterSave {
     pub yaw: f32,
     pub levels: Vec<(String, ClassProgress)>,
     pub items: Vec<SavedItem>,
+    /// (main class, its secondary choice).
+    pub secondaries: Vec<(String, SecondaryChoice)>,
 }
 
 /// An owned item and where it is worn: `None` in the bag, `"head"` etc. for
@@ -189,6 +201,24 @@ pub fn save_character(conn: &mut Connection, save: &CharacterSave) -> rusqlite::
         params![id],
     )?;
     tx.execute("DELETE FROM items WHERE character_id = ?1", params![id])?;
+    tx.execute(
+        "DELETE FROM secondary_choices WHERE character_id = ?1",
+        params![id],
+    )?;
+    for (main, choice) in &save.secondaries {
+        tx.execute(
+            "INSERT INTO secondary_choices
+             (character_id, main_class, secondary_class, first_ability, second_ability)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                id,
+                main,
+                choice.class,
+                choice.abilities[0],
+                choice.abilities[1]
+            ],
+        )?;
+    }
     for (class, progress) in &save.levels {
         tx.execute(
             "INSERT INTO class_levels (character_id, class, level, xp) VALUES (?1, ?2, ?3, ?4)",
@@ -221,6 +251,7 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                         yaw: row.get(6)?,
                         levels: Vec::new(),
                         items: Vec::new(),
+                        secondaries: Vec::new(),
                     },
                 ))
             },
@@ -251,6 +282,21 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                 item: row.get(0)?,
                 worn: row.get(1)?,
             })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut secondaries = conn.prepare(
+        "SELECT main_class, secondary_class, first_ability, second_ability
+         FROM secondary_choices WHERE character_id = ?1 ORDER BY main_class",
+    )?;
+    save.secondaries = secondaries
+        .query_map(params![id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                SecondaryChoice {
+                    class: row.get(1)?,
+                    abilities: [row.get(2)?, row.get(3)?],
+                },
+            ))
         })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(Some(save))
@@ -384,6 +430,13 @@ mod tests {
                     worn: None,
                 },
             ],
+            secondaries: vec![(
+                "priest".into(),
+                SecondaryChoice {
+                    class: "blademaster".into(),
+                    abilities: [Some("bm_battle_focus".into()), None],
+                },
+            )],
         }
     }
 
@@ -409,6 +462,7 @@ mod tests {
         changed.class = "blademaster".into();
         changed.items.truncate(1);
         changed.levels[0].1.level = 5;
+        changed.secondaries.clear();
         save_character(&mut conn, &changed).unwrap();
         assert_eq!(load_character(&conn, "Ari").unwrap(), Some(changed));
     }
@@ -421,6 +475,39 @@ mod tests {
         assert_eq!(version(&conn).unwrap(), MIGRATIONS.len());
         // Running again changes nothing.
         assert_eq!(migrate(&mut conn, path).unwrap(), MIGRATIONS.len());
+    }
+
+    #[test]
+    fn old_files_are_backed_up_and_upgraded() {
+        let dir = std::env::temp_dir().join(format!(
+            "lanternflame-upgrade-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("world.db");
+        {
+            // A save file from version 1 (before secondary classes).
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.pragma_update(None, "user_version", 1).unwrap();
+            conn.execute(
+                "INSERT INTO characters (name, class, zone, x, y, z, yaw, saved_at)
+                 VALUES ('Ari', 'priest', 'sandbox', 0, 0, 0, 0, 0)",
+                [],
+            )
+            .unwrap();
+        }
+        let conn = open(&path).unwrap();
+        assert_eq!(version(&conn).unwrap(), MIGRATIONS.len());
+        assert!(dir.join("world.backup-v1.db").exists(), "backed up first");
+        let ari = load_character(&conn, "Ari").unwrap().unwrap();
+        assert_eq!(ari.class, "priest");
+        assert!(ari.secondaries.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

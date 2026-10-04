@@ -1,0 +1,16 @@
+// Party synergy: when a party is missing a role, everyone in it gets a
+// bonus that makes up for part of it. Having the role is still better.
+// For now "the party" is everyone in the same zone; on your own you are a
+// party of one and get the bonuses for both roles you don't cover.
+(
+    // A role counts as covered when the party's role weights add up to at
+    // least this (a class's specialization counts 1.0 towards its role
+    // unless its class file says otherwise).
+    covered_at: 0.5,
+    // Status everyone gets while a role is missing (statuses/synergy.ron).
+    missing: {
+        Durable: "synergy_steadfast",
+        Sustain: "synergy_inner_light",
+        Damage: "synergy_battle_fury",
+    },
+)

@@ -10,7 +10,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind};
-use shared::classes::{ClassDef, CurrentClass, Stats};
+use shared::classes::{ClassDef, CurrentClass, SecondaryChoice, Stats};
 use shared::combat::{Health, Reject};
 use shared::components::{CharacterName, Hotbar, Motion, PlayerId, Zone};
 use shared::config::{GameConfig, SimulationConfig};
@@ -113,6 +113,7 @@ const SPROUT: &str = r#"(name: "Sprout", max_health: 100, hit_radius: 0.5, visua
 const PROGRESSION: &str = r#"(
     max_level: 5, xp_to_next: [100, 200, 300, 400],
     health_per_level: 10.0, power_per_level: 10.0, max_guard: 30.0, bag_size: 6,
+    secondary_power_per_level: 1.0, secondary_health_per_level: 1.0,
 )"#;
 
 const ITEMS: &str = r#"{
@@ -125,7 +126,15 @@ const STATUSES: &str = r#"[
     (id: "burn", name: "Burn", kind: Debuff, duration: 9.5, tick: Some(Damage(amount: 40))),
     (id: "guard", name: "Guard", kind: Buff, duration: 10.0, modifiers: (damage_taken: 0.5)),
     (id: "barrier", name: "Barrier", kind: Buff, duration: 10.0),
+    (id: "steadfast", name: "Steadfast", kind: Buff, duration: 10.0,
+     modifiers: (damage_taken: 0.9)),
+    (id: "inner_light", name: "Inner Light", kind: Buff, duration: 10.0),
 ]"#;
+
+/// Synergy for the tests that want it (the others have none, so their
+/// numbers stay simple).
+const SYNERGY: &str =
+    r#"(covered_at: 0.5, missing: {Durable: "steadfast", Sustain: "inner_light"})"#;
 
 const FIGHTER: &str = r#"(
     name: "Fighter", flame: "crimson", role: Damage, max_health: 1000, power: 100,
@@ -141,6 +150,7 @@ const GUARDIAN: &str = r#"(
     core: ["strike", "provoke", "sweep", "guard", "barrier"],
     specializations: [(id: "main", name: "Main", abilities: ["mend", "bolt", "burst"])],
     default_spec: "main",
+    lendable: [(ability: "provoke", level: 1), (ability: "sweep", level: 3)],
 )"#;
 
 const DUMMY: &str = r#"(name: "Dummy", max_health: 5000, hit_radius: 1.0, visual: "training_dummy",
@@ -188,6 +198,7 @@ fn test_data() -> GameData {
         encounters: HashMap::from([("trial".to_owned(), parse::<EncounterDef>(TRIAL))]),
         progression: parse(PROGRESSION),
         items: parse::<ItemFile>(ITEMS).0,
+        synergy: parse("(covered_at: 0.5, missing: {})"),
     }
 }
 
@@ -247,9 +258,12 @@ const FOLLOWUP: usize = 4;
 const IGNITE: usize = 5;
 const GUARD: usize = 6;
 const BARRIER: usize = 7;
-// Shared lantern abilities, after the class's own.
-const SECOND_WIND: usize = 8;
-const REKINDLE: usize = 9;
+// Borrowed from a secondary class.
+const SECONDARY_1: usize = 8;
+const SECONDARY_2: usize = 9;
+// Shared lantern abilities, after the secondary ones.
+const SECOND_WIND: usize = 10;
+const REKINDLE: usize = 11;
 
 struct Game {
     app: App,
@@ -263,15 +277,22 @@ impl Game {
     }
 
     fn with_enemies(enemies: &[(&str, Vec3)]) -> Self {
-        Self::build(enemies, None)
+        Self::build(enemies, None, test_data())
     }
 
     /// A game that saves to (and loads from) a save file.
     fn with_save_file(path: &Path) -> Self {
-        Self::build(&[], Some(path))
+        Self::build(&[], Some(path), test_data())
     }
 
-    fn build(enemies: &[(&str, Vec3)], save_file: Option<&Path>) -> Self {
+    /// A game with party synergy switched on.
+    fn with_synergy() -> Self {
+        let mut data = test_data();
+        data.synergy = parse(SYNERGY);
+        Self::build(&[("dummy", Vec3::new(0.0, 0.0, -3.0))], None, data)
+    }
+
+    fn build(enemies: &[(&str, Vec3)], save_file: Option<&Path>, data: GameData) -> Self {
         let mut app = App::new();
         if let Some(path) = save_file {
             app.insert_resource(Database::start(path).unwrap());
@@ -281,7 +302,7 @@ impl Game {
                 TICK,
             )))
             .insert_resource(Time::<Fixed>::from_seconds(TICK))
-            .insert_resource(test_data())
+            .insert_resource(data)
             .insert_resource(test_zones(enemies))
             .insert_resource(CombatRng(Rng::new(1)))
             .add_plugins(AuthorityPlugin);
@@ -541,7 +562,7 @@ fn attacks_need_an_enemy_target() {
     let me = Some(game.me());
     game.use_on(STRIKE, me);
     game.run(0.1);
-    game.use_slot(10); // past the end of the hotbar
+    game.use_slot(12); // past the end of the hotbar
     game.run(0.1);
     assert_eq!(
         game.rejections(),
@@ -1282,12 +1303,173 @@ fn characters_are_saved_and_loaded() {
         game.set_level("fighter", 3);
         let cap = game.give("cap");
         game.send(ClientRequest::Equip { item: cap });
+        game.send(secondary(&["provoke"]));
         game.run(0.2);
         game.app.world().resource::<Database>().flush();
     }
     let mut game = Game::with_save_file(&path);
     assert_eq!(game.level("fighter"), 3);
+    assert_eq!(game.slot(SECONDARY_1).as_deref(), Some("provoke"));
     assert_eq!(game.worn().armour.len(), 1, "the cap is still worn");
-    assert_eq!(game.stats().max_health, 1300, "level 3 + cap");
+    // Level 3 (+20%), the cap (+100), and a level 1 secondary class (+1%).
+    assert_eq!(game.stats().max_health, 1310);
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+// ---- Secondary classes and party synergy (Milestone 6) ----
+
+fn secondary(abilities: &[&str]) -> ClientRequest {
+    let mut slots = [None, None];
+    for (slot, ability) in slots.iter_mut().zip(abilities) {
+        *slot = Some((*ability).to_owned());
+    }
+    ClientRequest::SetSecondary {
+        choice: Some(SecondaryChoice {
+            class: "guardian".into(),
+            abilities: slots,
+        }),
+    }
+}
+
+impl Game {
+    fn slot(&mut self, slot: usize) -> Option<String> {
+        let me = self.me();
+        self.app.world().get::<Hotbar>(me).unwrap().0[slot].clone()
+    }
+
+    fn has_status(&mut self, entity: Entity, id: &str) -> bool {
+        self.app.world().get::<Statuses>(entity).unwrap().has(id)
+    }
+}
+
+#[test]
+fn borrowed_abilities_go_in_slots_nine_and_ten() {
+    let mut game = Game::new();
+    game.send(secondary(&["provoke"]));
+    game.run(0.1);
+    assert!(game.rejections().is_empty(), "{:?}", game.rejections());
+    assert_eq!(game.slot(SECONDARY_1).as_deref(), Some("provoke"));
+    assert_eq!(game.slot(SECONDARY_2), None);
+    assert_eq!(game.slot(SECOND_WIND).as_deref(), Some("second_wind"));
+    // And it works like any other ability.
+    let dummy = game.dummy();
+    game.use_on(SECONDARY_1, Some(dummy));
+    game.run(0.1);
+    assert!(
+        game.events
+            .iter()
+            .any(|e| matches!(e, ServerEvent::AbilityUsed { ability, .. } if ability == "provoke"))
+    );
+}
+
+#[test]
+fn borrowing_needs_the_lending_class_level() {
+    let mut game = Game::new();
+    game.send(secondary(&["sweep"]));
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::LevelTooLow]);
+    game.events.clear();
+    game.set_level("guardian", 3);
+    game.send(secondary(&["provoke", "sweep"]));
+    game.run(0.1);
+    assert!(game.rejections().is_empty());
+    assert_eq!(game.slot(SECONDARY_2).as_deref(), Some("sweep"));
+}
+
+#[test]
+fn only_lendable_abilities_from_another_class() {
+    let mut game = Game::new();
+    game.send(secondary(&["strike"]));
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::NotLendable]);
+    game.events.clear();
+    game.send(ClientRequest::SetSecondary {
+        choice: Some(SecondaryChoice {
+            class: "fighter".into(),
+            abilities: [None, None],
+        }),
+    });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::SameClass]);
+}
+
+#[test]
+fn each_class_remembers_its_own_secondary() {
+    let mut game = Game::new();
+    game.send(secondary(&["provoke"]));
+    game.run(0.1);
+    game.send(ClientRequest::ChangeClass {
+        class: "guardian".into(),
+    });
+    game.run(2.2);
+    assert_eq!(game.slot(SECONDARY_1), None, "the guardian chose nothing");
+    game.send(ClientRequest::ChangeClass {
+        class: "fighter".into(),
+    });
+    game.run(2.2);
+    assert_eq!(game.slot(SECONDARY_1).as_deref(), Some("provoke"));
+}
+
+#[test]
+fn the_secondary_class_level_adds_a_little_power() {
+    let mut game = Game::new();
+    game.set_level("guardian", 4);
+    game.send(secondary(&["provoke"]));
+    game.run(0.1);
+    let stats = game.stats();
+    // +1 power and +1% health per secondary level (test data).
+    assert!((stats.power - 104.0).abs() < 1e-3, "{}", stats.power);
+    assert_eq!(stats.max_health, 1040);
+    game.send(ClientRequest::SetSecondary { choice: None });
+    game.run(0.1);
+    assert!((game.stats().power - 100.0).abs() < 1e-3);
+    assert_eq!(game.slot(SECONDARY_1), None);
+}
+
+#[test]
+fn secondary_cannot_change_in_combat() {
+    let mut game = Game::new();
+    game.use_slot(STRIKE);
+    game.run(0.2);
+    game.send(secondary(&["provoke"]));
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::InCombat]);
+}
+
+#[test]
+fn a_party_of_one_gets_bonuses_for_missing_roles() {
+    let mut game = Game::with_synergy();
+    game.run(0.1);
+    let me = game.me();
+    assert!(game.has_status(me, "steadfast"), "no durable class here");
+    assert!(game.has_status(me, "inner_light"), "no sustain class here");
+}
+
+#[test]
+fn a_durable_friend_covers_that_role() {
+    let mut game = Game::with_synergy();
+    let friend = game.join_friend();
+    game.send_as(
+        FRIEND,
+        ClientRequest::ChangeClass {
+            class: "guardian".into(),
+        },
+    );
+    game.run(2.3);
+    let me = game.me();
+    assert!(!game.has_status(me, "steadfast"), "the guardian covers it");
+    assert!(game.has_status(me, "inner_light"));
+    assert!(!game.has_status(friend, "steadfast"));
+}
+
+#[test]
+fn synergy_bonuses_change_the_numbers() {
+    let mut game = Game::with_synergy();
+    game.run(0.1);
+    // Steadfast: 10% less damage taken.
+    let me = game.me();
+    let statuses = game.app.world().get::<Statuses>(me).unwrap();
+    let data = game.app.world().resource::<GameData>();
+    let modifiers = statuses.modifiers(|id| data.statuses.get(id));
+    assert!((modifiers.damage_taken - 0.9).abs() < 1e-6);
 }

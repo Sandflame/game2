@@ -23,4 +23,12 @@
         ),
     ],
     default_spec: "greatsword",
+    // Abilities other classes can borrow (secondary class), once this
+    // class reaches the level shown.
+    lendable: [
+        (ability: "bm_battle_focus", level: 1),
+        (ability: "bm_whirlwind", level: 5),
+        (ability: "bm_iron_will", level: 10),
+        (ability: "bm_overhead_crush", level: 15),
+    ],
 )

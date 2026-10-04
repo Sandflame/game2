@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use shared::classes::CurrentClass;
 use shared::combat::{ActionState, Reject};
-use shared::components::{Hotbar, PlayerId};
+use shared::components::PlayerId;
 use shared::gamedata::GameData;
 use shared::protocol::{Link, ServerEvent};
 use shared::statuses::Statuses;
@@ -58,8 +58,8 @@ pub fn request_change(
     });
 }
 
-/// Finished flame changes switch the character's class: new stats, new
-/// hotbar, timers and statuses reset.
+/// Finished flame changes switch the character's class; timers and
+/// statuses reset. (Stats and hotbar follow in `progression::refresh_stats`.)
 pub fn finish_flame_changes(
     mut commands: Commands,
     time: Res<Time>,
@@ -70,7 +70,6 @@ pub fn finish_flame_changes(
             Entity,
             &FlameChange,
             &mut CurrentClass,
-            &mut Hotbar,
             &mut ActionState,
             &mut Statuses,
         ),
@@ -78,7 +77,7 @@ pub fn finish_flame_changes(
     >,
 ) {
     let now = time.elapsed_secs_f64();
-    for (entity, change, mut current, mut hotbar, mut actions, mut statuses) in &mut changing {
+    for (entity, change, mut current, mut actions, mut statuses) in &mut changing {
         if now < change.ends {
             continue;
         }
@@ -91,7 +90,6 @@ pub fn finish_flame_changes(
             class: change.class.clone(),
             spec: class.default_spec.clone(),
         };
-        hotbar.0 = data.hotbar(class, &class.default_spec);
         actions.reset();
         statuses.0.clear();
         link.to_client.push(ServerEvent::ClassChanged {

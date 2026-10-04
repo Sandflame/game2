@@ -23,6 +23,7 @@ use crate::hud::lantern::LanternPanel;
 use crate::hud::options::OptionsMenu;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
+use shared::classes::SecondaryChoice;
 
 const SCREENSHOT_ENV: &str = "LANTERNFLAME_SCREENSHOT";
 
@@ -45,6 +46,8 @@ enum Step {
     OpenOptions,
     OpenCharacter,
     CloseCharacter,
+    /// Borrow an ability from another class (secondary flame).
+    Secondary(&'static str, &'static str),
     CloseLantern,
     ChangeClass(&'static str),
     /// Target the nearest enemy of this kind and turn the camera to it.
@@ -87,9 +90,13 @@ const TRIAL_DEMO: &[(f32, Step)] = &[
 
 /// The character panel, then a fight with a bramble sprout in the meadow.
 const PROGRESS_DEMO: &[(f32, Step)] = &[
-    (1.0, Step::OpenCharacter),
-    (1.8, Step::Shot), // the character panel and the experience bar
-    (2.0, Step::CloseCharacter),
+    (0.5, Step::Secondary("priest", "pr_mend")),
+    (0.8, Step::OpenLantern),
+    (1.4, Step::Shot), // the secondary flame picker
+    (1.5, Step::CloseLantern),
+    (1.6, Step::OpenCharacter),
+    (2.2, Step::Shot), // the character panel, party bonuses and the experience bar
+    (2.3, Step::CloseCharacter),
     (2.1, Step::Walk(Some((-0.83, -0.56)))),
     (6.35, Step::Walk(None)),
     (6.8, Step::Target("bramble_sprout")),
@@ -199,6 +206,16 @@ fn run_script(
             Step::OpenLantern => lantern.open = true,
             Step::OpenOptions => options.open = true,
             Step::OpenCharacter => character.set_open(true),
+            Step::Secondary(class, ability) => send(
+                &mut link,
+                *me,
+                ClientRequest::SetSecondary {
+                    choice: Some(SecondaryChoice {
+                        class: class.into(),
+                        abilities: [Some(ability.into()), None],
+                    }),
+                },
+            ),
             Step::CloseCharacter => character.set_open(false),
             Step::CloseLantern => lantern.open = false,
             Step::ChangeClass(class) => send(

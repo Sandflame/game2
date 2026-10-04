@@ -4,6 +4,9 @@
 use bevy::prelude::Component;
 use serde::{Deserialize, Serialize};
 
+use std::collections::HashMap;
+
+use crate::combat::Reject;
 use crate::components::HOTBAR_SLOTS;
 use crate::data::{Problems, Validate};
 
@@ -11,6 +14,8 @@ use crate::data::{Problems, Validate};
 pub const CORE_ABILITIES: usize = 5;
 /// Abilities each specialization adds.
 pub const SPEC_ABILITIES: usize = 3;
+/// Abilities borrowed from a secondary class (hotbar slots 9 and 0).
+pub const SECONDARY_ABILITIES: usize = 2;
 
 /// What a class leans towards (soft roles: no content requires any).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -18,6 +23,10 @@ pub enum Role {
     Durable,
     Sustain,
     Damage,
+}
+
+impl Role {
+    pub const ALL: [Role; 3] = [Role::Durable, Role::Sustain, Role::Damage];
 }
 
 impl Role {
@@ -37,6 +46,18 @@ pub struct SpecDef {
     #[serde(default)]
     pub description: String,
     pub abilities: Vec<String>,
+    /// How much this specialization counts towards each role for party
+    /// synergy, e.g. `{Durable: 0.7, Sustain: 0.3}`. Empty: fully the
+    /// class's own role.
+    #[serde(default)]
+    pub roles: HashMap<Role, f32>,
+}
+
+/// An ability other classes may borrow, once this class reaches `level`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Lendable {
+    pub ability: String,
+    pub level: u32,
 }
 
 /// One class (`assets/data/classes/<id>.ron`; the id is the file name).
@@ -57,6 +78,9 @@ pub struct ClassDef {
     pub core: Vec<String>,
     pub specializations: Vec<SpecDef>,
     pub default_spec: String,
+    /// Abilities other classes can borrow when this is their secondary class.
+    #[serde(default)]
+    pub lendable: Vec<Lendable>,
 }
 
 impl ClassDef {
@@ -72,8 +96,29 @@ impl ClassDef {
             .map(String::as_str)
     }
 
-    /// Hotbar layout: 5 core abilities, 3 from the specialization, and
-    /// 2 empty slots (for a secondary class, Milestone 6).
+    /// What a specialization counts as for party synergy.
+    pub fn role_weights(&self, spec: &str) -> Vec<(Role, f32)> {
+        match self.spec(spec).filter(|s| !s.roles.is_empty()) {
+            Some(s) => {
+                let mut weights: Vec<_> = s.roles.iter().map(|(r, w)| (*r, *w)).collect();
+                weights.sort_by_key(|(r, _)| *r as u8);
+                weights
+            }
+            None => vec![(self.role, 1.0)],
+        }
+    }
+
+    /// The level this class needs before others can borrow `ability`.
+    pub fn lend_level(&self, ability: &str) -> Option<u32> {
+        self.lendable
+            .iter()
+            .find(|l| l.ability == ability)
+            .map(|l| l.level)
+    }
+
+    /// Hotbar layout: 5 core abilities, 3 from the specialization, then
+    /// empty slots (secondary class and lantern abilities are added by
+    /// `GameData::hotbar`).
     pub fn hotbar(&self, spec: &str) -> Vec<Option<String>> {
         let mut bar: Vec<Option<String>> = self.core.iter().cloned().map(Some).collect();
         if let Some(spec) = self.spec(spec) {
@@ -105,6 +150,24 @@ impl Validate for ClassDef {
                 ));
             }
         }
+        for spec in &self.specializations {
+            for (role, weight) in &spec.roles {
+                if !(0.0..=1.0).contains(weight) {
+                    p.push(format!(
+                        "specialization `{}`: role weight for {role:?} must be between 0 and 1",
+                        spec.id
+                    ));
+                }
+            }
+        }
+        for lend in &self.lendable {
+            if lend.level == 0 {
+                p.push(format!(
+                    "lendable `{}` needs a level of 1 or more",
+                    lend.ability
+                ));
+            }
+        }
         if self.spec(&self.default_spec).is_none() {
             p.push(format!(
                 "`default_spec` `{}` is not one of its specializations",
@@ -113,6 +176,43 @@ impl Validate for ClassDef {
         }
         p.0
     }
+}
+
+/// A class's choice of secondary class: which class it borrows from and
+/// the abilities it put in its two secondary slots.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SecondaryChoice {
+    pub class: String,
+    pub abilities: [Option<String>; SECONDARY_ABILITIES],
+}
+
+/// Each class's secondary choice for one character (keyed by main class).
+#[derive(Component, Debug, Clone, Default, PartialEq)]
+pub struct Secondaries(pub HashMap<String, SecondaryChoice>);
+
+/// Can a character playing `main` borrow these abilities from `choice.class`,
+/// with that class at `secondary_level`?
+pub fn check_secondary(
+    main: &str,
+    choice: &SecondaryChoice,
+    secondary: &ClassDef,
+    secondary_level: u32,
+) -> Result<(), Reject> {
+    if choice.class == main {
+        return Err(Reject::SameClass);
+    }
+    let picked: Vec<&String> = choice.abilities.iter().flatten().collect();
+    if picked.len() == 2 && picked[0] == picked[1] {
+        return Err(Reject::NotLendable);
+    }
+    for ability in picked {
+        match secondary.lend_level(ability) {
+            None => return Err(Reject::NotLendable),
+            Some(level) if level > secondary_level => return Err(Reject::LevelTooLow),
+            Some(_) => {}
+        }
+    }
+    Ok(())
 }
 
 /// A character's current class and specialization.
@@ -154,9 +254,68 @@ mod tests {
                 name: "Main".into(),
                 description: String::new(),
                 abilities: (1..=3).map(|i| format!("spec{i}")).collect(),
+                roles: HashMap::new(),
             }],
             default_spec: "main".into(),
+            lendable: vec![
+                Lendable {
+                    ability: "core1".into(),
+                    level: 1,
+                },
+                Lendable {
+                    ability: "spec1".into(),
+                    level: 10,
+                },
+            ],
         }
+    }
+
+    fn choice(abilities: [Option<&str>; 2]) -> SecondaryChoice {
+        SecondaryChoice {
+            class: "test".into(),
+            abilities: abilities.map(|a| a.map(str::to_owned)),
+        }
+    }
+
+    #[test]
+    fn secondary_abilities_must_be_lendable_and_unlocked() {
+        let lender = class();
+        assert_eq!(
+            check_secondary("other", &choice([Some("core1"), None]), &lender, 1),
+            Ok(())
+        );
+        assert_eq!(
+            check_secondary("other", &choice([Some("core2"), None]), &lender, 30),
+            Err(Reject::NotLendable)
+        );
+        assert_eq!(
+            check_secondary("other", &choice([Some("spec1"), None]), &lender, 9),
+            Err(Reject::LevelTooLow)
+        );
+        assert_eq!(
+            check_secondary(
+                "other",
+                &choice([Some("core1"), Some("core1")]),
+                &lender,
+                30
+            ),
+            Err(Reject::NotLendable)
+        );
+        assert_eq!(
+            check_secondary("test", &choice([None, None]), &lender, 30),
+            Err(Reject::SameClass)
+        );
+    }
+
+    #[test]
+    fn role_weights_default_to_the_class_role() {
+        let mut c = class();
+        assert_eq!(c.role_weights("main"), vec![(Role::Damage, 1.0)]);
+        c.specializations[0].roles = HashMap::from([(Role::Durable, 0.7), (Role::Sustain, 0.3)]);
+        assert_eq!(
+            c.role_weights("main"),
+            vec![(Role::Durable, 0.7), (Role::Sustain, 0.3)]
+        );
     }
 
     #[test]

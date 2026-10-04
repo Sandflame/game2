@@ -94,6 +94,8 @@ pub enum Reject {
     LevelTooLow,
     WrongClass,
     BagFull,
+    NotLendable,
+    SameClass,
 }
 
 impl Reject {
@@ -118,6 +120,8 @@ impl Reject {
             Reject::LevelTooLow => "Your level is too low to wear that.",
             Reject::WrongClass => "That weapon is for another class.",
             Reject::BagFull => "Your bag is full.",
+            Reject::NotLendable => "That ability can't be borrowed.",
+            Reject::SameClass => "Your secondary flame must differ from your main one.",
         }
     }
 }

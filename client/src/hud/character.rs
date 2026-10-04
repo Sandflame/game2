@@ -4,12 +4,13 @@
 //! Also the experience bar under the hotbar.
 
 use bevy::prelude::*;
-use shared::classes::{CurrentClass, Stats};
+use shared::classes::{CurrentClass, Secondaries, Stats};
 use shared::components::{CharacterName, Zone};
 use shared::gamedata::{GameData, Zones};
 use shared::items::{Bag, Equipment, ItemDef, Slot};
 use shared::progression::{ClassLevels, effective_level};
 use shared::protocol::{ClientRequest, Link};
+use shared::statuses::Statuses;
 
 use super::{font, palette};
 use crate::characters::LocalPlayer;
@@ -54,7 +55,8 @@ impl CharacterPanel {
 
 /// Seconds to right-click again to throw an item away.
 const DISCARD_WINDOW: f32 = 3.0;
-const PANEL_WIDTH: f32 = 560.0;
+const PANEL_WIDTH: f32 = 900.0;
+const COLUMN_WIDTH: f32 = 430.0;
 const XP_BAR_WIDTH: f32 = 420.0;
 
 #[derive(Component)]
@@ -62,6 +64,13 @@ struct PanelRoot;
 /// The part of the panel that is rebuilt when something changes.
 #[derive(Component)]
 struct PanelContent;
+/// The two halves of the panel: levels and stats on the left, gear on the right.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum Column {
+    Left,
+    Right,
+}
+
 /// The line at the bottom describing the item under the mouse.
 #[derive(Component)]
 struct DetailLine;
@@ -86,7 +95,7 @@ fn spawn_panel(mut commands: Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 left: px(20),
-                top: px(150),
+                top: px(140),
                 width: px(PANEL_WIDTH),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(px(12)),
@@ -102,14 +111,27 @@ fn spawn_panel(mut commands: Commands) {
             GlobalZIndex(5),
         ))
         .with_children(|panel| {
-            panel.spawn((
-                PanelContent,
-                Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: px(8),
-                    ..default()
-                },
-            ));
+            panel
+                .spawn((
+                    PanelContent,
+                    Node {
+                        column_gap: px(16),
+                        ..default()
+                    },
+                ))
+                .with_children(|columns| {
+                    for column in [Column::Left, Column::Right] {
+                        columns.spawn((
+                            column,
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(8),
+                                width: px(COLUMN_WIDTH),
+                                ..default()
+                            },
+                        ));
+                    }
+                });
             panel.spawn((
                 DetailLine,
                 Text::new(""),
@@ -186,12 +208,14 @@ fn rebuild_panel(
                 Ref<Equipment>,
                 Ref<ClassLevels>,
                 Ref<Stats>,
+                (&Secondaries, &Statuses),
             ),
             With<LocalPlayer>,
         >,
     >,
     mut root: Single<&mut Visibility, With<PanelRoot>>,
-    content: Single<Entity, With<PanelContent>>,
+    columns: Query<(Entity, &Column)>,
+    mut shown_bonuses: Local<Vec<String>>,
 ) {
     **root = if panel.open {
         Visibility::Visible
@@ -201,12 +225,33 @@ fn rebuild_panel(
     let Some(player) = player else {
         return;
     };
-    let (name, class, levels, stats, bag, worn, zone, bag_ref, worn_ref, levels_ref, stats_ref) =
-        player.into_inner();
+    let (
+        name,
+        class,
+        levels,
+        stats,
+        bag,
+        worn,
+        zone,
+        bag_ref,
+        worn_ref,
+        levels_ref,
+        stats_ref,
+        (secondaries, statuses),
+    ) = player.into_inner();
+    // Party synergy bonuses the character has right now.
+    let bonuses: Vec<String> = data
+        .synergy
+        .statuses()
+        .filter(|id| statuses.has(id))
+        .map(str::to_owned)
+        .collect();
     let changed = bag_ref.is_changed()
         || worn_ref.is_changed()
         || levels_ref.is_changed()
-        || stats_ref.is_changed();
+        || stats_ref.is_changed()
+        || *shown_bonuses != bonuses;
+    *shown_bonuses = bonuses.clone();
     if !panel.open || !(panel.dirty || changed) {
         return;
     }
@@ -219,8 +264,13 @@ fn rebuild_panel(
     let level = levels.get(class_id).level;
     let sync = zones.get(&zone.0).and_then(|z| z.level_sync);
 
-    commands.entity(*content).despawn_children();
-    commands.entity(*content).with_children(|panel| {
+    let column = |which: Column| columns.iter().find(|(_, c)| **c == which).map(|(e, _)| e);
+    let (Some(left), Some(right)) = (column(Column::Left), column(Column::Right)) else {
+        return;
+    };
+    commands.entity(left).despawn_children();
+    commands.entity(right).despawn_children();
+    commands.entity(left).with_children(|panel| {
         panel.spawn((
             Text::new(name.0.clone()),
             font(20.0),
@@ -279,7 +329,38 @@ fn rebuild_panel(
             font(13.0),
             TextColor(palette::TEXT),
         ));
-
+        let secondary = secondaries.0.get(class_id).and_then(|c| {
+            data.classes
+                .get(&c.class)
+                .map(|def| (def, levels.get(&c.class).level))
+        });
+        panel.spawn((
+            Text::new(match secondary {
+                Some((def, lvl)) => {
+                    format!(
+                        "Secondary flame: {} (level {lvl}). Change it with L.",
+                        def.name
+                    )
+                }
+                None => "Secondary flame: none. Pick one with L.".to_owned(),
+            }),
+            font(12.0),
+            TextColor(palette::TEXT_DIM),
+        ));
+        if !bonuses.is_empty() {
+            heading(panel, "Party bonuses (for roles nobody here covers)");
+            for id in &bonuses {
+                if let Some(def) = data.statuses.get(id) {
+                    panel.spawn((
+                        Text::new(format!("{}: {}", def.name, def.description)),
+                        font(12.0),
+                        TextColor(palette::BUFF),
+                    ));
+                }
+            }
+        }
+    });
+    commands.entity(right).with_children(|panel| {
         // Worn gear.
         heading(panel, "Wearing");
         panel

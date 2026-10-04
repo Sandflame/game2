@@ -116,6 +116,7 @@ impl Plugin for AuthorityPlugin {
                         progression::kill_rewards,
                         progression::grant_rewards,
                         progression::refresh_stats,
+                        progression::apply_synergy,
                         characters::regenerate,
                         characters::revive,
                         enemies::reset_idle_enemies,

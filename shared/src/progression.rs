@@ -24,6 +24,14 @@ pub struct ProgressionDef {
     pub max_guard: f32,
     /// Most items a character can carry (worn ones included).
     pub bag_size: usize,
+    /// Your secondary class's level adds this much Power per level
+    /// (percentage points) to your main class.
+    #[serde(default)]
+    pub secondary_power_per_level: f32,
+    /// ...and this much health per level, as a percentage of your main
+    /// class's level-1 health.
+    #[serde(default)]
+    pub secondary_health_per_level: f32,
 }
 
 impl Validate for ProgressionDef {
@@ -49,6 +57,11 @@ impl Validate for ProgressionDef {
         if self.max_guard >= 100.0 {
             p.push("`max_guard` must be below 100");
         }
+        p.non_negative("secondary_power_per_level", self.secondary_power_per_level);
+        p.non_negative(
+            "secondary_health_per_level",
+            self.secondary_health_per_level,
+        );
         if self.bag_size == 0 {
             p.push("`bag_size` must be greater than 0");
         }
@@ -73,6 +86,16 @@ impl ProgressionDef {
     /// Power added at a level (0 at level 1).
     pub fn power_bonus(&self, level: u32) -> f32 {
         level.saturating_sub(1) as f32 * self.power_per_level
+    }
+
+    /// Bonus from a secondary class at `level`: (extra health as a fraction
+    /// of base health, extra Power points).
+    pub fn secondary_bonus(&self, level: u32) -> (f32, f32) {
+        let level = level as f32;
+        (
+            level * self.secondary_health_per_level / 100.0,
+            level * self.secondary_power_per_level,
+        )
     }
 }
 
@@ -135,6 +158,8 @@ pub(crate) fn test_rules() -> ProgressionDef {
         power_per_level: 2.0,
         max_guard: 30.0,
         bag_size: 10,
+        secondary_power_per_level: 0.5,
+        secondary_health_per_level: 1.0,
     }
 }
 

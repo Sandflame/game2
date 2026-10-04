@@ -9,8 +9,10 @@ Guide for working in this repository (for Claude and for humans).
   **M4** (zones + portals, the Rootwarden trial: telegraphs, phases, adds,
   enrage, wipes, raises; particles, marker shader, hit flashes, boss
   animation, arena dressing, sounds). **M5** (levels 1–30 per class, XP,
-  gear + loot, level sync, SQLite saving, character panel).
-- Next: **M6** (secondary classes and party synergy). See `MILESTONES.md`.
+  gear + loot, level sync, SQLite saving, character panel). **M6** (secondary
+  class: 2 borrowed abilities + small stat bonus; party synergy bonuses;
+  12-slot hotbar).
+- Next: **M7** (hub city and the first world). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -93,13 +95,18 @@ extra beyond the Rust toolchain.
   crits), `Rng` (SplitMix64). No "potency": abilities list plain amounts.
 - `shared/src/describe.rs` — plain-language tooltips with the player's real numbers.
 - `shared/src/threat.rs` — `ThreatTable` (top, taunt, forget).
-- `shared/src/classes.rs` — `ClassDef`, `Role`, specializations, `CurrentClass`, `Stats`, hotbar layout.
+- `shared/src/classes.rs` — `ClassDef`, `Role`, specializations (+ role weights),
+  `lendable` abilities, `SecondaryChoice`/`Secondaries`, `check_secondary`,
+  `CurrentClass`, `Stats`, hotbar layout.
+- `shared/src/synergy.rs` — `SynergyDef` (`synergy.ron`): which bonus status a party
+  missing each role gets; `coverage`/`bonuses`.
 - `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
 - `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`.
 - `shared/src/targeting.rs` — Tab-target ordering.
 - `shared/src/gamedata.rs` — `GameData`: loads config, abilities, statuses, classes,
-  enemies, encounters; checks every cross-file reference. `Zones` (all zones),
-  `GameData::hotbar` (class abilities + shared lantern abilities).
+  enemies, encounters, items, progression, synergy; checks every cross-file
+  reference. `Zones` (all zones), `GameData::hotbar`: slots 1–8 class, 9–0
+  secondary (borrowed), -/= shared lantern abilities (`HOTBAR_SLOTS = 12`).
 - `shared/src/telegraphs.rs` — ground marker shapes, placements, `covers()` hit tests,
   the `Telegraph` component.
 - `shared/src/encounters.rs` — boss fight data (phases, timelines, enrage, xp, loot) and `Progress`.
@@ -119,8 +126,10 @@ extra beyond the Rust toolchain.
 - `server/src/enemies.rs` — enemy spawning, `EnemyBrain` rotations, facing, idle resets.
 - `server/src/classes.rs` — flame changes (class switching).
 - `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
-  gear requests, `refresh_stats` (class/level/gear/zone sync), new-character gear,
-  save ↔ components, saving on change / every `autosave_every` / on exit.
+  gear + secondary requests, `refresh_stats` (stats + hotbar from class/level/gear/
+  secondary/zone sync), `apply_synergy` (party = same zone until M11; lasting
+  statuses), new-character gear, save ↔ components, saving on change / every
+  `autosave_every` / on exit.
 - `server/src/database.rs` — SQLite (`world.db`): background thread, numbered
   `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save.
 - `server/src/characters.rs` — players: joining, movement, combat clock, defeat,
@@ -135,7 +144,8 @@ extra beyond the Rust toolchain.
 - `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
   status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L),
   options menu (O, or Esc with nothing targeted: volume slider, mute, quit),
-  character panel (C: levels, stats, worn gear, bag) + XP bar.
+  character panel (C: levels, stats, secondary, party bonuses, worn gear, bag) + XP
+  bar, secondary flame picker (`secondary.rs`, inside the lantern panel).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
@@ -186,8 +196,10 @@ extra beyond the Rust toolchain.
   when no combination of existing ones can express it.
 - Server tests (`server/tests/authority.rs`) use their own RON data in the test
   file, so balancing `assets/data` never breaks them.
-- Player stats are only ever set by `progression::refresh_stats` (it reacts to
-  class, level, gear and zone changes); don't assign `Stats` elsewhere.
+- Player stats and hotbars are only ever set by `progression::refresh_stats` (it
+  reacts to class, level, gear, secondary and zone changes); don't assign
+  `Stats`/`Hotbar` elsewhere.
+- Lasting statuses (synergy) have `expires = INFINITY`; the HUD shows no timer.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
 - Database access goes through one module in `server/` (`database.rs`) and runs
   off the main game thread. Schema changes = a new entry in `MIGRATIONS`

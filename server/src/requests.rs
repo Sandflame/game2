@@ -78,6 +78,10 @@ pub fn receive_requests(
             ClientRequest::Discard { item } => {
                 gear.0.push((player, entity, GearRequest::Discard(item)));
             }
+            ClientRequest::SetSecondary { choice } => {
+                gear.0
+                    .push((player, entity, GearRequest::SetSecondary(choice)));
+            }
             ClientRequest::Move(input) => {
                 if let Ok((.., Some(mut player_input), _, _)) = actors.get_mut(entity) {
                     // A jump stays requested until a movement tick uses it.

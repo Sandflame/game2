@@ -371,11 +371,11 @@ also *modify* core abilities (e.g. Fire spec makes "Bolt" apply a burn) —
 expressed as data overrides.
 
 ### 6.2b Lantern abilities (decided 2026-10-04)
-Every class also has two shared abilities in hotbar slots 9 and 0, so no
-party mix (or solo player) is stuck: **Second Wind** (heal yourself, long
-cooldown) and **Rekindle** (raise a fallen friend). They live in
-`config/player.ron` (`shared_abilities`). Where they go when secondary
-classes arrive (M6) is still open.
+Every class also has two shared abilities, so no party mix (or solo
+player) is stuck: **Second Wind** (heal yourself, long cooldown) and
+**Rekindle** (raise a fallen friend). They live in `config/player.ron`
+(`shared_abilities`). Since M6 the hotbar has 12 slots: 1–8 class, 9 and 0
+borrowed from the secondary class, `-` and `=` the lantern abilities.
 
 ### 6.3 Party synergy
 Each class+spec has role weights (e.g. Shield Knight Oath = 0.7 durable,

@@ -90,12 +90,15 @@ Earlier changes to your original list:
   starter gear; Rootwarden loot; character panel (C) to equip.
 - **Test:** play, quit, relaunch, and everything is still there.
 
-## M6 — Secondary classes and party synergy
-- Two secondary ability slots from another class (level-gated).
-- Secondary-class level stat bonus.
-- Role-coverage rules and compensating bonuses from `synergy.ron`
-  (tested solo as a "party of one" until multiplayer arrives; the
-  rules themselves get unit tests for every party mix).
+## M6 — Secondary classes and party synergy ✅
+- Two secondary ability slots (9, 0) from another class's `lendable`
+  list, unlocked by that class's level; each class remembers its own
+  choice (saved). Picker in the lantern panel (L).
+- Secondary-class level stat bonus (+0.2 Power, +0.3% health per level).
+- Hotbar grew to 12: lantern abilities moved to `-` and `=`.
+- Role coverage from specialization role weights; missing roles give
+  lasting bonus statuses from `synergy.ron` (party = same zone until M11;
+  solo = party of one). Unit tests for party mixes.
 
 ## M7 — Hub city and the first world
 - Magitech hub city with districts (only Rootwell open).

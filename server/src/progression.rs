@@ -5,18 +5,21 @@
 //! - stats follow class, level, gear and the zone's level sync,
 //! - characters are loaded when they join and saved when things change.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use shared::classes::{CurrentClass, Stats};
+use shared::classes::{CurrentClass, Role, Secondaries, SecondaryChoice, Stats, check_secondary};
 use shared::combat::{Health, Reject};
+use shared::components::Hotbar;
 use shared::components::{CharacterName, Motion, PlayerId, Zone};
+use shared::formulas::{healing, outgoing_damage};
 use shared::gamedata::{GameData, Zones};
 use shared::items::{
     Bag, Equipment, ItemDef, LootEntry, Slot, character_stats, discard, equip, roll_loot, unequip,
 };
 use shared::progression::{ClassLevels, effective_level};
 use shared::protocol::{Link, ServerEvent};
+use shared::statuses::{ActiveStatus, Modifiers, Statuses, Tick, TickAmount};
 use shared::threat::ThreatTable;
 
 use crate::CombatRng;
@@ -36,11 +39,12 @@ pub struct Reward {
 pub struct PendingRewards(pub Vec<Reward>);
 
 /// Item requests waiting to be handled this tick.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum GearRequest {
     Equip(u64),
     Unequip(Slot),
     Discard(u64),
+    SetSecondary(Option<SecondaryChoice>),
 }
 
 #[derive(Resource, Default, Debug)]
@@ -71,7 +75,10 @@ pub fn starting_gear(data: &GameData) -> (Bag, Equipment) {
 
 /// Rebuild a saved character's levels, bag and worn gear. Items that no
 /// longer exist in the data files are dropped.
-pub fn restore(save: &CharacterSave, data: &GameData) -> (ClassLevels, Bag, Equipment) {
+pub fn restore(
+    save: &CharacterSave,
+    data: &GameData,
+) -> (ClassLevels, Bag, Equipment, Secondaries) {
     let levels = ClassLevels(
         save.levels
             .iter()
@@ -107,7 +114,16 @@ pub fn restore(save: &CharacterSave, data: &GameData) -> (ClassLevels, Bag, Equi
             },
         }
     }
-    (levels, bag, worn)
+    let secondaries = Secondaries(
+        save.secondaries
+            .iter()
+            .filter(|(main, choice)| {
+                data.classes.contains_key(main) && data.classes.contains_key(&choice.class)
+            })
+            .cloned()
+            .collect(),
+    );
+    (levels, bag, worn, secondaries)
 }
 
 /// What gets written to the save file for one character.
@@ -116,10 +132,14 @@ pub fn to_save(
     class: &CurrentClass,
     zone: &Zone,
     motion: &Motion,
-    levels: &ClassLevels,
-    bag: &Bag,
-    worn: &Equipment,
+    build: &Build,
 ) -> CharacterSave {
+    let Build {
+        levels,
+        bag,
+        worn,
+        secondaries,
+    } = *build;
     let mut level_list: Vec<_> = levels
         .0
         .iter()
@@ -154,31 +174,97 @@ pub fn to_save(
         yaw: motion.0.yaw,
         levels: level_list,
         items,
+        secondaries: {
+            let mut list: Vec<_> = secondaries
+                .0
+                .iter()
+                .map(|(main, choice)| (main.clone(), choice.clone()))
+                .collect();
+            list.sort_by(|a, b| a.0.cmp(&b.0));
+            list
+        },
     }
 }
 
-/// A player's stats from their class, level (after the zone's level sync)
-/// and the gear their current class has on.
+/// Everything about a character that their stats and hotbar depend on,
+/// besides their class and zone.
+pub struct Build<'a> {
+    pub levels: &'a ClassLevels,
+    pub bag: &'a Bag,
+    pub worn: &'a Equipment,
+    pub secondaries: &'a Secondaries,
+}
+
+/// A class's secondary choice, keeping only the borrowed abilities the
+/// secondary class has unlocked (the rest of the slot stays empty).
+pub fn usable_secondary(
+    data: &GameData,
+    class: &str,
+    levels: &ClassLevels,
+    secondaries: &Secondaries,
+) -> Option<SecondaryChoice> {
+    let choice = secondaries.0.get(class)?;
+    let lender = data.classes.get(&choice.class)?;
+    if choice.class == class {
+        return None;
+    }
+    let level = levels.get(&choice.class).level;
+    let mut usable = choice.clone();
+    for slot in &mut usable.abilities {
+        let unlocked = slot
+            .as_deref()
+            .and_then(|a| lender.lend_level(a))
+            .is_some_and(|needed| needed <= level);
+        if !unlocked {
+            *slot = None;
+        }
+    }
+    Some(usable)
+}
+
+/// A player's hotbar: their class's abilities, the ones they borrowed
+/// from their secondary class, and the lantern abilities.
+pub fn player_hotbar(
+    data: &GameData,
+    class: &CurrentClass,
+    levels: &ClassLevels,
+    secondaries: &Secondaries,
+) -> Vec<Option<String>> {
+    let Some(def) = data.classes.get(&class.class) else {
+        return Vec::new();
+    };
+    let secondary = usable_secondary(data, &class.class, levels, secondaries);
+    data.hotbar(def, &class.spec, secondary.as_ref())
+}
+
+/// A player's stats from their class, level (after the zone's level sync),
+/// secondary class and the gear their current class has on.
 pub fn player_stats(
     data: &GameData,
     zones: &Zones,
     class: &str,
     zone: &str,
-    levels: &ClassLevels,
-    bag: &Bag,
-    worn: &Equipment,
+    build: &Build,
 ) -> Option<Stats> {
     let def = data.classes.get(class)?;
     let sync = zones.get(zone).and_then(|z| z.level_sync);
-    let level = effective_level(levels.get(class).level, sync);
-    let items: Vec<&ItemDef> = worn
+    let level = effective_level(build.levels.get(class).level, sync);
+    let secondary_level = build
+        .secondaries
+        .0
+        .get(class)
+        .filter(|choice| choice.class != class && data.classes.contains_key(&choice.class))
+        .map(|choice| effective_level(build.levels.get(&choice.class).level, sync));
+    let items: Vec<&ItemDef> = build
+        .worn
         .worn_by(class)
-        .filter_map(|id| bag.get(id))
+        .filter_map(|id| build.bag.get(id))
         .filter_map(|owned| data.items.get(&owned.item))
         .collect();
     Some(character_stats(
         def,
         level,
+        secondary_level,
         &items,
         &data.progression,
         data.config.combat.crit_chance,
@@ -267,7 +353,8 @@ pub fn grant_rewards(
     }
 }
 
-/// Equip, unequip and discard requests. Gear can't be changed in combat.
+/// Equip, unequip and discard requests, and secondary class choices.
+/// None of these can be changed in combat.
 pub fn handle_gear(
     time: Res<Time>,
     data: Res<GameData>,
@@ -278,13 +365,15 @@ pub fn handle_gear(
         &ClassLevels,
         &mut Bag,
         &mut Equipment,
+        &mut Secondaries,
         &CombatClock,
         Has<Defeated>,
     )>,
 ) {
     let now = time.elapsed_secs_f64();
     for (player, entity, request) in std::mem::take(&mut pending.0) {
-        let Ok((class, levels, mut bag, mut worn, clock, defeated)) = players.get_mut(entity)
+        let Ok((class, levels, mut bag, mut worn, mut secondaries, clock, defeated)) =
+            players.get_mut(entity)
         else {
             continue;
         };
@@ -303,6 +392,19 @@ pub fn handle_gear(
                     Ok(())
                 }
                 GearRequest::Discard(id) => discard(&mut bag, &mut worn, id),
+                GearRequest::SetSecondary(None) => {
+                    secondaries.0.remove(&class.class);
+                    Ok(())
+                }
+                GearRequest::SetSecondary(Some(choice)) => match data.classes.get(&choice.class) {
+                    None => Err(Reject::UnknownClass),
+                    Some(lender) => {
+                        let level = levels.get(&choice.class).level;
+                        check_secondary(&class.class, &choice, lender, level).map(|()| {
+                            secondaries.0.insert(class.class.clone(), choice);
+                        })
+                    }
+                },
             }
         };
         if let Err(reason) = result {
@@ -313,6 +415,8 @@ pub fn handle_gear(
 }
 
 /// Keep players' stats in step with their class, level, gear and zone.
+/// Keep players' stats and hotbar in step with their class, levels, gear,
+/// secondary class and zone.
 pub fn refresh_stats(
     data: Res<GameData>,
     zones: Res<Zones>,
@@ -323,8 +427,10 @@ pub fn refresh_stats(
             &ClassLevels,
             &Bag,
             &Equipment,
+            &Secondaries,
             &mut Stats,
             &mut Health,
+            &mut Hotbar,
         ),
         (
             With<PlayerId>,
@@ -334,18 +440,114 @@ pub fn refresh_stats(
                 Changed<ClassLevels>,
                 Changed<Bag>,
                 Changed<Equipment>,
+                Changed<Secondaries>,
             )>,
         ),
     >,
 ) {
-    for (class, zone, levels, bag, worn, mut stats, mut health) in &mut players {
-        let Some(new) = player_stats(&data, &zones, &class.class, &zone.0, levels, bag, worn)
-        else {
-            continue;
+    for (class, zone, levels, bag, worn, secondaries, mut stats, mut health, mut hotbar) in
+        &mut players
+    {
+        let build = Build {
+            levels,
+            bag,
+            worn,
+            secondaries,
         };
-        if *stats != new {
+        if let Some(new) = player_stats(&data, &zones, &class.class, &zone.0, &build)
+            && *stats != new
+        {
             *stats = new;
             health.set_max(new.max_health);
+        }
+        let bar = player_hotbar(&data, class, levels, secondaries);
+        if hotbar.0 != bar {
+            hotbar.0 = bar;
+        }
+    }
+}
+
+/// Synergy bonuses: everyone in a zone (the party, until real parties
+/// arrive) gets a bonus status for each role nobody there covers.
+pub fn apply_synergy(
+    time: Res<Time>,
+    data: Res<GameData>,
+    mut players: Query<
+        (Entity, &CurrentClass, &Zone, &Stats, &mut Statuses),
+        (With<PlayerId>, Without<Defeated>),
+    >,
+) {
+    let now = time.elapsed_secs_f64();
+    let combat = &data.config.combat;
+    // Each zone's members and their role weights.
+    let mut parties: HashMap<&str, Vec<Vec<(Role, f32)>>> = HashMap::new();
+    for (_, class, zone, _, _) in &players {
+        let weights = data
+            .classes
+            .get(&class.class)
+            .map(|c| c.role_weights(&class.spec))
+            .unwrap_or_default();
+        parties.entry(zone.0.as_str()).or_default().push(weights);
+    }
+    let wanted: HashMap<String, Vec<String>> = parties
+        .iter()
+        .map(|(zone, members)| {
+            let bonuses = data
+                .synergy
+                .bonuses(members.iter().map(Vec::as_slice))
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            ((*zone).to_owned(), bonuses)
+        })
+        .collect();
+    let all: Vec<&str> = data.synergy.statuses().collect();
+    for (entity, _, zone, stats, mut statuses) in &mut players {
+        let want = wanted.get(&zone.0).map(Vec::as_slice).unwrap_or(&[]);
+        let stale = statuses
+            .0
+            .iter()
+            .any(|s| all.contains(&s.id.as_str()) && !want.contains(&s.id));
+        if stale {
+            statuses
+                .0
+                .retain(|s| !all.contains(&s.id.as_str()) || want.contains(&s.id));
+        }
+        for id in want {
+            if statuses.has(id) {
+                continue;
+            }
+            let Some(def) = data.statuses.get(id) else {
+                continue;
+            };
+            let tick = def.tick.map(|t| match t {
+                Tick::Damage { amount } => TickAmount::Damage(outgoing_damage(
+                    amount,
+                    stats.power,
+                    Modifiers::default(),
+                    false,
+                    combat,
+                )),
+                Tick::Heal { amount } => TickAmount::Heal(healing(
+                    amount,
+                    stats.power,
+                    Modifiers::default(),
+                    Modifiers::default(),
+                    false,
+                    combat,
+                )),
+            });
+            statuses.apply(ActiveStatus {
+                id: id.clone(),
+                source: entity,
+                applied: now,
+                // Lasts until the party covers the role.
+                expires: f64::INFINITY,
+                next_tick: now + f64::from(combat.tick_interval),
+                tick,
+                absorb: 0,
+                is_shield: false,
+            });
         }
     }
 }
@@ -367,6 +569,7 @@ pub fn save_players(
                 Changed<ClassLevels>,
                 Changed<Bag>,
                 Changed<Equipment>,
+                Changed<Secondaries>,
             )>,
         ),
     >,
@@ -380,6 +583,7 @@ pub fn save_players(
             &ClassLevels,
             &Bag,
             &Equipment,
+            &Secondaries,
         ),
         With<PlayerId>,
     >,
@@ -393,9 +597,15 @@ pub fn save_players(
         last.0 = now;
     }
     let changed: HashSet<Entity> = changed.iter().collect();
-    for (entity, name, class, zone, motion, levels, bag, worn) in &players {
+    for (entity, name, class, zone, motion, levels, bag, worn, secondaries) in &players {
         if everyone || changed.contains(&entity) {
-            database.save(to_save(&name.0, class, zone, motion, levels, bag, worn));
+            let build = Build {
+                levels,
+                bag,
+                worn,
+                secondaries,
+            };
+            database.save(to_save(&name.0, class, zone, motion, &build));
         }
     }
 }
@@ -413,6 +623,7 @@ pub fn save_on_exit(
             &ClassLevels,
             &Bag,
             &Equipment,
+            &Secondaries,
         ),
         With<PlayerId>,
     >,
@@ -423,8 +634,14 @@ pub fn save_on_exit(
     let Some(database) = database else {
         return;
     };
-    for (name, class, zone, motion, levels, bag, worn) in &players {
-        database.save(to_save(&name.0, class, zone, motion, levels, bag, worn));
+    for (name, class, zone, motion, levels, bag, worn, secondaries) in &players {
+        let build = Build {
+            levels,
+            bag,
+            worn,
+            secondaries,
+        };
+        database.save(to_save(&name.0, class, zone, motion, &build));
     }
     database.flush();
 }
@@ -467,16 +684,28 @@ mod tests {
             class: "priest".into(),
             spec: "mender".into(),
         };
+        let secondaries = Secondaries(HashMap::from([(
+            "priest".to_owned(),
+            SecondaryChoice {
+                class: "blademaster".into(),
+                abilities: [Some("bm_battle_focus".into()), None],
+            },
+        )]));
+        let build = Build {
+            levels: &levels,
+            bag: &bag,
+            worn: &worn,
+            secondaries: &secondaries,
+        };
         let save = to_save(
             "Ari",
             &class,
             &Zone("sandbox".into()),
             &Motion(MoveState::spawn_at(Vec3::new(3.0, 0.0, 4.0))),
-            &levels,
-            &bag,
-            &worn,
+            &build,
         );
-        let (levels_back, bag_back, worn_back) = restore(&save, &data);
+        let (levels_back, bag_back, worn_back, secondaries_back) = restore(&save, &data);
+        assert_eq!(secondaries_back, secondaries);
         assert_eq!(levels_back, levels);
         assert_eq!(bag_back.items.len(), bag.items.len());
         // Worn gear comes back on the same items.
@@ -501,6 +730,7 @@ mod tests {
             position: Vec3::ZERO,
             yaw: 0.0,
             levels: vec![("no_such_class".into(), ClassProgress::default())],
+            secondaries: Vec::new(),
             items: vec![
                 SavedItem {
                     item: "no_such_item".into(),
@@ -512,7 +742,7 @@ mod tests {
                 },
             ],
         };
-        let (levels, bag, worn) = restore(&save, &data);
+        let (levels, bag, worn, _) = restore(&save, &data);
         assert!(levels.0.is_empty());
         assert_eq!(bag.items.len(), 1);
         // A helm saved as worn on the feet is put back in the bag.

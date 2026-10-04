@@ -385,7 +385,11 @@ fn update_frames(
             match active.get(i) {
                 Some((status, def)) => {
                     *vis = Visibility::Inherited;
-                    let label = if status.is_shield {
+                    // Lasting bonuses (party synergy) show no timer.
+                    let lasting = status.expires.is_infinite();
+                    let label = if lasting {
+                        def.name.clone()
+                    } else if status.is_shield {
                         format!(
                             "{} {}  {:.0}s",
                             def.name,

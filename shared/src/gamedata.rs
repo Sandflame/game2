@@ -9,7 +9,7 @@ use bevy::prelude::Resource;
 use serde::Deserialize;
 
 use crate::abilities::AbilityDef;
-use crate::classes::ClassDef;
+use crate::classes::{ClassDef, SecondaryChoice};
 use crate::config::GameConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
 use crate::encounters::EncounterDef;
@@ -17,6 +17,7 @@ use crate::items::{ItemDef, ItemFile};
 use crate::level::Level;
 use crate::progression::ProgressionDef;
 use crate::statuses::{StatusDef, StatusFile};
+use crate::synergy::SynergyDef;
 
 /// An enemy type (`assets/data/enemies/<id>.ron`; the id is the file name).
 #[derive(Debug, Clone, Deserialize)]
@@ -88,7 +89,8 @@ pub struct PlayerConfig {
     pub start_class: String,
     /// The zone (file name in `assets/data/zones/`) new characters start in.
     pub start_zone: String,
-    /// Abilities every class has, after the class's own (hotbar slots 9 and 0).
+    /// Abilities every class has, after the class's own and its secondary
+    /// class's (hotbar slots - and =).
     #[serde(default)]
     pub shared_abilities: Vec<String>,
     /// Items new characters start with; they put on what they can.
@@ -100,7 +102,9 @@ impl Validate for PlayerConfig {
     fn validate(&self) -> Vec<String> {
         let mut p = Problems::default();
         p.positive("hit_radius", self.hit_radius);
-        let class_slots = crate::classes::CORE_ABILITIES + crate::classes::SPEC_ABILITIES;
+        let class_slots = crate::classes::CORE_ABILITIES
+            + crate::classes::SPEC_ABILITIES
+            + crate::classes::SECONDARY_ABILITIES;
         if class_slots + self.shared_abilities.len() > crate::components::HOTBAR_SLOTS {
             p.push("too many `shared_abilities` to fit on the hotbar");
         }
@@ -130,6 +134,7 @@ pub struct GameData {
     pub encounters: HashMap<String, EncounterDef>,
     pub progression: ProgressionDef,
     pub items: HashMap<String, ItemDef>,
+    pub synergy: SynergyDef,
 }
 
 impl GameData {
@@ -180,6 +185,7 @@ impl GameData {
                 .collect();
 
         let progression: ProgressionDef = load_ron(&data.join("progression.ron"))?;
+        let synergy: SynergyDef = load_ron(&data.join("synergy.ron"))?;
         let mut items = HashMap::new();
         for (path, file) in load_dir::<ItemFile>(&data.join("items"))? {
             for (id, item) in file.0 {
@@ -200,6 +206,7 @@ impl GameData {
             encounters,
             progression,
             items,
+            synergy,
         };
         game.check_references(&data)?;
         Ok(game)
@@ -234,6 +241,7 @@ impl GameData {
         for (id, class) in &self.classes {
             let problems: Vec<String> = class
                 .all_abilities()
+                .chain(class.lendable.iter().map(|l| l.ability.as_str()))
                 .filter(|a| !ability(a))
                 .map(|a| format!("uses unknown ability `{a}`"))
                 .collect();
@@ -298,6 +306,18 @@ impl GameData {
             return Err(DataError::Invalid {
                 path: data.join("items"),
                 problems: item_problems,
+            });
+        }
+        let synergy_problems: Vec<String> = self
+            .synergy
+            .statuses()
+            .filter(|s| !status(s))
+            .map(|s| format!("names unknown status `{s}`"))
+            .collect();
+        if !synergy_problems.is_empty() {
+            return Err(DataError::Invalid {
+                path: data.join("synergy.ron"),
+                problems: synergy_problems,
             });
         }
         let player_path = data.join("config").join("player.ron");
@@ -381,13 +401,26 @@ impl GameData {
         Ok(Zones(zones))
     }
 
-    /// A class's hotbar: its own abilities, then the shared ones.
-    pub fn hotbar(&self, class: &ClassDef, spec: &str) -> Vec<Option<String>> {
+    /// A class's hotbar: its own abilities (slots 1-8), two borrowed from
+    /// its secondary class (9, 0), then the shared lantern abilities (-, =).
+    /// Pass only a secondary choice that passed `check_secondary`.
+    pub fn hotbar(
+        &self,
+        class: &ClassDef,
+        spec: &str,
+        secondary: Option<&SecondaryChoice>,
+    ) -> Vec<Option<String>> {
         let mut bar = class.hotbar(spec);
-        let first_free = crate::classes::CORE_ABILITIES + crate::classes::SPEC_ABILITIES;
+        let own = crate::classes::CORE_ABILITIES + crate::classes::SPEC_ABILITIES;
+        if let Some(choice) = secondary {
+            for (slot, ability) in bar.iter_mut().skip(own).zip(&choice.abilities) {
+                slot.clone_from(ability);
+            }
+        }
+        let shared = own + crate::classes::SECONDARY_ABILITIES;
         for (slot, ability) in bar
             .iter_mut()
-            .skip(first_free)
+            .skip(shared)
             .zip(&self.player.shared_abilities)
         {
             *slot = Some(ability.clone());

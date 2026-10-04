@@ -55,7 +55,7 @@ pub struct VisualKey(pub String);
 pub struct Hotbar(pub Vec<Option<String>>);
 
 /// The number of hotbar slots (keys 1–0).
-pub const HOTBAR_SLOTS: usize = 10;
+pub const HOTBAR_SLOTS: usize = 12;
 
 #[cfg(test)]
 mod tests {

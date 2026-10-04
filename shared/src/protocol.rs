@@ -28,6 +28,11 @@ pub enum ClientRequest {
     Unequip { slot: Slot },
     /// Throw an item away.
     Discard { item: u64 },
+    /// Choose the secondary class (and its two borrowed abilities) for your
+    /// current class. `None` removes the secondary class.
+    SetSecondary {
+        choice: Option<crate::classes::SecondaryChoice>,
+    },
 }
 
 /// Something the authority tells clients about.

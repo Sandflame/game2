@@ -20,4 +20,12 @@
         ),
     ],
     default_spec: "mender",
+    // Abilities other classes can borrow (secondary class), once this
+    // class reaches the level shown.
+    lendable: [
+        (ability: "pr_mend", level: 1),
+        (ability: "pr_renew", level: 5),
+        (ability: "pr_grace", level: 10),
+        (ability: "pr_sanctuary", level: 15),
+    ],
 )
