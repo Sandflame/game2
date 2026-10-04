@@ -11,7 +11,10 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
 
+use shared::gamedata::Zones;
+
 use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
+use crate::world::CurrentZone;
 
 /// Radians of turn per pixel of mouse movement.
 const MOUSE_SENSITIVITY: f32 = 0.005;
@@ -23,24 +26,45 @@ const MAX_DISTANCE: f32 = 25.0;
 const ZOOM_STEP: f32 = 1.5;
 /// Height above the character's feet that the camera looks at.
 const FOCUS_HEIGHT: f32 = 1.4;
+/// In zones with a wall around the edge, the camera stays this far inside
+/// the edge (moving closer to the character) instead of going into the wall.
+const WALL_MARGIN: f32 = 0.6;
+/// The closest the camera is pushed in by a wall.
+const CLOSEST_TO_WALL: f32 = 0.5;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_camera).add_systems(
-            RunFixedMainLoop,
-            (
-                (orbit_camera, grab_cursor_while_dragging)
-                    .before(send_movement)
-                    .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
-                follow_player
-                    .after(interpolate_transforms)
-                    .in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
-            ),
-        );
+        app.init_resource::<CameraShake>()
+            .add_systems(Startup, spawn_camera)
+            .add_systems(
+                RunFixedMainLoop,
+                (
+                    (orbit_camera, grab_cursor_while_dragging)
+                        .before(send_movement)
+                        .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                    follow_player
+                        .after(interpolate_transforms)
+                        .in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+                ),
+            );
     }
 }
+
+/// Shaking from big impacts (0–1); fades on its own.
+#[derive(Resource, Default)]
+pub struct CameraShake(pub f32);
+
+impl CameraShake {
+    pub fn add(&mut self, amount: f32) {
+        self.0 = (self.0 + amount).min(1.0);
+    }
+}
+
+/// How far the strongest shake moves the camera (metres), and how fast it fades.
+const SHAKE_SIZE: f32 = 0.18;
+const SHAKE_FADE: f32 = 2.5;
 
 #[derive(Component)]
 pub struct FollowCamera {
@@ -116,8 +140,27 @@ fn grab_cursor_while_dragging(
     }
 }
 
+/// How far the camera can go from `focus` along `direction` before
+/// leaving a square of half-size `limit`.
+fn room_before_wall(focus: Vec3, direction: Vec3, distance: f32, limit: f32) -> f32 {
+    let mut room = distance;
+    for (from, towards) in [(focus.x, direction.x), (focus.z, direction.z)] {
+        if towards.abs() > 1e-4 {
+            let edge = limit.copysign(towards);
+            let reach = (edge - from) / towards;
+            if reach >= 0.0 {
+                room = room.min(reach);
+            }
+        }
+    }
+    room.max(CLOSEST_TO_WALL.min(distance))
+}
+
 fn follow_player(
     time: Res<Time>,
+    current: Res<CurrentZone>,
+    zones: Res<Zones>,
+    mut shake: ResMut<CameraShake>,
     player: Single<&Transform, (With<LocalPlayer>, Without<FollowCamera>)>,
     camera: Single<(&mut FollowCamera, &mut Transform)>,
 ) {
@@ -128,8 +171,44 @@ fn follow_player(
 
     let focus = player.translation + Vec3::Y * FOCUS_HEIGHT;
     let rotation = Quat::from_euler(EulerRot::YXZ, follow.yaw, -follow.pitch, 0.0);
-    let mut position = focus + rotation * Vec3::Z * follow.distance;
+    let direction = rotation * Vec3::Z;
+    let mut distance = follow.distance;
+    if let Some(level) = current.0.as_deref().and_then(|zone| zones.get(zone))
+        && !level.border.is_empty()
+    {
+        distance = room_before_wall(focus, direction, distance, level.half_size - WALL_MARGIN);
+    }
+    let mut position = focus + direction * distance;
     // Never dip below the ground.
     position.y = position.y.max(0.3);
     *transform = Transform::from_translation(position).looking_at(focus, Vec3::Y);
+    if shake.0 > 0.0 {
+        let t = time.elapsed_secs();
+        let strength = shake.0 * shake.0 * SHAKE_SIZE;
+        let offset = Vec3::new((t * 47.0).sin(), (t * 61.0).sin(), 0.0) * strength;
+        let rotation = transform.rotation;
+        transform.translation += rotation * offset;
+        shake.0 = (shake.0 - time.delta_secs() * SHAKE_FADE).max(0.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_stops_at_the_wall() {
+        let focus = Vec3::new(0.0, 1.4, 15.0);
+        // Looking back towards +Z, the wall at 20 is 5 m away.
+        let room = room_before_wall(focus, Vec3::Z, 13.0, 20.0);
+        assert!((room - 5.0).abs() < 1e-4);
+        // Plenty of room the other way.
+        assert_eq!(room_before_wall(focus, Vec3::NEG_Z, 13.0, 20.0), 13.0);
+        // Right against the wall, it still stays a little behind the player.
+        let close = Vec3::new(0.0, 1.4, 20.0);
+        assert_eq!(
+            room_before_wall(close, Vec3::Z, 13.0, 20.0),
+            CLOSEST_TO_WALL
+        );
+    }
 }

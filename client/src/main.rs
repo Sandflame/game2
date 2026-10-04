@@ -4,10 +4,13 @@
 //! half (`server::AuthorityPlugin`) inside the same program. The two halves
 //! only talk through `shared::protocol::Link`; see DESIGN.md §3.3.
 
+mod animation;
+mod audio;
 mod camera;
 mod characters;
 mod devtools;
 mod hud;
+mod particles;
 mod session;
 mod targeting;
 mod telegraphs;
@@ -27,15 +30,25 @@ fn main() -> AppExit {
         let data = GameData::load(&assets)?;
         let zones = data.load_zones(&assets)?;
         let vfx = vfx::VfxLibrary::load(&assets)?;
-        Ok((assets, data, zones, vfx))
+        let particles = particles::ParticleLibrary::load(&assets)?;
+        let sounds = audio::SoundLibrary::load(&assets)?;
+        Ok((assets, data, zones, vfx, particles, sounds))
     });
-    let (assets_dir, data, zones, vfx) = match loaded {
+    let (assets_dir, data, zones, vfx, particles, sounds) = match loaded {
         Ok(loaded) => loaded,
         Err(error) => {
             eprintln!("Lanternflame could not start: {error}");
             return AppExit::error();
         }
     };
+    let problems = vfx.check_references(&data, &zones, &particles, &sounds);
+    if !problems.is_empty() {
+        eprintln!(
+            "Lanternflame could not start: problems in assets/data/client:\n  {}",
+            problems.join("\n  ")
+        );
+        return AppExit::error();
+    }
 
     App::new()
         .add_plugins(
@@ -56,6 +69,8 @@ fn main() -> AppExit {
         .insert_resource(data)
         .insert_resource(zones)
         .insert_resource(vfx)
+        .insert_resource(particles)
+        .insert_resource(sounds)
         // The rules half, running in-process for now.
         .add_plugins(AuthorityPlugin)
         // The screen half.
@@ -68,6 +83,9 @@ fn main() -> AppExit {
             targeting::TargetingPlugin,
             telegraphs::TelegraphsPlugin,
             vfx::VfxPlugin,
+            particles::ParticlesPlugin,
+            animation::AnimationPlugin,
+            audio::SoundPlugin,
             hud::HudPlugin,
             devtools::DevToolsPlugin,
         ))

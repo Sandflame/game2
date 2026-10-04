@@ -115,7 +115,7 @@ fn spawn_help(mut commands: Commands) {
         "Tab/click target   F1 yourself   Esc clear",
         "1-0 or click hotbar: abilities",
         "L: lantern (change class)",
-        "E: use a portal",
+        "E: use a portal   M: mute sound",
     ];
     commands
         .spawn((

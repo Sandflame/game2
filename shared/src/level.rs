@@ -150,6 +150,13 @@ pub struct Level {
     /// Look of the ground (client only), e.g. "grass" or "stone".
     #[serde(default = "default_ground")]
     pub ground: String,
+    /// Look of the zone's edge (client only), e.g. "roots"; empty for none.
+    #[serde(default)]
+    pub border: String,
+    /// A look (`vfx.ron`) that plays all the time over the zone, such as
+    /// drifting pollen (client only); empty for none.
+    #[serde(default)]
+    pub ambience: String,
     #[serde(default)]
     pub obstacles: Vec<Obstacle>,
     #[serde(default)]
@@ -182,6 +189,8 @@ impl Level {
             half_size: 100.0,
             spawn_point: Vec3::ZERO,
             ground: default_ground(),
+            border: String::new(),
+            ambience: String::new(),
             obstacles: Vec::new(),
             spawns: Vec::new(),
             portals: Vec::new(),

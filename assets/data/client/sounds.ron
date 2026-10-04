@@ -1,0 +1,49 @@
+// Sound effects (client only). Files live in `assets/sounds/`; the current
+// ones are simple placeholders made by `tools/make_sounds.py`. Replace any
+// file with a better one of the same name (.wav or change the extension
+// here to .ogg).
+//   volume: 0.0 - 1.0 (multiplied by master_volume)
+(
+    master_volume: 0.6,
+    sounds: {
+        "slash":        (file: "sounds/slash.wav", volume: 0.5),
+        "slash_heavy":  (file: "sounds/slash_heavy.wav", volume: 0.6),
+        "whoosh":       (file: "sounds/whoosh.wav", volume: 0.5),
+        "slam":         (file: "sounds/slam.wav", volume: 0.7),
+        "bash":         (file: "sounds/bash.wav", volume: 0.6),
+        "fire":         (file: "sounds/fire.wav", volume: 0.5),
+        "fire_big":     (file: "sounds/fire_big.wav", volume: 0.6),
+        "holy":         (file: "sounds/holy.wav", volume: 0.35),
+        "heal":         (file: "sounds/heal.wav", volume: 0.35),
+        "buff":         (file: "sounds/buff.wav", volume: 0.3),
+        "taunt":        (file: "sounds/taunt.wav", volume: 0.4),
+        "boom":         (file: "sounds/boom.wav", volume: 0.8),
+        "hit":          (file: "sounds/hit.wav", volume: 0.5),
+        "tick":         (file: "sounds/tick.wav", volume: 0.2),
+        "crit":         (file: "sounds/crit.wav", volume: 0.5),
+        "blip":         (file: "sounds/blip.wav", volume: 0.25),
+        "flame_change": (file: "sounds/flame_change.wav", volume: 0.4),
+        "flame_caught": (file: "sounds/flame_caught.wav", volume: 0.5),
+        "defeated":     (file: "sounds/defeated.wav", volume: 0.5),
+        "revived":      (file: "sounds/revived.wav", volume: 0.5),
+        "portal":       (file: "sounds/portal.wav", volume: 0.5),
+        "pull":         (file: "sounds/pull.wav", volume: 0.7),
+        "victory":      (file: "sounds/victory.wav", volume: 0.6),
+        "wipe":         (file: "sounds/wipe.wav", volume: 0.5),
+    },
+    // Which sound plays when something happens. Remove a line for silence.
+    events: {
+        "hit_taken":    "hit",     // you are hit
+        "hit_dealt":    "tick",    // your attack hits (the ability's own sound plays too)
+        "crit":         "crit",    // a critical hit, by you or on you
+        "rejected":     "blip",    // "Not ready yet", "Out of range"...
+        "flame_change": "flame_change",
+        "flame_caught": "flame_caught",
+        "defeated":     "defeated",
+        "revived":      "revived",
+        "portal":       "portal",
+        "pull":         "pull",    // a boss fight begins
+        "victory":      "victory",
+        "wipe":         "wipe",
+    },
+)

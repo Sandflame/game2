@@ -6,9 +6,10 @@ Guide for working in this repository (for Claude and for humans).
 - Done: **M0** (plan), **M1** (scene, toon shading, movement), **M2** (targeting,
   GCD, hotbar, training dummies, rules/screen split), **M3** (effects, statuses,
   four classes, threat, sparring dummy, flame switching).
-  **M4a** (zones + portals, the Rootwarden trial: telegraphs, phases, adds,
-  enrage, wipes, raises; simple spell visuals).
-- Next: **M4b** (particles and visual polish for the trial). See `MILESTONES.md`.
+  **M4** (zones + portals, the Rootwarden trial: telegraphs, phases, adds,
+  enrage, wipes, raises; particles, marker shader, hit flashes, boss
+  animation, arena dressing, sounds).
+- Next: **M5** (levels, XP, gear, saving). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -30,12 +31,15 @@ render.
   `ClientRequest`s, the authority pushes `ServerEvent`s. The client may *read*
   logic components (they'll be replicated later) but never writes them.
 - `assets/data/` — RON data files with every tunable number.
-- `assets/data/client/` — client-only visual mappings (vfx names → effects).
+- `assets/data/client/` — client-only looks: `vfx.ron` (named looks: shape +
+  particles + sound), `particles.ron` (particle presets), `sounds.ron`
+  (sound files, game event → sound). Placeholder sounds in `assets/sounds/`
+  are made by `tools/make_sounds.py`.
 
 ## Pinned versions (verified on crates.io 2026-10-03)
 bevy 0.19.1 · lightyear 0.30.1 · avian3d 0.7.0 (later) · rusqlite 0.40.2
 (`bundled`) · argon2 0.6.0 · ron 0.12.2 · serde 1 · bevy_egui 0.42.0 ·
-bevy_hanabi 0.19.0 (from M5). Rust ≥ 1.95.
+bevy_hanabi 0.19.0 (`3d` feature only). Rust ≥ 1.95.
 Upgrade only between milestones, all together, after checking crates.io.
 
 ## Commands
@@ -118,11 +122,20 @@ extra beyond the Rust toolchain.
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
-  hides things in other zones (`ElsewhereZone`).
-- `client/src/telegraphs.rs` — draws ground markers (fill, edges, growing progress).
-- `client/src/vfx.rs` — simple spell visuals from `assets/data/client/vfx.ron`.
+  zone `border` dressing and `ambience` particles, hides things in other zones
+  (`ElsewhereZone`).
+- `client/src/telegraphs.rs` — ground markers with `MarkerMaterial`
+  (`assets/shaders/marker.wgsl`, shape maths in the shader); bursts and a fading
+  flash when one goes off.
+- `client/src/vfx.rs` — looks from `vfx.ron`; `Looks` SystemParam plays one by name
+  (shape, particles, sound); checks every look/particle/sound reference.
+- `client/src/particles.rs` — hanabi effects built from `particles.ron`, warmed up at
+  start; bursts clean themselves up.
+- `client/src/audio.rs` — `Sounds` SystemParam, event sounds, M to mute.
+- `client/src/animation.rs` — hit flashes, `BossRig` (sway, wind-up, slam, sink), `Hop`.
 - `client/src/hud/banner.rs` — big banners (boss speech, victory, wipes) + portal prompt.
-- `client/src/camera.rs` — FFXIV-style follow camera.
+- `client/src/camera.rs` — FFXIV-style follow camera; stays inside zones with a
+  `border`; `CameraShake`.
 - `server/src/main.rs` — placeholder until M11: validates data and exits.
 
 ## Conventions

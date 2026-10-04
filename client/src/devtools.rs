@@ -25,6 +25,9 @@ use crate::targeting::CurrentTarget;
 const SCREENSHOT_ENV: &str = "LANTERNFLAME_SCREENSHOT";
 const DEMO_ENV: &str = "LANTERNFLAME_DEMO";
 
+/// Seconds after the last step before quitting, so the last screenshot is saved.
+const EXIT_AFTER_LAST: f32 = 1.5;
+
 /// Seconds after start-up for a plain screenshot (lets shaders compile).
 const PLAIN_SHOT_AT: f32 = 2.0;
 
@@ -51,20 +54,25 @@ const TO_PORTAL: (f32, f32) = (0.874, 0.486);
 const TRIAL_DEMO: &[(f32, Step)] = &[
     (0.3, Step::ChangeClass("elementalist")),
     (2.6, Step::Walk(Some(TO_PORTAL))),
+    (5.9, Step::Shot), // the portal in the meadow, with rising motes
     (6.0, Step::Walk(None)),
     (6.3, Step::Interact),
     (6.6, Step::Target("rootwarden")),
     (6.7, Step::Camera(0.25, 9.0)),
-    (7.6, Step::Shot), // the arena and the boss, with the zone name
-    (7.7, Step::Camera(0.55, 13.0)),
-    (7.8, Step::Press(1)), // Kindle: pulls the boss
-    (8.6, Step::Press(0)), // Firebolt
-    (11.6, Step::Shot),    // Root Slam's marker under us, boss cast bar
-    (12.0, Step::Walk(Some((1.0, 0.0)))),
-    (13.0, Step::Walk(None)),
-    (13.4, Step::Target("rootwarden")),
-    (13.5, Step::Press(0)), // Firebolt
-    (19.0, Step::Shot),     // Crushing Bough's cone
+    (7.6, Step::Shot), // the arena, its root wall and the boss, with the zone name
+    (7.7, Step::Walk(Some((0.0, -1.0)))),
+    (8.5, Step::Walk(None)),
+    (8.6, Step::Camera(0.5, 13.0)),
+    (8.7, Step::Target("rootwarden")),
+    (8.8, Step::Press(1)), // Kindle: pulls the boss
+    (9.6, Step::Press(0)), // Firebolt
+    (13.2, Step::Shot),    // Root Slam's marker under us; the boss winds up
+    (13.3, Step::Walk(Some((1.0, 0.0)))),
+    (14.5, Step::Walk(None)),
+    (15.05, Step::Shot), // Root Slam going off: dust over its area
+    (15.3, Step::Target("rootwarden")),
+    (15.4, Step::Press(0)), // Firebolt
+    (20.0, Step::Shot),     // Crushing Bough's cone
 ];
 
 const CLASSES_DEMO: &[(f32, Step)] = &[
@@ -72,7 +80,8 @@ const CLASSES_DEMO: &[(f32, Step)] = &[
     (1.6, Step::Shot), // the lantern panel
     (1.8, Step::ChangeClass("elementalist")),
     (1.9, Step::CloseLantern),
-    (3.0, Step::Shot), // lantern held up while the flame changes
+    (3.0, Step::Shot),  // lantern held up while the flame changes
+    (4.25, Step::Shot), // the new flame catches: a burst of its colour
     (4.0, Step::Target("sparring_dummy")),
     (4.1, Step::Press(1)), // Kindle: burn
     (4.8, Step::Press(3)), // Ember Shield
@@ -199,7 +208,7 @@ fn run_script(
         }
     }
     let last = script.steps.iter().map(|(at, _)| *at).fold(0.0, f32::max);
-    if now >= last + 0.5 {
+    if now >= last + EXIT_AFTER_LAST {
         exit.write(AppExit::Success);
     }
     *previous = now;

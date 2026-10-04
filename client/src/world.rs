@@ -11,6 +11,7 @@ use shared::level::{Level, Obstacle, Portal, Shape};
 
 use crate::characters::LocalPlayer;
 use crate::toon::{Outline, ToonAssets};
+use crate::vfx::Looks;
 
 pub struct WorldPlugin;
 
@@ -26,6 +27,7 @@ impl Plugin for WorldPlugin {
                     rebuild_scenery,
                     hide_other_zones,
                     animate_portals,
+                    add_lasting_particles,
                 )
                     .chain(),
             );
@@ -48,6 +50,11 @@ struct ZoneScenery(String);
 /// A spinning part of a portal.
 #[derive(Component)]
 struct PortalSpin;
+
+/// Something that gets never-ending particles of this look (`vfx.ron`),
+/// raised this far off the ground.
+#[derive(Component)]
+struct LastingParticles(String, f32);
 
 fn spawn_lighting(mut commands: Commands) {
     commands.spawn((
@@ -151,6 +158,17 @@ fn spawn_level(
         Outline::None,
         Transform::default(),
     );
+    if !level.border.is_empty() {
+        spawn_border(commands, toon, root, level);
+    }
+    if !level.ambience.is_empty() {
+        commands.spawn((
+            LastingParticles(level.ambience.clone(), 0.3),
+            Transform::default(),
+            Visibility::default(),
+            ChildOf(root),
+        ));
+    }
 
     for obstacle in &level.obstacles {
         spawn_obstacle(commands, toon, root, obstacle);
@@ -182,6 +200,7 @@ fn spawn_portal(
         .spawn((
             Transform::from_translation(portal.position),
             Visibility::default(),
+            LastingParticles("portal".to_owned(), 0.1),
             ChildOf(root),
         ))
         .id();
@@ -235,6 +254,175 @@ fn spawn_portal(
                 angle.sin() * portal.radius * 0.7,
             ),
         );
+    }
+}
+
+/// Start never-ending particles (portals, zone ambience). They are
+/// children, so they go away with the scenery.
+fn add_lasting_particles(
+    new: Query<(Entity, &LastingParticles), Added<LastingParticles>>,
+    mut looks: Looks,
+) {
+    for (entity, lasting) in &new {
+        looks.attach_lasting_particles(&lasting.0, Vec3::Y * lasting.1, entity);
+    }
+}
+
+/// A repeatable "random" number from 0 to 1 for the `i`th piece of scenery,
+/// so borders look natural but the same every time.
+fn scatter(i: u32, salt: u32) -> f32 {
+    let mut x = i.wrapping_mul(0x9E37_79B9) ^ salt.wrapping_mul(0x85EB_CA6B);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x2C1B_3C6D);
+    x ^= x >> 12;
+    (x % 10_000) as f32 / 10_000.0
+}
+
+/// Dressing around the edge of a zone so it doesn't end in sky.
+fn spawn_border(commands: &mut Commands, toon: &mut ToonAssets, root: Entity, level: &Level) {
+    match level.border.as_str() {
+        "roots" => spawn_root_border(commands, toon, root, level.half_size),
+        other => warn!("no look for border `{other}`"),
+    }
+}
+
+/// Points along the four edges of a square of half-size `h`, `spacing`
+/// apart, with the direction pointing out of the square.
+fn around_square(h: f32, spacing: f32) -> Vec<(Vec3, Vec3)> {
+    let steps = ((h * 2.0) / spacing).ceil() as i32;
+    let mut points = Vec::new();
+    for (outward, along) in [
+        (Vec3::X, Vec3::Z),
+        (Vec3::NEG_X, Vec3::Z),
+        (Vec3::Z, Vec3::X),
+        (Vec3::NEG_Z, Vec3::X),
+    ] {
+        for step in 0..=steps {
+            let t = -h + step as f32 * (h * 2.0 / steps as f32);
+            points.push((outward * h + along * t, outward));
+        }
+    }
+    points
+}
+
+/// The Rootwarden's Hollow: a wall of tangled roots, giant tree trunks
+/// behind it, a canopy overhead, and glowing mushrooms.
+fn spawn_root_border(commands: &mut Commands, toon: &mut ToonAssets, root: Entity, h: f32) {
+    let bark = toon.material(Color::srgb(0.42, 0.30, 0.21));
+    let dark_bark = toon.material(Color::srgb(0.30, 0.22, 0.16));
+    let canopy = toon.material(Color::srgb(0.20, 0.42, 0.24));
+    let far_ground = toon.ground(Color::srgb(0.22, 0.36, 0.22));
+    let stem = toon.material(Color::srgb(0.90, 0.88, 0.78));
+    let caps = [
+        toon.glowing(Color::srgb(0.4, 0.9, 1.0), LinearRgba::rgb(0.3, 1.6, 2.2)),
+        toon.glowing(Color::srgb(0.8, 0.5, 1.0), LinearRgba::rgb(1.4, 0.6, 2.2)),
+    ];
+
+    // Ground beyond the edge, a little lower so it doesn't flicker.
+    toon.spawn_part(
+        commands,
+        root,
+        Plane3d::default().mesh().size(h * 8.0, h * 8.0),
+        far_ground,
+        Outline::None,
+        Transform::from_xyz(0.0, -0.02, 0.0),
+    );
+
+    // A wall of thick roots just outside the edge.
+    for (i, (point, outward)) in around_square(h + 1.2, 3.5).into_iter().enumerate() {
+        let i = i as u32;
+        let along = Vec3::new(outward.z, 0.0, -outward.x);
+        let radius = 0.6 + 0.6 * scatter(i, 1);
+        let length = 3.0 + 2.0 * scatter(i, 2);
+        let tilt = (scatter(i, 3) - 0.5) * 0.5;
+        let lean = Quat::from_axis_angle(outward, tilt);
+        toon.spawn_part(
+            commands,
+            root,
+            Capsule3d::new(radius, length),
+            if i.is_multiple_of(3) {
+                dark_bark.clone()
+            } else {
+                bark.clone()
+            },
+            Outline::Smooth,
+            Transform::from_translation(point + outward * scatter(i, 4) + Vec3::Y * radius * 0.7)
+                .with_rotation(lean * Quat::from_rotation_arc(Vec3::Y, along)),
+        );
+        // Some roots arch up out of the ground.
+        if i % 4 == 1 {
+            toon.spawn_part(
+                commands,
+                root,
+                Capsule3d::new(radius * 0.6, 3.5),
+                bark.clone(),
+                Outline::Smooth,
+                Transform::from_translation(point + outward * 1.5 + Vec3::Y * 1.6)
+                    .with_rotation(Quat::from_axis_angle(along, -0.5)),
+            );
+        }
+        // Glowing mushrooms at the foot of the wall.
+        if i % 3 == 2 {
+            let at = point - outward * 1.4 + along * (scatter(i, 5) - 0.5) * 2.0;
+            for (k, (offset, size)) in [(Vec3::ZERO, 0.35), (Vec3::new(0.45, 0.0, 0.25), 0.22)]
+                .into_iter()
+                .enumerate()
+            {
+                let height = size * 1.4;
+                let mushroom = toon.spawn_part(
+                    commands,
+                    root,
+                    Cylinder::new(size * 0.25, height),
+                    stem.clone(),
+                    Outline::Cylinder,
+                    Transform::from_translation(at + offset + Vec3::Y * height / 2.0),
+                );
+                toon.spawn_part(
+                    commands,
+                    mushroom,
+                    Sphere::new(size).mesh().uv(16, 8),
+                    caps[(i as usize + k) % 2].clone(),
+                    Outline::Smooth,
+                    Transform::from_xyz(0.0, height / 2.0, 0.0)
+                        .with_scale(Vec3::new(1.0, 0.5, 1.0)),
+                );
+            }
+        }
+    }
+
+    // Giant trunks behind the wall, with a canopy that closes overhead.
+    // Two rings of them, so there are no gaps.
+    let near = around_square(h + 7.0, 9.0);
+    let far = around_square(h + 15.0, 11.0);
+    for (i, (point, outward)) in near.into_iter().chain(far).enumerate() {
+        let i = i as u32;
+        let radius = 2.2 + 1.6 * scatter(i, 6);
+        let height = 26.0 + 8.0 * scatter(i, 7);
+        let at = point + outward * 3.0 * scatter(i, 8);
+        let trunk = toon.spawn_part(
+            commands,
+            root,
+            Cylinder::new(radius, height),
+            if i.is_multiple_of(2) {
+                bark.clone()
+            } else {
+                dark_bark.clone()
+            },
+            Outline::Cylinder,
+            Transform::from_translation(at + Vec3::Y * height / 2.0),
+        );
+        // Far-off trees don't shade the arena.
+        commands.entity(trunk).insert(NotShadowCaster);
+        let leaves = toon.spawn_part(
+            commands,
+            trunk,
+            Sphere::new(radius * 3.2).mesh().uv(24, 14),
+            canopy.clone(),
+            Outline::Smooth,
+            Transform::from_translation(Vec3::Y * height * 0.5 - outward * radius * 1.5)
+                .with_scale(Vec3::new(1.4, 0.6, 1.4)),
+        );
+        commands.entity(leaves).insert(NotShadowCaster);
     }
 }
 

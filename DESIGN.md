@@ -32,7 +32,7 @@ tunable lives in data files so balancing never needs a recompile.
 | Password hashing | `argon2` | **0.6.0** | The current recommended password hash. |
 | Data files | `serde` + `ron` | 1.0.229 / **0.12.2** | RON ("Rusty Object Notation") reads like Rust structs and allows comments, which matters for hand-edited balance files. |
 | Menus / debug UI | `bevy_egui` | **0.42.0** | Depends on Bevy 0.19. Quick to build login screens and debug panels. In-game HUD (hotbar, cast bars, party list) uses Bevy's own UI. |
-| Particles | `bevy_hanabi` | **0.19.0** | Depends on Bevy 0.19. GPU particles for spell effects. Added at Milestone 5 when effects matter. |
+| Particles | `bevy_hanabi` | **0.19.0** | Depends on Bevy 0.19. GPU particles for spell effects. Added in Milestone 4b (`3d` feature only). Presets in `assets/data/client/particles.ron`. |
 
 Rejected alternatives, briefly:
 

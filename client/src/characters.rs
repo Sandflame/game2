@@ -11,6 +11,7 @@ use shared::gamedata::GameData;
 use shared::movement::{MoveInput, MoveState};
 use shared::protocol::{ClientRequest, Link, ServerEvent};
 
+use crate::animation::{BossRig, Hop, NoFlash};
 use crate::camera::FollowCamera;
 use crate::session::{LocalPlayerId, Received, send};
 use crate::toon::{Outline, ToonAssets, ToonMaterial};
@@ -266,13 +267,16 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
         Outline::None,
         Transform::default(),
     );
-    commands.entity(flame_part).insert(LanternFlame {
-        owner: player,
-        material: flame,
-        color: Color::srgb(1.0, 0.7, 0.3),
-        glow: FLAME_GLOW,
-        flare: 0.0,
-    });
+    commands.entity(flame_part).insert((
+        NoFlash,
+        LanternFlame {
+            owner: player,
+            material: flame,
+            color: Color::srgb(1.0, 0.7, 0.3),
+            glow: FLAME_GLOW,
+            flare: 0.0,
+        },
+    ));
 }
 
 /// Placeholder training dummy: a straw figure on a wooden post.
@@ -344,16 +348,7 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
     let blossom = toon.material(Color::srgb(0.95, 0.70, 0.80));
     let eyes = toon.glowing(Color::srgb(1.0, 0.85, 0.4), LinearRgba::rgb(4.0, 2.6, 0.6));
 
-    // Trunk body.
-    toon.spawn_part(
-        commands,
-        boss,
-        Capsule3d::new(1.3, 2.6),
-        bark.clone(),
-        Outline::Smooth,
-        Transform::from_xyz(0.0, 2.6, 0.0),
-    );
-    // Roots spreading over the ground.
+    // Roots spreading over the ground (they stay put while the body moves).
     for i in 0..6 {
         let angle = i as f32 * std::f32::consts::TAU / 6.0 + 0.3;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
@@ -368,15 +363,38 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
             ),
         );
     }
+    // Everything above the roots bends at the base, so it can sway, lean
+    // back while casting, and slam forwards.
+    let torso = commands
+        .spawn((Transform::default(), Visibility::default(), ChildOf(boss)))
+        .id();
+    // Trunk body.
+    toon.spawn_part(
+        commands,
+        torso,
+        Capsule3d::new(1.3, 2.6),
+        bark.clone(),
+        Outline::Smooth,
+        Transform::from_xyz(0.0, 2.6, 0.0),
+    );
     // Arms (great branches).
-    for side in [-1.0, 1.0] {
+    let mut arms = [Entity::PLACEHOLDER; 2];
+    for (arm_slot, side) in arms.iter_mut().zip([-1.0, 1.0]) {
+        // A shoulder to swing the arm from.
+        let shoulder = commands
+            .spawn((
+                Transform::from_xyz(1.0 * side, 3.6, -0.3),
+                Visibility::default(),
+                ChildOf(torso),
+            ))
+            .id();
         let arm = toon.spawn_part(
             commands,
-            boss,
+            shoulder,
             Capsule3d::new(0.35, 2.2),
             bark.clone(),
             Outline::Smooth,
-            Transform::from_xyz(1.6 * side, 3.4, -0.3)
+            Transform::from_xyz(0.6 * side, -0.2, 0.0)
                 .with_rotation(Quat::from_rotation_z(-0.9 * side) * Quat::from_rotation_x(0.3)),
         );
         toon.spawn_part(
@@ -387,6 +405,7 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
             Outline::Smooth,
             Transform::from_xyz(0.0, 1.5, 0.0),
         );
+        *arm_slot = shoulder;
     }
     // Leafy crown with a few blossoms.
     for (offset, size) in [
@@ -397,7 +416,7 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
     ] {
         toon.spawn_part(
             commands,
-            boss,
+            torso,
             Sphere::new(size).mesh().uv(28, 16),
             leaves.clone(),
             Outline::Smooth,
@@ -411,7 +430,7 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
     ] {
         toon.spawn_part(
             commands,
-            boss,
+            torso,
             Sphere::new(0.25).mesh().uv(12, 8),
             blossom.clone(),
             Outline::Smooth,
@@ -422,13 +441,14 @@ fn build_rootwarden(commands: &mut Commands, toon: &mut ToonAssets, boss: Entity
     for side in [-1.0, 1.0] {
         toon.spawn_part(
             commands,
-            boss,
+            torso,
             Sphere::new(0.2).mesh().uv(12, 8),
             eyes.clone(),
             Outline::None,
             Transform::from_xyz(0.45 * side, 3.9, -1.2),
         );
     }
+    commands.entity(boss).insert(BossRig::new(torso, arms));
 }
 
 /// Placeholder Thornling: a small spiky sapling.
@@ -444,6 +464,7 @@ fn build_thornling(commands: &mut Commands, toon: &mut ToonAssets, add: Entity) 
         Outline::Smooth,
         Transform::from_xyz(0.0, 0.65, 0.0),
     );
+    commands.entity(body).insert(Hop { rest: 0.65 });
     for i in 0..5 {
         let angle = i as f32 * std::f32::consts::TAU / 5.0;
         let out = Vec3::new(angle.cos(), 0.3, angle.sin()).normalize();
@@ -697,8 +718,8 @@ fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Defeated characters lie down.
-fn show_defeated(mut fallen: Query<&mut Transform, With<Defeated>>) {
+/// Defeated characters lie down (bosses sink instead; see `animation.rs`).
+fn show_defeated(mut fallen: Query<&mut Transform, (With<Defeated>, Without<BossRig>)>) {
     for mut transform in &mut fallen {
         transform.rotation *= Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
         transform.translation.y += 0.35;

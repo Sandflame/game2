@@ -1,0 +1,56 @@
+// Particle presets (looks only; the game rules never read this).
+// Looks in `vfx.ron` list the presets they play, tinted the look's colour.
+//   count:    particles in one burst  — or `rate`: per second, forever
+//   lifetime: (shortest, longest) seconds
+//   speed:    (slowest, fastest) metres per second
+//   shape:    Sphere (every direction) | Up (rising from a disc)
+//             | Flat (outwards along the ground from a ring)
+//   radius:   size of the area they start from, in metres
+//   scale_with_size: multiply radius by the look's `size` (rings, big areas)
+//   gravity:  metres/second² upwards (negative falls)
+//   drag:     how quickly they slow down
+//   size:     (at start, at end) in metres
+//   glow:     brightness; above 1 shines
+//   blend:    Glow (adds light, the default) | Solid (dust, leaves)
+{
+    // Hits.
+    "sparks":       (count: 22, lifetime: (0.25, 0.5), speed: (3.0, 7.0), shape: Sphere,
+                     radius: 0.15, gravity: -9.0, drag: 4.0, size: (0.10, 0.0), glow: 2.0),
+    "big_sparks":   (count: 45, lifetime: (0.35, 0.7), speed: (4.0, 10.0), shape: Sphere,
+                     radius: 0.3, gravity: -9.0, drag: 3.5, size: (0.16, 0.0), glow: 2.0),
+    // Fire and holy light.
+    "embers":       (count: 18, lifetime: (0.6, 1.1), speed: (0.8, 2.2), shape: Up,
+                     radius: 0.5, gravity: 1.5, drag: 1.0, size: (0.12, 0.0), glow: 2.0),
+    // Heals and buffs: soft lights drifting up.
+    "motes":        (count: 20, lifetime: (0.8, 1.4), speed: (0.6, 1.6), shape: Up,
+                     radius: 0.6, gravity: 0.5, drag: 0.6, size: (0.11, 0.02), glow: 1.8),
+    // Area abilities: a ring of light rushing outwards.
+    "ring_sparks":  (count: 70, lifetime: (0.35, 0.7), speed: (2.0, 4.0), shape: Flat,
+                     radius: 0.9, scale_with_size: true, gravity: 2.0, drag: 2.0,
+                     size: (0.14, 0.0), glow: 1.8),
+    // Ground markers going off: dust kicked up over the area.
+    "dust":         (count: 5, lifetime: (0.4, 0.8), speed: (1.5, 3.5), shape: Up,
+                     radius: 1.4, gravity: -6.0, drag: 2.5, size: (0.22, 0.0), glow: 1.0,
+                     blend: Solid),
+    "marker_flash": (count: 6, lifetime: (0.3, 0.6), speed: (2.0, 5.0), shape: Up,
+                     radius: 1.4, gravity: -2.0, drag: 3.0, size: (0.12, 0.0), glow: 2.0),
+    // Leaves for nature attacks.
+    "leaves":       (count: 16, lifetime: (0.7, 1.2), speed: (2.0, 4.5), shape: Sphere,
+                     radius: 0.3, gravity: -3.5, drag: 2.0, size: (0.16, 0.10), glow: 1.0,
+                     blend: Solid),
+    // Lantern flame changes: a swirl of the new flame's colour.
+    "flame_burst":  (count: 40, lifetime: (0.5, 1.0), speed: (1.5, 3.5), shape: Sphere,
+                     radius: 0.25, gravity: 2.5, drag: 2.5, size: (0.12, 0.0), glow: 1.6),
+    // Falling and getting back up.
+    "fall_dust":    (count: 20, lifetime: (0.5, 0.9), speed: (1.0, 2.5), shape: Flat,
+                     radius: 0.5, gravity: -2.0, drag: 3.0, size: (0.25, 0.05), glow: 1.0,
+                     blend: Solid),
+    // Victory: a fountain of light.
+    "fountain":     (count: 120, lifetime: (1.0, 1.8), speed: (5.0, 9.0), shape: Up,
+                     radius: 0.8, gravity: -6.0, drag: 0.8, size: (0.16, 0.0), glow: 2.0),
+    // Never-ending effects.
+    "portal_motes": (rate: 14.0, lifetime: (1.2, 2.0), speed: (0.8, 1.6), shape: Up,
+                     radius: 1.3, gravity: 0.3, drag: 0.3, size: (0.10, 0.0), glow: 2.0),
+    "pollen":       (rate: 30.0, lifetime: (5.0, 8.0), speed: (0.1, 0.4), shape: Up,
+                     radius: 20.0, gravity: 0.05, drag: 0.1, size: (0.045, 0.03), glow: 1.2),
+}

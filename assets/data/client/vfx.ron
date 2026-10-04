@@ -5,39 +5,69 @@
 //          Slash      (a quick arc at the target)
 //          Ring       (a ring that spreads over the ground from the user)
 //          Rise       (a glow rising from the target: heals and buffs)
+//          Particles  (only particles and sound)
 //   color: (red, green, blue), 0.0 - 1.0 (values above 1 glow brighter)
 //   size:  roughly metres
+//   particles: presets from particles.ron, tinted `color` (optional)
+//   sound: a sound from sounds.ron (optional)
+// The client also plays some looks by name: `marker_dodge`, `marker_stack`,
+// `marker_spread` (ground markers going off), `portal`, `defeated`,
+// `revived`, `victory`, `flame_<flame>` for each class's lantern flame,
+// and each zone's `ambience`.
 {
     // Blademaster / general weapon hits
-    "slash":        (style: Slash, color: (1.0, 0.95, 0.85), size: 1.2),
-    "slash_heavy":  (style: Slash, color: (1.0, 0.75, 0.5), size: 1.8),
-    "spin":         (style: Ring, color: (1.0, 0.9, 0.7), size: 5.0),
-    "slam":         (style: Burst, color: (1.0, 0.6, 0.3), size: 3.0),
-    "bash":         (style: Burst, color: (0.7, 0.85, 1.0), size: 1.0),
-    "buff_red":     (style: Rise, color: (1.0, 0.35, 0.3), size: 1.0),
-    "buff_grey":    (style: Rise, color: (0.8, 0.85, 0.95), size: 1.0),
+    "slash":        (style: Slash, color: (1.0, 0.95, 0.85), size: 1.2, particles: ["sparks"], sound: "slash"),
+    "slash_heavy":  (style: Slash, color: (1.0, 0.75, 0.5), size: 1.8, particles: ["big_sparks"], sound: "slash_heavy"),
+    "spin":         (style: Ring, color: (1.0, 0.9, 0.7), size: 5.0, particles: ["ring_sparks"], sound: "whoosh"),
+    "slam":         (style: Burst, color: (1.0, 0.6, 0.3), size: 3.0, particles: ["big_sparks"], sound: "slam"),
+    "bash":         (style: Burst, color: (0.7, 0.85, 1.0), size: 1.0, particles: ["sparks"], sound: "bash"),
+    "buff_red":     (style: Rise, color: (1.0, 0.35, 0.3), size: 1.0, particles: ["motes"], sound: "buff"),
+    "buff_grey":    (style: Rise, color: (0.8, 0.85, 0.95), size: 1.0, particles: ["motes"], sound: "buff"),
 
     // Elementalist
-    "bolt_fire":    (style: Projectile, color: (1.6, 0.7, 0.2), size: 0.35),
-    "spark_fire":   (style: Burst, color: (1.6, 0.6, 0.2), size: 1.0),
-    "wave_fire":    (style: Burst, color: (1.6, 0.5, 0.15), size: 4.5),
-    "pillar_fire":  (style: Rise, color: (1.8, 0.6, 0.15), size: 2.0),
-    "burst_fire":   (style: Burst, color: (1.8, 0.8, 0.2), size: 1.8),
-    "shield_fire":  (style: Rise, color: (1.4, 0.7, 0.3), size: 1.2),
+    "bolt_fire":    (style: Projectile, color: (1.6, 0.7, 0.2), size: 0.35, particles: ["embers", "sparks"], sound: "fire"),
+    "spark_fire":   (style: Burst, color: (1.6, 0.6, 0.2), size: 1.0, particles: ["embers"], sound: "fire"),
+    "wave_fire":    (style: Burst, color: (1.6, 0.5, 0.15), size: 4.5, particles: ["ring_sparks", "embers"], sound: "fire_big"),
+    "pillar_fire":  (style: Rise, color: (1.8, 0.6, 0.15), size: 2.0, particles: ["embers"], sound: "fire_big"),
+    "burst_fire":   (style: Burst, color: (1.8, 0.8, 0.2), size: 1.8, particles: ["big_sparks", "embers"], sound: "fire_big"),
+    "shield_fire":  (style: Rise, color: (1.4, 0.7, 0.3), size: 1.2, particles: ["embers"], sound: "buff"),
 
     // Shield Knight
-    "taunt":        (style: Ring, color: (1.0, 0.3, 0.25), size: 2.0),
-    "shield_light": (style: Rise, color: (0.8, 0.9, 1.4), size: 1.2),
+    "taunt":        (style: Ring, color: (1.0, 0.3, 0.25), size: 2.0, particles: ["ring_sparks"], sound: "taunt"),
+    "shield_light": (style: Rise, color: (0.8, 0.9, 1.4), size: 1.2, particles: ["motes"], sound: "buff"),
 
     // Priest
-    "bolt_holy":    (style: Projectile, color: (1.4, 1.3, 0.8), size: 0.3),
-    "spark_holy":   (style: Burst, color: (1.4, 1.3, 0.8), size: 1.0),
-    "heal":         (style: Rise, color: (0.5, 1.4, 0.6), size: 1.0),
-    "heal_area":    (style: Ring, color: (0.5, 1.4, 0.6), size: 15.0),
-    "heal_big":     (style: Rise, color: (0.8, 1.6, 0.8), size: 1.8),
-    "buff_holy":    (style: Rise, color: (1.4, 1.3, 0.8), size: 1.0),
+    "bolt_holy":    (style: Projectile, color: (1.4, 1.3, 0.8), size: 0.3, particles: ["sparks"], sound: "holy"),
+    "spark_holy":   (style: Burst, color: (1.4, 1.3, 0.8), size: 1.0, particles: ["sparks", "motes"], sound: "holy"),
+    "heal":         (style: Rise, color: (0.5, 1.4, 0.6), size: 1.0, particles: ["motes"], sound: "heal"),
+    "heal_area":    (style: Ring, color: (0.5, 1.4, 0.6), size: 15.0, particles: ["ring_sparks"], sound: "heal"),
+    "heal_big":     (style: Rise, color: (0.8, 1.6, 0.8), size: 1.8, particles: ["motes", "embers"], sound: "heal"),
+    "buff_holy":    (style: Rise, color: (1.4, 1.3, 0.8), size: 1.0, particles: ["motes"], sound: "buff"),
 
     // Enemies
-    "burst_nature": (style: Burst, color: (0.6, 1.2, 0.4), size: 3.0),
-    "bolt_nature":  (style: Projectile, color: (0.6, 1.2, 0.4), size: 0.25),
+    "burst_nature": (style: Burst, color: (0.6, 1.2, 0.4), size: 3.0, particles: ["leaves", "big_sparks"], sound: "slam"),
+    "bolt_nature":  (style: Projectile, color: (0.6, 1.2, 0.4), size: 0.25, particles: ["leaves"], sound: "bash"),
+
+    // Ground markers going off.
+    "marker_dodge":  (style: Particles, color: (0.85, 0.5, 0.3), size: 1.0,
+                      particles: ["dust", "marker_flash"], sound: "boom"),
+    "marker_stack":  (style: Particles, color: (1.0, 0.85, 0.35), size: 1.0,
+                      particles: ["dust", "marker_flash"], sound: "boom"),
+    "marker_spread": (style: Particles, color: (0.85, 0.5, 1.0), size: 1.0,
+                      particles: ["dust", "marker_flash"], sound: "boom"),
+
+    // Lantern flames catching (one per class flame).
+    "flame_crimson": (style: Burst, color: (1.8, 0.4, 0.3), size: 1.2, particles: ["flame_burst"]),
+    "flame_amber":   (style: Burst, color: (1.8, 1.0, 0.3), size: 1.2, particles: ["flame_burst"]),
+    "flame_azure":   (style: Burst, color: (0.4, 0.9, 1.8), size: 1.2, particles: ["flame_burst"]),
+    "flame_pearl":   (style: Burst, color: (1.6, 1.5, 1.2), size: 1.2, particles: ["flame_burst"]),
+
+    // Characters.
+    "defeated":      (style: Particles, color: (0.6, 0.55, 0.5), size: 1.0, particles: ["fall_dust"]),
+    "revived":       (style: Rise, color: (1.4, 1.3, 0.8), size: 1.4, particles: ["motes"]),
+    "victory":       (style: Particles, color: (1.4, 1.2, 0.6), size: 1.0, particles: ["fountain"]),
+
+    // Places (these never stop).
+    "portal":        (style: Particles, color: (0.5, 1.2, 1.6), size: 1.0, particles: ["portal_motes"]),
+    "pollen":        (style: Particles, color: (1.0, 1.0, 0.6), size: 1.0, particles: ["pollen"]),
 }

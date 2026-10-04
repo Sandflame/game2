@@ -1,184 +1,388 @@
-//! Drawing ground markers (telegraphs): a translucent shape on the ground
-//! with a bright edge, and an inner fill that grows until the attack goes
-//! off. The rules half creates and removes the markers; this only draws.
+//! Drawing ground markers (telegraphs) with their own shader
+//! (`assets/shaders/marker.wgsl`): a translucent shape with a bright rim and
+//! flowing stripes, and a fill that grows until the attack goes off. When a
+//! marker goes off, dust and light burst over its whole area. The rules half
+//! creates and removes the markers; this only draws.
 
-use std::f32::consts::FRAC_PI_2;
+use std::collections::HashMap;
 
+use bevy::asset::RenderAssetUsages;
 use bevy::light::NotShadowCaster;
+use bevy::mesh::{Indices, MeshVertexBufferLayoutRef, PrimitiveTopology};
+use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::prelude::*;
-use shared::telegraphs::{MarkerShape, Placement, Telegraph};
+use bevy::render::render_resource::{
+    AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+};
+use bevy::shader::ShaderRef;
+use shared::components::Zone;
+use shared::telegraphs::{MarkerShape, Placement, Telegraph, covers};
 
+use crate::camera::CameraShake;
 use crate::hud::game_now;
+use crate::vfx::Looks;
+use crate::world::CurrentZone;
+
+const MARKER_SHADER: &str = "shaders/marker.wgsl";
 
 pub struct TelegraphsPlugin;
 
 impl Plugin for TelegraphsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (dress_new_markers, update_markers).chain());
+        app.add_plugins(MaterialPlugin::<MarkerMaterial>::default())
+            .init_resource::<KnownMarkers>()
+            .add_systems(
+                Update,
+                (
+                    dress_new_markers,
+                    update_markers,
+                    markers_going_off,
+                    fade_spent_markers,
+                )
+                    .chain(),
+            );
     }
 }
 
-/// The drawn parts of a marker.
+#[derive(ShaderType, Debug, Clone, Copy)]
+pub struct MarkerSettings {
+    pub color: LinearRgba,
+    /// x: shape kind, y/z: its sizes (see `marker.wgsl`).
+    pub shape: Vec4,
+    /// x: progress, y: rim width, z: fade.
+    pub state: Vec4,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct MarkerMaterial {
+    #[uniform(0)]
+    pub settings: MarkerSettings,
+}
+
+impl Material for MarkerMaterial {
+    fn fragment_shader() -> ShaderRef {
+        MARKER_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Blend
+    }
+
+    fn enable_prepass() -> bool {
+        false
+    }
+
+    fn enable_shadows() -> bool {
+        false
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        descriptor.primitive.cull_mode = None;
+        Ok(())
+    }
+}
+
+/// The drawn marker.
 #[derive(Component)]
 struct MarkerVisual {
-    progress_mesh: Handle<Mesh>,
-    fill_material: Handle<StandardMaterial>,
-    base_alpha: f32,
+    material: Handle<MarkerMaterial>,
+    /// Seconds since it appeared (for fading in).
+    age: f32,
 }
 
-/// Small heights so the layers don't flicker against the ground or each other.
-const FILL_HEIGHT: f32 = 0.03;
-const EDGE_HEIGHT: f32 = 0.04;
-const PROGRESS_HEIGHT: f32 = 0.05;
-/// Width of the bright edge lines, in metres.
-const EDGE_WIDTH: f32 = 0.15;
+/// A marker that just went off: it flashes and fades away.
+#[derive(Component)]
+struct SpentMarker {
+    material: Handle<MarkerMaterial>,
+    age: f32,
+}
+
+/// What each marker looked like last frame, so a burst can be shown over
+/// its area once the rules half removes it.
+#[derive(Resource, Default)]
+struct KnownMarkers(HashMap<Entity, (Telegraph, String)>);
+
+/// Just above the ground so it doesn't flicker against it.
+const MARKER_HEIGHT: f32 = 0.04;
+/// Width of the bright rim, in metres.
+const RIM_WIDTH: f32 = 0.18;
+/// Extra quad around the shape so its soft edge isn't cut off.
+const MARGIN: f32 = 0.2;
+/// Seconds to fade in.
+const FADE_IN: f32 = 0.15;
+/// Seconds a marker that went off takes to fade away.
+const FADE_OUT: f32 = 0.4;
+/// At most this many dust bursts when a marker goes off.
+const MAX_BURSTS: f32 = 24.0;
+/// Bursts are never closer together than this (metres).
+const MIN_BURST_SPACING: f32 = 2.5;
+/// How much the camera shakes when a marker goes off (0–1).
+const MARKER_SHAKE: f32 = 0.6;
+/// A marker removed this close to (or after) its time went off; one
+/// removed earlier was cleared (e.g. a wipe) and shows nothing.
+const WENT_OFF_TOLERANCE: f64 = 0.1;
 
 /// Marker colours: orange-red to dodge, gold to stack on, violet to spread from.
-fn marker_color(placement: Placement) -> Color {
+fn marker_color(placement: Placement) -> LinearRgba {
     match placement {
-        Placement::StackOnTarget => Color::srgb(1.0, 0.82, 0.25),
-        Placement::SpreadOnEveryone => Color::srgb(0.80, 0.45, 1.0),
-        _ => Color::srgb(1.0, 0.42, 0.15),
+        Placement::StackOnTarget => LinearRgba::rgb(1.0, 0.70, 0.12),
+        Placement::SpreadOnEveryone => LinearRgba::rgb(0.65, 0.25, 1.0),
+        _ => LinearRgba::rgb(1.0, 0.25, 0.06),
     }
 }
 
-/// A flat mesh of the marker's shape, `scale` (0–1) of its full size.
-/// Built in 2D and laid on the ground, pointing towards -Z.
-fn shape_mesh(shape: MarkerShape, scale: f32) -> Mesh {
-    let scale = scale.max(0.001);
-    let flat = Quat::from_rotation_x(-FRAC_PI_2);
-    let mesh: Mesh = match shape {
-        MarkerShape::Circle { radius } => Circle::new(radius * scale).mesh().resolution(48).build(),
-        MarkerShape::Donut { inner, outer } => {
-            // The fill grows from the outside edge inwards.
-            let reach = inner + (outer - inner) * (1.0 - scale);
-            Annulus::new(reach.min(outer - 0.001), outer)
-                .mesh()
-                .resolution(64)
-                .build()
-        }
-        MarkerShape::Cone { radius, angle } => {
-            CircularSector::new(radius * scale, angle.to_radians() / 2.0)
-                .mesh()
-                .resolution(48)
-                .build()
-        }
-        MarkerShape::Line { length, width } => {
-            let length = length * scale;
-            Rectangle::new(width, length)
-                .mesh()
-                .build()
-                .translated_by(Vec3::new(0.0, length / 2.0, 0.0))
-        }
-    };
-    mesh.rotated_by(flat)
+/// The look (`vfx.ron`) played when a marker goes off.
+fn burst_look(placement: Placement) -> &'static str {
+    match placement {
+        Placement::StackOnTarget => "marker_stack",
+        Placement::SpreadOnEveryone => "marker_spread",
+        _ => "marker_dodge",
+    }
 }
 
-/// The bright outline pieces of a shape (rings for circles and donuts;
-/// cones and lines rely on their brighter fill).
-fn edge_meshes(shape: MarkerShape) -> Vec<Mesh> {
-    let flat = Quat::from_rotation_x(-FRAC_PI_2);
-    let ring = |outer: f32| {
-        Annulus::new((outer - EDGE_WIDTH).max(0.01), outer)
-            .mesh()
-            .resolution(64)
-            .build()
-            .rotated_by(flat)
-    };
+/// The shape as the shader's numbers.
+fn shape_numbers(shape: MarkerShape) -> Vec4 {
     match shape {
-        MarkerShape::Circle { radius } => vec![ring(radius)],
-        MarkerShape::Donut { inner, outer } => vec![ring(inner + EDGE_WIDTH), ring(outer)],
-        MarkerShape::Cone { .. } | MarkerShape::Line { .. } => Vec::new(),
+        MarkerShape::Circle { radius } => Vec4::new(0.0, radius, 0.0, 0.0),
+        MarkerShape::Donut { inner, outer } => Vec4::new(1.0, inner, outer, 0.0),
+        MarkerShape::Cone { radius, angle } => {
+            Vec4::new(2.0, radius, angle.to_radians() / 2.0, 0.0)
+        }
+        MarkerShape::Line { length, width } => Vec4::new(3.0, length, width, 0.0),
     }
 }
 
-fn translucent(
-    materials: &mut Assets<StandardMaterial>,
-    color: Color,
-    alpha: f32,
-) -> Handle<StandardMaterial> {
-    materials.add(StandardMaterial {
-        base_color: color.with_alpha(alpha),
-        alpha_mode: AlphaMode::Blend,
-        unlit: true,
-        cull_mode: None,
-        ..default()
-    })
+/// The ground rectangle (min x, min z, max x, max z) the shape fits in,
+/// with the marker pointing towards -Z.
+fn bounds(shape: MarkerShape) -> (f32, f32, f32, f32) {
+    let (x0, z0, x1, z1) = match shape {
+        MarkerShape::Circle { radius: r } | MarkerShape::Donut { outer: r, .. } => (-r, -r, r, r),
+        MarkerShape::Cone { radius, angle } => {
+            let half = angle.to_radians() / 2.0;
+            if half <= std::f32::consts::FRAC_PI_2 {
+                let side = radius * half.sin();
+                (-side, -radius, side, 0.0)
+            } else {
+                (-radius, -radius, radius, radius)
+            }
+        }
+        MarkerShape::Line { length, width } => (-width / 2.0, -length, width / 2.0, 0.0),
+    };
+    (x0 - MARGIN, z0 - MARGIN, x1 + MARGIN, z1 + MARGIN)
 }
 
-/// Give new markers their shapes.
+/// A flat rectangle whose UVs are its own ground position in metres.
+fn quad_mesh(shape: MarkerShape) -> Mesh {
+    let (x0, z0, x1, z1) = bounds(shape);
+    let corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+    let positions: Vec<[f32; 3]> = corners.iter().map(|[x, z]| [*x, 0.0, *z]).collect();
+    let uvs: Vec<[f32; 2]> = corners.to_vec();
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; 4])
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(vec![0, 2, 1, 0, 3, 2]))
+}
+
+/// Give new markers their look.
 fn dress_new_markers(
     mut commands: Commands,
     new: Query<(Entity, &Telegraph), Added<Telegraph>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<MarkerMaterial>>,
 ) {
     for (entity, marker) in &new {
-        let color = marker_color(marker.placement);
-        let has_edges = !edge_meshes(marker.shape).is_empty();
-        let base_alpha = if has_edges { 0.18 } else { 0.26 };
-        let fill_material = translucent(&mut materials, color, base_alpha);
-        let edge_material = translucent(&mut materials, color.lighter(0.15), 0.9);
-        let progress_material = translucent(&mut materials, color, 0.32);
-        let progress_mesh = meshes.add(shape_mesh(marker.shape, 0.0));
-
+        let material = materials.add(MarkerMaterial {
+            settings: MarkerSettings {
+                color: marker_color(marker.placement),
+                shape: shape_numbers(marker.shape),
+                state: Vec4::new(0.0, RIM_WIDTH, 0.0, 0.0),
+            },
+        });
         commands.entity(entity).insert((
             Transform::from_translation(marker.origin)
                 .with_rotation(Quat::from_rotation_y(marker.yaw)),
             Visibility::default(),
             MarkerVisual {
-                progress_mesh: progress_mesh.clone(),
-                fill_material: fill_material.clone(),
-                base_alpha,
+                material: material.clone(),
+                age: 0.0,
             },
         ));
         commands.spawn((
-            Mesh3d(meshes.add(shape_mesh(marker.shape, 1.0))),
-            MeshMaterial3d(fill_material),
-            Transform::from_xyz(0.0, FILL_HEIGHT, 0.0),
-            NotShadowCaster,
-            ChildOf(entity),
-        ));
-        for edge in edge_meshes(marker.shape) {
-            commands.spawn((
-                Mesh3d(meshes.add(edge)),
-                MeshMaterial3d(edge_material.clone()),
-                Transform::from_xyz(0.0, EDGE_HEIGHT, 0.0),
-                NotShadowCaster,
-                ChildOf(entity),
-            ));
-        }
-        commands.spawn((
-            Mesh3d(progress_mesh),
-            MeshMaterial3d(progress_material),
-            Transform::from_xyz(0.0, PROGRESS_HEIGHT, 0.0),
+            Mesh3d(meshes.add(quad_mesh(marker.shape))),
+            MeshMaterial3d(material),
+            Transform::from_xyz(0.0, MARKER_HEIGHT, 0.0),
             NotShadowCaster,
             ChildOf(entity),
         ));
     }
 }
 
-/// Follow moving markers, grow the progress fill, and pulse just before
-/// the attack lands.
+/// Follow moving markers, grow the fill, and remember each marker.
 fn update_markers(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
-    mut markers: Query<(&Telegraph, &MarkerVisual, &mut Transform)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut known: ResMut<KnownMarkers>,
+    mut markers: Query<(Entity, &Telegraph, &Zone, &mut MarkerVisual, &mut Transform)>,
+    mut materials: ResMut<Assets<MarkerMaterial>>,
 ) {
     let now = game_now(&fixed);
-    for (marker, visual, mut transform) in &mut markers {
+    for (entity, marker, zone, mut visual, mut transform) in &mut markers {
         transform.translation = marker.origin;
         transform.rotation = Quat::from_rotation_y(marker.yaw);
-        let progress = marker.progress(now);
-        if let Some(mut mesh) = meshes.get_mut(&visual.progress_mesh) {
-            *mesh = shape_mesh(marker.shape, progress);
+        visual.age += time.delta_secs();
+        if let Some(mut material) = materials.get_mut(&visual.material) {
+            material.settings.state.x = marker.progress(now);
+            material.settings.state.z = (visual.age / FADE_IN).min(1.0);
         }
-        let urgent = ((progress - 0.75) / 0.25).clamp(0.0, 1.0);
-        let pulse = 1.0 + urgent * 0.8 * (0.5 + 0.5 * (time.elapsed_secs() * 18.0).sin());
-        if let Some(mut material) = materials.get_mut(&visual.fill_material) {
-            material.base_color.set_alpha(visual.base_alpha * pulse);
+        known.0.insert(entity, (marker.clone(), zone.0.clone()));
+    }
+}
+
+/// Points spread over a marker's area for the dust bursts.
+pub fn burst_points(marker: &Telegraph) -> Vec<Vec3> {
+    let (x0, z0, x1, z1) = bounds(marker.shape);
+    let area = (x1 - x0) * (z1 - z0);
+    let spacing = (area / MAX_BURSTS).sqrt().max(MIN_BURST_SPACING);
+    let rotation = Quat::from_rotation_y(marker.yaw);
+    let mut points = Vec::new();
+    let mut z = z0 + spacing / 2.0;
+    while z < z1 {
+        let mut x = x0 + spacing / 2.0;
+        while x < x1 {
+            let point = marker.origin + rotation * Vec3::new(x, 0.0, z);
+            if covers(marker.shape, marker.origin, marker.yaw, point, 0.0) {
+                points.push(point);
+            }
+            x += spacing;
+        }
+        z += spacing;
+    }
+    if points.is_empty() {
+        points.push(marker.origin);
+    }
+    points
+}
+
+/// Dust and light over the area of markers that just went off.
+fn markers_going_off(
+    mut commands: Commands,
+    fixed: Res<Time<Fixed>>,
+    current: Res<CurrentZone>,
+    mut known: ResMut<KnownMarkers>,
+    mut removed: RemovedComponents<Telegraph>,
+    mut shake: ResMut<CameraShake>,
+    mut materials: ResMut<Assets<MarkerMaterial>>,
+    mut looks: Looks,
+) {
+    let now = game_now(&fixed);
+    for entity in removed.read() {
+        let Some((marker, zone)) = known.0.remove(&entity) else {
+            continue;
+        };
+        if current.0.as_deref() != Some(zone.as_str()) || now + WENT_OFF_TOLERANCE < marker.resolves
+        {
+            continue;
+        }
+        // A flash of the whole shape that fades out.
+        let material = materials.add(MarkerMaterial {
+            settings: MarkerSettings {
+                color: marker_color(marker.placement) * 2.0,
+                shape: shape_numbers(marker.shape),
+                state: Vec4::new(1.0, RIM_WIDTH, 1.0, 0.0),
+            },
+        });
+        commands.spawn((
+            Mesh3d(looks.meshes().add(quad_mesh(marker.shape))),
+            MeshMaterial3d(material.clone()),
+            Transform::from_translation(marker.origin + Vec3::Y * MARKER_HEIGHT)
+                .with_rotation(Quat::from_rotation_y(marker.yaw)),
+            NotShadowCaster,
+            SpentMarker { material, age: 0.0 },
+        ));
+        let look = burst_look(marker.placement);
+        for point in burst_points(&marker) {
+            looks.particles(look, point);
+        }
+        looks.sound(look);
+        shake.add(MARKER_SHAKE);
+    }
+}
+
+fn fade_spent_markers(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut spent: Query<(Entity, &mut SpentMarker)>,
+    mut materials: ResMut<Assets<MarkerMaterial>>,
+) {
+    for (entity, mut marker) in &mut spent {
+        marker.age += time.delta_secs();
+        let left = 1.0 - marker.age / FADE_OUT;
+        if left <= 0.0 {
+            commands.entity(entity).despawn();
+        } else if let Some(mut material) = materials.get_mut(&marker.material) {
+            material.settings.state.z = left * left;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn marker(shape: MarkerShape) -> Telegraph {
+        Telegraph {
+            shape,
+            placement: Placement::Caster,
+            origin: Vec3::new(3.0, 0.0, -2.0),
+            yaw: 0.7,
+            follow: None,
+            caster: Entity::PLACEHOLDER,
+            ability: String::new(),
+            starts: 0.0,
+            resolves: 1.0,
+        }
+    }
+
+    #[test]
+    fn bursts_cover_the_area_and_stay_inside() {
+        for shape in [
+            MarkerShape::Circle { radius: 6.0 },
+            MarkerShape::Donut {
+                inner: 5.0,
+                outer: 30.0,
+            },
+            MarkerShape::Cone {
+                radius: 18.0,
+                angle: 100.0,
+            },
+            MarkerShape::Line {
+                length: 34.0,
+                width: 5.0,
+            },
+            MarkerShape::Circle { radius: 0.5 },
+        ] {
+            let m = marker(shape);
+            let points = burst_points(&m);
+            assert!(!points.is_empty(), "{shape:?}");
+            assert!(
+                points.len() as f32 <= MAX_BURSTS * 1.5,
+                "{shape:?}: {}",
+                points.len()
+            );
+            if points.len() > 1 {
+                for p in &points {
+                    assert!(m.covers(*p, 0.0), "{shape:?}: {p} outside");
+                }
+            }
         }
     }
 }

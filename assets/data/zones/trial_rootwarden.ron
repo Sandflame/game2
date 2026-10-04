@@ -4,6 +4,9 @@
     half_size: 22.0,
     spawn_point: (0.0, 0.0, 16.0),
     ground: "moss",
+    // Looks only: a wall of roots around the edge, and drifting pollen.
+    border: "roots",
+    ambience: "pollen",
     // In trials you need a raise; if everyone falls, the fight resets.
     revive_in_place: false,
     encounter: Some("rootwarden"),

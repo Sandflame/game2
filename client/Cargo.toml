@@ -8,7 +8,8 @@ license.workspace = true
 [dependencies]
 shared.workspace = true
 server = { path = "../server" }
-bevy = { workspace = true, features = ["3d", "ui", "audio", "tonemapping_luts"] }
+bevy = { workspace = true, features = ["3d", "ui", "audio", "wav", "tonemapping_luts"] }
+bevy_hanabi.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 
