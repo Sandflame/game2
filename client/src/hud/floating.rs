@@ -371,6 +371,9 @@ fn fade_message(
 
 /// Fully visible for most of the message's life, then fading to nothing.
 fn message_alpha(age: f32) -> f32 {
+    if age >= MESSAGE_LIFE {
+        return 0.0;
+    }
     (1.0 - (age - MESSAGE_LIFE * 0.6) / (MESSAGE_LIFE * 0.4)).clamp(0.0, 1.0)
 }
 
