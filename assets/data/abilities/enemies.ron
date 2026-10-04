@@ -4,7 +4,7 @@
         id: "dummy_swat", name: "Swat",
         description: "The sparring dummy swings its arm.",
         on_gcd: false, range: 30.0, target: Enemy,
-        effects: [(effect: Damage(potency: 450))],
+        effects: [(effect: Damage(amount: 450))],
         vfx: "slash",
     ),
 ]

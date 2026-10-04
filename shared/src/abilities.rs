@@ -43,15 +43,15 @@ pub enum Recipients {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Effect {
     Damage {
-        potency: u32,
+        amount: u32,
     },
     Heal {
-        potency: u32,
+        amount: u32,
     },
-    /// Absorbs damage; the amount comes from potency like a heal, and the
+    /// Absorbs damage; the amount comes from amount like a heal, and the
     /// named status says how long it lasts.
     Shield {
-        potency: u32,
+        amount: u32,
         status: String,
     },
     /// Apply a buff or debuff (see `assets/data/statuses/`).
@@ -75,8 +75,8 @@ pub struct EffectEntry {
 pub struct Combo {
     /// The ability that must come just before (as the previous GCD).
     pub after: String,
-    /// Damage potency used instead when the combo is fulfilled.
-    pub potency: u32,
+    /// Damage amount used instead when the combo is fulfilled.
+    pub amount: u32,
 }
 
 /// One ability, as written in `assets/data/abilities/*.ron`.
@@ -119,10 +119,10 @@ impl AbilityDef {
         })
     }
 
-    /// Damage potency of the first damage effect, if any.
-    pub fn damage_potency(&self) -> Option<u32> {
+    /// Damage amount of the first damage effect, if any.
+    pub fn damage_amount(&self) -> Option<u32> {
         self.effects.iter().find_map(|e| match e.effect {
-            Effect::Damage { potency } => Some(potency),
+            Effect::Damage { amount } => Some(amount),
             _ => None,
         })
     }
@@ -159,51 +159,12 @@ impl AbilityDef {
                 ));
             }
         }
-        if self.combo.is_some() && self.damage_potency().is_none() {
+        if self.combo.is_some() && self.damage_amount().is_none() {
             p.push("has a `combo` but no Damage effect for it to boost");
         }
         p.0.into_iter()
             .map(|m| format!("ability `{}`: {m}", self.id))
             .collect()
-    }
-
-    /// A short summary of what the ability does, for tooltips.
-    pub fn summary(&self, status_name: impl Fn(&str) -> String) -> String {
-        let mut parts = Vec::new();
-        for entry in &self.effects {
-            let who = match entry.to {
-                Recipients::Target => String::new(),
-                Recipients::Myself => " to yourself".to_owned(),
-                Recipients::EnemiesAround { centre, radius } => {
-                    format!(" to enemies within {radius:.0}m of {}", centre_name(centre))
-                }
-                Recipients::AlliesAround { centre, radius } => {
-                    format!(" to allies within {radius:.0}m of {}", centre_name(centre))
-                }
-            };
-            let what = match &entry.effect {
-                Effect::Damage { potency } => format!("Deals {potency} potency damage"),
-                Effect::Heal { potency } => format!("Heals for {potency} potency"),
-                Effect::Shield { potency, .. } => format!("Grants a {potency} potency shield"),
-                Effect::ApplyStatus { status } => format!("Applies {}", status_name(status)),
-                Effect::Taunt => "Taunts".to_owned(),
-            };
-            parts.push(format!("{what}{who}."));
-        }
-        if let Some(combo) = &self.combo {
-            parts.push(format!(
-                "Combo after {}: {} potency.",
-                combo.after, combo.potency
-            ));
-        }
-        parts.join("\n")
-    }
-}
-
-fn centre_name(centre: Centre) -> &'static str {
-    match centre {
-        Centre::Target => "the target",
-        Centre::Me => "you",
     }
 }
 
@@ -224,7 +185,7 @@ pub mod test_support {
             target: TargetKind::Enemy,
             effects: vec![EffectEntry {
                 to: Recipients::Target,
-                effect: Effect::Damage { potency: 100 },
+                effect: Effect::Damage { amount: 100 },
             }],
             combo: None,
             vfx: String::new(),
@@ -257,7 +218,7 @@ mod tests {
             id: "flame_wave", name: "Flame Wave", on_gcd: true, cast_time: 2.0, range: 25.0,
             target: Enemy,
             effects: [
-                (to: EnemiesAround(centre: Target, radius: 5.0), effect: Damage(potency: 220)),
+                (to: EnemiesAround(centre: Target, radius: 5.0), effect: Damage(amount: 220)),
                 (effect: ApplyStatus(status: "burn")),
             ],
         )]"#;
@@ -270,7 +231,7 @@ mod tests {
             "`to` defaults to the target"
         );
         assert_eq!(ability.statuses().collect::<Vec<_>>(), vec!["burn"]);
-        assert_eq!(ability.damage_potency(), Some(220));
+        assert_eq!(ability.damage_amount(), Some(220));
     }
 
     #[test]
@@ -295,19 +256,5 @@ mod tests {
             radius: 5.0,
         };
         assert_eq!(a.problems().len(), 1);
-    }
-
-    #[test]
-    fn summary_describes_effects() {
-        let mut a = damage_ability("a", true, 0.0, 0.0);
-        a.effects.push(EffectEntry {
-            to: Recipients::Myself,
-            effect: Effect::ApplyStatus {
-                status: "focus".into(),
-            },
-        });
-        let text = a.summary(|id| format!("[{id}]"));
-        assert!(text.contains("100 potency damage"), "{text}");
-        assert!(text.contains("Applies [focus] to yourself"), "{text}");
     }
 }

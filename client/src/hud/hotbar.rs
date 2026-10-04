@@ -4,10 +4,13 @@
 
 use bevy::prelude::*;
 use shared::abilities::{AbilityDef, TargetKind};
+use shared::classes::Stats;
 use shared::combat::{ActionState, in_range};
 use shared::components::{HOTBAR_SLOTS, HitRadius, Hotbar, Motion};
+use shared::describe::Describer;
 use shared::gamedata::GameData;
 use shared::protocol::{ClientRequest, Link};
+use shared::statuses::Statuses;
 
 use super::{font, game_now, palette};
 use crate::characters::LocalPlayer;
@@ -282,7 +285,7 @@ fn update_slots(
 /// Show the hovered ability's details.
 fn update_tooltip(
     data: Res<GameData>,
-    player: Option<Single<&Hotbar, With<LocalPlayer>>>,
+    player: Option<Single<(&Hotbar, &Stats, &Statuses), With<LocalPlayer>>>,
     slots: Query<(&Slot, &Interaction)>,
     mut tooltip: Single<&mut Visibility, With<Tooltip>>,
     mut text: Single<&mut Text, With<TooltipText>>,
@@ -291,11 +294,13 @@ fn update_tooltip(
         .iter()
         .find(|(_, interaction)| **interaction != Interaction::None)
         .map(|(slot, _)| slot.index);
-    let ability = player.and_then(|hotbar| {
-        hovered
-            .and_then(|index| hotbar.0.get(index).cloned().flatten())
-            .and_then(|id| data.abilities.get(&id))
-    });
+    let Some(player) = player else {
+        return;
+    };
+    let (hotbar, stats, statuses) = *player;
+    let ability = hovered
+        .and_then(|index| hotbar.0.get(index).cloned().flatten())
+        .and_then(|id| data.abilities.get(&id));
     match ability {
         Some(a) => {
             **tooltip = Visibility::Visible;
@@ -312,11 +317,13 @@ fn update_tooltip(
             if a.target != TargetKind::Myself {
                 facts.push(format!("Range {:.0}m", a.range));
             }
-            let summary = a.summary(|id| {
-                data.statuses
-                    .get(id)
-                    .map_or_else(|| id.to_owned(), |s| s.name.clone())
-            });
+            // Numbers include your power and current buffs.
+            let summary = Describer {
+                data: &data,
+                power: stats.power,
+                modifiers: statuses.modifiers(|id| data.statuses.get(id)),
+            }
+            .ability(a);
             text.0 = format!(
                 "{}\n{}\n\n{}\n\n{}",
                 a.name,

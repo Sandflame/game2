@@ -46,7 +46,8 @@ cargo run -p server                           # run the headless server
 cargo test -p shared                          # just the game-rule tests
 cargo fmt                                     # format code
 
-# Render a screenshot without a screen (Linux, software rendering):
+# Render a screenshot without a screen (Linux, software rendering).
+# Run `cargo build` first: `cargo test`/`clippy` don't rebuild target/debug/client.
 LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target/debug/client
 ```
 
@@ -74,7 +75,9 @@ extra beyond the Rust toolchain.
   (`Effect` × `Recipients`), combos, tooltip summary.
 - `shared/src/statuses.rs` — `StatusDef`, `Modifiers`, `Statuses` component
   (apply/refresh, shields absorbing, ticks, expiry).
-- `shared/src/formulas.rs` — damage/healing maths, crits, `Rng` (SplitMix64).
+- `shared/src/formulas.rs` — damage/healing maths (`amount × power% × buffs`,
+  crits), `Rng` (SplitMix64). No "potency": abilities list plain amounts.
+- `shared/src/describe.rs` — plain-language tooltips with the player's real numbers.
 - `shared/src/threat.rs` — `ThreatTable` (top, taunt, forget).
 - `shared/src/classes.rs` — `ClassDef`, `Role`, specializations, `CurrentClass`, `Stats`, hotbar layout.
 - `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
@@ -94,7 +97,8 @@ extra beyond the Rust toolchain.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining, `Received` event messages.
 - `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
-  sending movement, hit wobble, lantern glow.
+  sending movement, hit wobble, lantern (hidden by default; held up while the
+  flame changes; `LanternSettings::always_show`), flame colours.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
 - `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
   status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L).
@@ -119,6 +123,8 @@ extra beyond the Rust toolchain.
 - Clippy `type_complexity` and `too_many_arguments` are allowed workspace-wide
   (normal for Bevy systems).
 - Dependencies build without debug info (`Cargo.toml` profile) to save disk space.
+- **Numbers players see must be simple**: plain amounts, Power as a percentage,
+  buffs as +/- percentages (user request, 2026-10-04). Don't copy FFXIV's maths.
 - Data files are validated at load; errors must name the file and field.
   Cross-file references (ability → status, class → ability…) are checked in
   `GameData::check_references`.

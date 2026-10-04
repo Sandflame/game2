@@ -5,6 +5,8 @@
     flame: "azure",
     role: Durable,
     max_health: 14000,
+    // Power in percent: 100 = abilities do exactly their listed amounts,
+    // 110 = 10% more damage and healing.
     power: 85,
     // Durable classes make enemies much angrier, so they attack them.
     threat_multiplier: 5.0,

@@ -10,8 +10,6 @@
     queue_window: 0.5,
     // A combo continues if the next step comes within this time.
     combo_window: 15.0,
-    // Damage or healing per point of potency, at normal power (100).
-    potency_scale: 1.0,
     // Chance of a critical hit or heal (0.1 = 10%), and how much stronger it is.
     crit_chance: 0.1,
     crit_multiplier: 1.5,

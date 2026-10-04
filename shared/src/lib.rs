@@ -8,6 +8,7 @@ pub mod combat;
 pub mod components;
 pub mod config;
 pub mod data;
+pub mod describe;
 pub mod formulas;
 pub mod gamedata;
 pub mod level;

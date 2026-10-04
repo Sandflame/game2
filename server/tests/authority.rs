@@ -27,7 +27,7 @@ const ME: PlayerId = PlayerId(1);
 
 const COMBAT: &str = r#"(
     gcd: 1.5, animation_lock: 0.6, cast_lock: 0.1, queue_window: 0.5, combo_window: 15.0,
-    potency_scale: 1.0, crit_chance: 0.0, crit_multiplier: 1.5, tick_interval: 3.0,
+    crit_chance: 0.0, crit_multiplier: 1.5, tick_interval: 3.0,
     combat_timeout: 6.0, flame_change_time: 2.0, out_of_combat_regen: 0.0, revive_after: 5.0,
     tab_target_range: 40.0,
 )"#;
@@ -39,31 +39,31 @@ const MOVEMENT: &str = r#"(
 
 const ABILITIES: &str = r#"[
     (id: "strike", name: "Strike", on_gcd: true, range: 3.0, target: Enemy,
-     effects: [(effect: Damage(potency: 100))]),
+     effects: [(effect: Damage(amount: 100))]),
     (id: "followup", name: "Followup", on_gcd: true, range: 3.0, target: Enemy,
-     effects: [(effect: Damage(potency: 50))], combo: Some((after: "strike", potency: 300))),
+     effects: [(effect: Damage(amount: 50))], combo: Some((after: "strike", amount: 300))),
     (id: "bolt", name: "Bolt", on_gcd: true, cast_time: 2.0, range: 25.0, target: Enemy,
-     effects: [(effect: Damage(potency: 300))]),
+     effects: [(effect: Damage(amount: 300))]),
     (id: "burst", name: "Burst", on_gcd: false, cooldown: 15.0, range: 25.0, target: Enemy,
-     effects: [(effect: Damage(potency: 50))]),
+     effects: [(effect: Damage(amount: 50))]),
     (id: "mend", name: "Mend", on_gcd: true, range: 30.0, target: Ally,
-     effects: [(effect: Heal(potency: 300))]),
+     effects: [(effect: Heal(amount: 300))]),
     (id: "ignite", name: "Ignite", on_gcd: true, range: 25.0, target: Enemy,
      effects: [(effect: ApplyStatus(status: "burn"))]),
     (id: "guard", name: "Guard", on_gcd: false, cooldown: 60.0, target: Myself,
      effects: [(effect: ApplyStatus(status: "guard"))]),
     (id: "barrier", name: "Barrier", on_gcd: false, cooldown: 60.0, target: Myself,
-     effects: [(effect: Shield(potency: 250, status: "barrier"))]),
+     effects: [(effect: Shield(amount: 250, status: "barrier"))]),
     (id: "provoke", name: "Provoke", on_gcd: false, cooldown: 30.0, range: 20.0, target: Enemy,
      effects: [(effect: Taunt)]),
     (id: "sweep", name: "Sweep", on_gcd: true, target: Myself,
-     effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(potency: 10))]),
+     effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(amount: 10))]),
     (id: "swat", name: "Swat", on_gcd: false, range: 30.0, target: Enemy,
-     effects: [(effect: Damage(potency: 100))]),
+     effects: [(effect: Damage(amount: 100))]),
 ]"#;
 
 const STATUSES: &str = r#"[
-    (id: "burn", name: "Burn", kind: Debuff, duration: 9.5, tick: Some(Damage(potency: 40))),
+    (id: "burn", name: "Burn", kind: Debuff, duration: 9.5, tick: Some(Damage(amount: 40))),
     (id: "guard", name: "Guard", kind: Buff, duration: 10.0, modifiers: (damage_taken: 0.5)),
     (id: "barrier", name: "Barrier", kind: Buff, duration: 10.0),
 ]"#;
@@ -412,7 +412,7 @@ fn dummy_heals_when_left_alone() {
 // ---------- Effects and statuses (Milestone 3) ----------
 
 #[test]
-fn combo_uses_the_stronger_potency() {
+fn combo_uses_the_stronger_amount() {
     let mut game = Game::new();
     game.use_slot(FOLLOWUP);
     game.run(1.6);

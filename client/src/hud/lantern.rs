@@ -8,7 +8,7 @@ use shared::gamedata::GameData;
 use shared::protocol::{ClientRequest, Link};
 
 use super::{font, palette};
-use crate::characters::{LocalPlayer, flame_look};
+use crate::characters::{LanternSettings, LocalPlayer, flame_look};
 use crate::session::{LocalPlayerId, send};
 
 pub struct LanternPlugin;
@@ -34,6 +34,12 @@ struct PanelRoot;
 #[derive(Component)]
 struct FlameButton(String);
 
+/// The "show lantern at all times" switch, and its label.
+#[derive(Component)]
+struct ShowLanternButton;
+#[derive(Component)]
+struct ShowLanternLabel;
+
 fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
     commands
         .spawn((
@@ -41,7 +47,7 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
             Node {
                 position_type: PositionType::Absolute,
                 width: percent(100),
-                top: percent(18),
+                top: percent(10),
                 justify_content: JustifyContent::Center,
                 ..default()
             },
@@ -51,8 +57,8 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
             row.spawn((
                 Node {
                     flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(px(14)),
-                    row_gap: px(10),
+                    padding: UiRect::all(px(12)),
+                    row_gap: px(7),
                     border: UiRect::all(px(2)),
                     width: px(460),
                     ..default()
@@ -99,12 +105,43 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
                                 TextColor(flame),
                             ));
                             button.spawn((
-                                Text::new(format!("{}  Specialization: {spec}", class.description)),
+                                Text::new(class.description.clone()),
+                                font(12.0),
+                                TextColor(palette::TEXT_DIM),
+                            ));
+                            button.spawn((
+                                Text::new(format!(
+                                    "{spec}   Health {}   Power {:.0}%",
+                                    class.max_health, class.power
+                                )),
                                 font(12.0),
                                 TextColor(palette::TEXT_DIM),
                             ));
                         });
                 }
+                panel
+                    .spawn((
+                        Button,
+                        ShowLanternButton,
+                        Node {
+                            padding: UiRect::all(px(6)),
+                            border: UiRect::all(px(1)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
+                        BorderColor::all(palette::PANEL_BORDER),
+                    ))
+                    .with_child((
+                        ShowLanternLabel,
+                        Text::new(""),
+                        font(13.0),
+                        TextColor(palette::TEXT),
+                    ));
+                panel.spawn((
+                    Text::new("Power 100% = the amounts listed on abilities; 110% = 10% more."),
+                    font(11.0),
+                    TextColor(palette::TEXT_DIM),
+                ));
                 panel.spawn((
                     Text::new("Press L to close."),
                     font(12.0),
@@ -125,10 +162,17 @@ fn toggle_panel(keys: Res<ButtonInput<KeyCode>>, mut panel: ResMut<LanternPanel>
 
 fn choose_flame(
     buttons: Query<(&Interaction, &FlameButton), Changed<Interaction>>,
+    show_lantern: Query<&Interaction, (Changed<Interaction>, With<ShowLanternButton>)>,
+    mut settings: ResMut<LanternSettings>,
     me: Res<LocalPlayerId>,
     mut link: ResMut<Link>,
     mut panel: ResMut<LanternPanel>,
 ) {
+    for interaction in &show_lantern {
+        if *interaction == Interaction::Pressed {
+            settings.always_show = !settings.always_show;
+        }
+    }
     for (interaction, button) in &buttons {
         if *interaction == Interaction::Pressed {
             send(
@@ -154,7 +198,17 @@ fn update_panel(
         &mut BorderColor,
         &mut BackgroundColor,
     )>,
+    settings: Res<LanternSettings>,
+    mut show_label: Single<&mut Text, With<ShowLanternLabel>>,
 ) {
+    let wanted = if settings.always_show {
+        "Show lantern at all times: On (click to change)"
+    } else {
+        "Show lantern at all times: Off (click to change)"
+    };
+    if show_label.0 != wanted {
+        show_label.0 = wanted.to_owned();
+    }
     **root = if panel.open {
         Visibility::Visible
     } else {

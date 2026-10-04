@@ -5,7 +5,7 @@
         id: "el_firebolt", name: "Firebolt",
         description: "Hurl a bolt of fire.",
         on_gcd: true, cast_time: 1.5, range: 25.0, target: Enemy,
-        effects: [(effect: Damage(potency: 280))],
+        effects: [(effect: Damage(amount: 280))],
         vfx: "bolt_fire",
     ),
     (
@@ -13,7 +13,7 @@
         description: "An instant spark that sets the target burning.",
         on_gcd: true, range: 25.0, target: Enemy,
         effects: [
-            (effect: Damage(potency: 120)),
+            (effect: Damage(amount: 120)),
             (effect: ApplyStatus(status: "burn")),
         ],
         vfx: "spark_fire",
@@ -22,21 +22,21 @@
         id: "el_flame_wave", name: "Flame Wave",
         description: "A wave of fire that hits the target and enemies near it.",
         on_gcd: true, cast_time: 2.0, range: 25.0, target: Enemy,
-        effects: [(to: EnemiesAround(centre: Target, radius: 5.0), effect: Damage(potency: 220))],
+        effects: [(to: EnemiesAround(centre: Target, radius: 5.0), effect: Damage(amount: 220))],
         vfx: "wave_fire",
     ),
     (
         id: "el_ember_shield", name: "Ember Shield",
         description: "Wrap yourself in a shield of embers.",
         on_gcd: false, cooldown: 90.0, target: Myself,
-        effects: [(effect: Shield(potency: 1800, status: "ember_shield"))],
+        effects: [(effect: Shield(amount: 1800, status: "ember_shield"))],
         vfx: "shield_fire",
     ),
     (
         id: "el_fire_snap", name: "Fire Snap",
         description: "Snap your fingers for an instant burst of flame.",
         on_gcd: false, cooldown: 30.0, range: 25.0, target: Enemy,
-        effects: [(effect: Damage(potency: 260))],
+        effects: [(effect: Damage(amount: 260))],
         vfx: "spark_fire",
     ),
 
@@ -45,7 +45,7 @@
         id: "el_inferno", name: "Inferno",
         description: "A long cast that engulfs the target in a towering blaze.",
         on_gcd: true, cast_time: 3.0, range: 25.0, target: Enemy,
-        effects: [(effect: Damage(potency: 700))],
+        effects: [(effect: Damage(amount: 700))],
         vfx: "pillar_fire",
     ),
     (
@@ -53,7 +53,7 @@
         description: "Flare the flames on your target and renew its burn.",
         on_gcd: false, cooldown: 45.0, range: 25.0, target: Enemy,
         effects: [
-            (effect: Damage(potency: 200)),
+            (effect: Damage(amount: 200)),
             (effect: ApplyStatus(status: "burn")),
         ],
         vfx: "burst_fire",

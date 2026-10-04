@@ -4,24 +4,25 @@
 use crate::combat::CombatConfig;
 use crate::statuses::Modifiers;
 
-/// The "power" stat that counts as normal (potency × 1.0).
+/// Power is a percentage: 100 means abilities do exactly the amounts
+/// written in the data files, 110 means 10% more.
 pub const BASE_POWER: f32 = 100.0;
 
-/// Potency turned into a raw amount, before buffs and crits.
-pub fn base_amount(potency: u32, power: f32, config: &CombatConfig) -> f32 {
-    potency as f32 * config.potency_scale * (power / BASE_POWER)
+/// An ability's listed amount adjusted for the user's power, before buffs and crits.
+pub fn base_amount(amount: u32, power: f32) -> f32 {
+    amount as f32 * (power / BASE_POWER)
 }
 
 /// Damage a hit deals before the target's defences.
 pub fn outgoing_damage(
-    potency: u32,
+    amount: u32,
     power: f32,
     dealer: Modifiers,
     crit: bool,
     config: &CombatConfig,
 ) -> u32 {
     let crit_factor = if crit { config.crit_multiplier } else { 1.0 };
-    (base_amount(potency, power, config) * dealer.damage_dealt * crit_factor).round() as u32
+    (base_amount(amount, power) * dealer.damage_dealt * crit_factor).round() as u32
 }
 
 /// Damage after the target's damage-taken modifiers.
@@ -31,7 +32,7 @@ pub fn incoming_damage(amount: u32, target: Modifiers) -> u32 {
 
 /// Healing (or shield) amount.
 pub fn healing(
-    potency: u32,
+    amount: u32,
     power: f32,
     healer: Modifiers,
     target: Modifiers,
@@ -39,10 +40,7 @@ pub fn healing(
     config: &CombatConfig,
 ) -> u32 {
     let crit_factor = if crit { config.crit_multiplier } else { 1.0 };
-    (base_amount(potency, power, config)
-        * healer.healing_done
-        * target.healing_received
-        * crit_factor)
+    (base_amount(amount, power) * healer.healing_done * target.healing_received * crit_factor)
         .round() as u32
 }
 
@@ -81,7 +79,7 @@ mod tests {
     use crate::combat::test_config;
 
     #[test]
-    fn potency_scales_with_power() {
+    fn power_is_a_percentage() {
         let c = test_config();
         assert_eq!(
             outgoing_damage(200, 100.0, Modifiers::default(), false, &c),

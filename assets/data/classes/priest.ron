@@ -5,6 +5,8 @@
     flame: "pearl",
     role: Sustain,
     max_health: 9000,
+    // Power in percent: 100 = abilities do exactly their listed amounts,
+    // 110 = 10% more damage and healing.
     power: 100,
     threat_multiplier: 1.0,
     core: ["pr_stone", "pr_mend", "pr_renew", "pr_sanctuary", "pr_smite"],

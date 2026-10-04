@@ -5,7 +5,8 @@
     flame: "crimson",
     role: Damage,
     max_health: 10000,
-    // 100 = normal damage and healing.
+    // Power in percent: 100 = abilities do exactly their listed amounts,
+    // 110 = 10% more damage and healing.
     power: 110,
     // Threat per point of damage or healing.
     threat_multiplier: 1.0,

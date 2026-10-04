@@ -5,14 +5,14 @@
         id: "pr_stone", name: "Stone",
         description: "Strike the target with a shard of holy stone.",
         on_gcd: true, cast_time: 1.5, range: 25.0, target: Enemy,
-        effects: [(effect: Damage(potency: 220))],
+        effects: [(effect: Damage(amount: 220))],
         vfx: "bolt_holy",
     ),
     (
         id: "pr_mend", name: "Mend",
         description: "Heal a friend (or yourself).",
         on_gcd: true, cast_time: 1.5, range: 30.0, target: Ally,
-        effects: [(effect: Heal(potency: 500))],
+        effects: [(effect: Heal(amount: 500))],
         vfx: "heal",
     ),
     (
@@ -26,7 +26,7 @@
         id: "pr_sanctuary", name: "Sanctuary",
         description: "Heal yourself and every ally around you.",
         on_gcd: true, cast_time: 2.0, target: Myself,
-        effects: [(to: AlliesAround(centre: Me, radius: 15.0), effect: Heal(potency: 350))],
+        effects: [(to: AlliesAround(centre: Me, radius: 15.0), effect: Heal(amount: 350))],
         vfx: "heal_area",
     ),
     (
@@ -34,7 +34,7 @@
         description: "An instant holy strike that leaves the target searing.",
         on_gcd: true, range: 25.0, target: Enemy,
         effects: [
-            (effect: Damage(potency: 100)),
+            (effect: Damage(amount: 100)),
             (effect: ApplyStatus(status: "holy_burn")),
         ],
         vfx: "spark_holy",
@@ -45,14 +45,14 @@
         id: "pr_benediction", name: "Benediction",
         description: "A great blessing that heals a huge amount at once.",
         on_gcd: false, cooldown: 120.0, range: 30.0, target: Ally,
-        effects: [(effect: Heal(potency: 2000))],
+        effects: [(effect: Heal(amount: 2000))],
         vfx: "heal_big",
     ),
     (
         id: "pr_grace", name: "Grace",
         description: "An instant heal you can weave between spells.",
         on_gcd: false, cooldown: 30.0, range: 30.0, target: Ally,
-        effects: [(effect: Heal(potency: 600))],
+        effects: [(effect: Heal(amount: 600))],
         vfx: "heal",
     ),
     (

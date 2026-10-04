@@ -240,9 +240,9 @@ Example ability (illustrative, final shape decided in Milestone 4):
         range: 3.5,              // metres
         target: Enemy,
         effects: [
-            Damage(potency: 220),
+            (effect: Damage(amount: 220)),
         ],
-        combo: Some((after: "bm_slash", bonus_potency: 120)),
+        combo: Some((after: "bm_slash", amount: 320)),
         vfx: "slash_heavy",      // looked up by the client only
         icon: "icons/bm_cleave.png",
     ),
@@ -306,11 +306,13 @@ data.
 ### 5.4 Stats and formulas
 Small and readable on purpose:
 
-- Primary: **Power** (damage and healing), **Vitality** (max HP).
+- Primary: **Power %** (damage and healing; 100% = listed amounts), **Vitality** (max HP).
 - Secondary: **Crit**, **Haste** (shortens GCD and casts), **Guard**
   (damage reduction).
-- `damage = potency × power_factor × (1 + modifiers)`, ± small random
-  spread, crits ×1.5. All constants in `config/combat.ron`.
+- **Plain numbers, not "potency" (decided 2026-10-04):** abilities list the
+  damage/healing they do at 100% power. `damage = amount × power% × buffs`,
+  then ×1.5 on a critical hit. Tooltips show the final numbers. Crit chance
+  and size are in `config/combat.ron`.
 - **Stat sources are a list** (`base from class level`, `gear`,
   `secondary class bonus`, `party synergy`, `status effects`, and later
   `pet`, `fusion`). Pets slot in later as just another source.
@@ -339,6 +341,12 @@ takes ~2 s with a visual effect. Each class has its own level (1–30) and
 its own saved hotbar/spec choice. **Armour and accessories are shared by
 all classes; weapons are not** — each class has its own weapon slot, and
 switching flame swaps to that class's weapon automatically.
+
+The lantern is **not visible by default** (decided 2026-10-04). When you
+change flame, your character holds it out in both hands, the flame
+changes colour, and it is put away again a moment later. A "show lantern at
+all times" option (lantern panel) keeps it at your side. Later it may be
+shown as part of gear or in other ways.
 
 ### 6.2 First four classes
 

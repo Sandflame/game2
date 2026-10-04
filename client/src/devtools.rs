@@ -39,16 +39,16 @@ enum Step {
 }
 
 const DEMO: &[(f32, Step)] = &[
-    (0.3, Step::OpenLantern),
-    (0.8, Step::ChangeClass("elementalist")),
-    (1.8, Step::Shot),
-    (2.2, Step::CloseLantern),
-    (3.0, Step::TargetSparringDummy),
-    (3.1, Step::Press(1)), // Kindle: burn
-    (3.8, Step::Press(3)), // Ember Shield
-    (4.6, Step::Press(0)), // Firebolt (1.5 s cast)
-    (5.5, Step::Shot),
-    (6.4, Step::Shot),
+    (1.0, Step::OpenLantern),
+    (1.6, Step::Shot), // the lantern panel
+    (1.8, Step::ChangeClass("elementalist")),
+    (1.9, Step::CloseLantern),
+    (3.0, Step::Shot), // lantern held up while the flame changes
+    (4.0, Step::TargetSparringDummy),
+    (4.1, Step::Press(1)), // Kindle: burn
+    (4.8, Step::Press(3)), // Ember Shield
+    (5.6, Step::Press(0)), // Firebolt (1.5 s cast)
+    (7.4, Step::Shot),     // lantern put away; fight in progress
 ];
 
 pub struct DevToolsPlugin;

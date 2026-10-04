@@ -1,5 +1,5 @@
 // Buffs and debuffs. `duration` in seconds.
-//   tick: Some(Damage(potency: N)) or Some(Heal(potency: N)) every tick_interval (combat.ron)
+//   tick: Some(Damage(amount: N)) or Some(Heal(amount: N)) every tick_interval (combat.ron)
 //   modifiers: multipliers while active, e.g. damage_dealt: 1.2 = +20% damage,
 //              damage_taken: 0.7 = 30% less damage taken.
 //   Shields (used by Shield effects) only need a name and duration.
@@ -15,7 +15,7 @@
     // ---- Elementalist ----
     (id: "burn", name: "Burn", kind: Debuff, duration: 18.0,
      description: "Taking fire damage over time.",
-     tick: Some(Damage(potency: 50)), vfx: "burning"),
+     tick: Some(Damage(amount: 50)), vfx: "burning"),
     (id: "ember_shield", name: "Ember Shield", kind: Buff, duration: 15.0,
      description: "A shield of embers absorbs damage."),
     (id: "pyre_heart", name: "Pyre Heart", kind: Buff, duration: 20.0,
@@ -35,10 +35,10 @@
     // ---- Priest ----
     (id: "renew", name: "Renew", kind: Buff, duration: 15.0,
      description: "Recovering health over time.",
-     tick: Some(Heal(potency: 140)), vfx: "renew"),
+     tick: Some(Heal(amount: 140)), vfx: "renew"),
     (id: "holy_burn", name: "Holy Burn", kind: Debuff, duration: 18.0,
      description: "Seared by holy light.",
-     tick: Some(Damage(potency: 45))),
+     tick: Some(Damage(amount: 45))),
     (id: "blessed", name: "Blessed", kind: Buff, duration: 15.0,
      description: "Receiving 25% more healing.",
      modifiers: (healing_received: 1.25)),

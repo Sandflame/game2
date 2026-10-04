@@ -12,13 +12,19 @@ Each `.ron` file is a list of abilities. Fields:
 | `range` | Metres to the edge of the target's ring |
 | `target` | `Enemy`, `Ally` (lands on you if no friendly target), or `Myself` |
 | `effects` | A list of `(to: <who>, effect: <what>)`; `to` defaults to the target |
-| `combo` | `Some((after: "<ability id>", potency: 320))`: stronger right after that ability |
+| `combo` | `Some((after: "<ability id>", amount: 320))`: stronger right after that ability |
 | `vfx` | Visual effect name (looks only) |
 
-Effects: `Damage(potency: N)`, `Heal(potency: N)`,
-`Shield(potency: N, status: "<status id>")`, `ApplyStatus(status: "<id>")`, `Taunt`.
+Effects: `Damage(amount: N)`, `Heal(amount: N)`,
+`Shield(amount: N, status: "<status id>")`, `ApplyStatus(status: "<id>")`, `Taunt`.
 
 Who (`to`): `Target`, `Myself`, `EnemiesAround(centre: Target|Me, radius: N)`,
 `AlliesAround(centre: Target|Me, radius: N)` (allies always include you).
 
-Potency 100 is about 100 damage or healing at normal power.
+## How numbers work
+
+The amounts are what the ability does at **100% power**. Each class has a
+Power percentage (in `assets/data/classes/`): at 110% power, `Damage(amount: 200)`
+deals 220. Buffs multiply on top (e.g. +20% damage dealt), and a critical hit
+does 50% more (see `crit_chance` / `crit_multiplier` in `config/combat.ron`).
+In-game tooltips show the final numbers for your current class and buffs.

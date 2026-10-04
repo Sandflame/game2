@@ -15,8 +15,8 @@ pub enum StatusKind {
 /// Something a status does every tick (see `tick_interval` in combat.ron).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Tick {
-    Damage { potency: u32 },
-    Heal { potency: u32 },
+    Damage { amount: u32 },
+    Heal { amount: u32 },
 }
 
 /// Multipliers a status applies while active (1.0 = no change).

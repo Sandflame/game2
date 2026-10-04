@@ -5,15 +5,15 @@
         id: "sk_shield_bash", name: "Shield Bash",
         description: "Slam your shield into the target. Starts your combo.",
         on_gcd: true, range: 3.5, target: Enemy,
-        effects: [(effect: Damage(potency: 180))],
+        effects: [(effect: Damage(amount: 180))],
         vfx: "bash",
     ),
     (
         id: "sk_riposte", name: "Riposte",
         description: "A swift counter-thrust. Much stronger right after Shield Bash.",
         on_gcd: true, range: 3.5, target: Enemy,
-        effects: [(effect: Damage(potency: 120))],
-        combo: Some((after: "sk_shield_bash", potency: 300)),
+        effects: [(effect: Damage(amount: 120))],
+        combo: Some((after: "sk_shield_bash", amount: 300)),
         vfx: "slash",
     ),
     (
@@ -34,7 +34,7 @@
         id: "sk_shield_sweep", name: "Shield Sweep",
         description: "Sweep your shield around you, striking every nearby enemy.",
         on_gcd: true, target: Myself,
-        effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(potency: 120))],
+        effects: [(to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(amount: 120))],
         vfx: "spin",
     ),
 
@@ -43,7 +43,7 @@
         id: "sk_stalwart_guard", name: "Stalwart Guard",
         description: "Brace behind your shield, gaining a barrier.",
         on_gcd: false, cooldown: 60.0, target: Myself,
-        effects: [(effect: Shield(potency: 2500, status: "stalwart_guard"))],
+        effects: [(effect: Shield(amount: 2500, status: "stalwart_guard"))],
         vfx: "shield_light",
     ),
     (
@@ -51,8 +51,8 @@
         description: "Strike the target and recover some of your strength.",
         on_gcd: true, range: 3.5, target: Enemy,
         effects: [
-            (effect: Damage(potency: 150)),
-            (to: Myself, effect: Heal(potency: 350)),
+            (effect: Damage(amount: 150)),
+            (to: Myself, effect: Heal(amount: 350)),
         ],
         vfx: "bash",
     ),

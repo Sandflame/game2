@@ -183,14 +183,13 @@ pub fn resolve_effects(
         for entry in &ability.effects {
             for recipient in recipients(entry.to, source, info, resolution.target, &living) {
                 match &entry.effect {
-                    Effect::Damage { potency } => {
-                        let potency = match (&ability.combo, resolution.combo) {
-                            (Some(combo), true) => combo.potency,
-                            _ => *potency,
+                    Effect::Damage { amount } => {
+                        let amount = match (&ability.combo, resolution.combo) {
+                            (Some(combo), true) => combo.amount,
+                            _ => *amount,
                         };
                         let crit = rng.0.chance(combat.crit_chance);
-                        let raw =
-                            outgoing_damage(potency, info.power, info.modifiers, crit, combat);
+                        let raw = outgoing_damage(amount, info.power, info.modifiers, crit, combat);
                         hostile |= land_damage(
                             &mut living,
                             &data,
@@ -205,7 +204,7 @@ pub fn resolve_effects(
                             false,
                         );
                     }
-                    Effect::Heal { potency } => {
+                    Effect::Heal { amount } => {
                         let Ok((_, _, _, _, mut health, statuses, ..)) = living.get_mut(recipient)
                         else {
                             continue;
@@ -213,7 +212,7 @@ pub fn resolve_effects(
                         let crit = rng.0.chance(combat.crit_chance);
                         let received = statuses.modifiers(|id| data.statuses.get(id));
                         let amount =
-                            healing(*potency, info.power, info.modifiers, received, crit, combat);
+                            healing(*amount, info.power, info.modifiers, received, crit, combat);
                         let restored = health.heal(amount);
                         healing_threat.push((
                             source,
@@ -229,7 +228,7 @@ pub fn resolve_effects(
                             tick: false,
                         });
                     }
-                    Effect::Shield { potency, status } => {
+                    Effect::Shield { amount, status } => {
                         let Some(def) = data.statuses.get(status) else {
                             continue;
                         };
@@ -238,14 +237,8 @@ pub fn resolve_effects(
                             continue;
                         };
                         let received = statuses.modifiers(|id| data.statuses.get(id));
-                        let absorb = healing(
-                            *potency,
-                            info.power,
-                            info.modifiers,
-                            received,
-                            false,
-                            combat,
-                        );
+                        let absorb =
+                            healing(*amount, info.power, info.modifiers, received, false, combat);
                         statuses.apply(ActiveStatus {
                             id: def.id.clone(),
                             source,
@@ -262,15 +255,15 @@ pub fn resolve_effects(
                             continue;
                         };
                         let tick = def.tick.map(|t| match t {
-                            Tick::Damage { potency } => TickAmount::Damage(outgoing_damage(
-                                potency,
+                            Tick::Damage { amount } => TickAmount::Damage(outgoing_damage(
+                                amount,
                                 info.power,
                                 info.modifiers,
                                 false,
                                 combat,
                             )),
-                            Tick::Heal { potency } => TickAmount::Heal(healing(
-                                potency,
+                            Tick::Heal { amount } => TickAmount::Heal(healing(
+                                amount,
                                 info.power,
                                 info.modifiers,
                                 Modifiers::default(),

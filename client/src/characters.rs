@@ -19,22 +19,27 @@ pub struct CharactersPlugin;
 
 impl Plugin for CharactersPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (spawn_visuals, react_to_events, animate_reactions).chain(),
-        )
-        .add_systems(FixedPostUpdate, record_motion)
-        .add_systems(
-            RunFixedMainLoop,
-            (
-                send_movement.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
-                interpolate_transforms.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
-            ),
-        )
-        .add_systems(
-            Update,
-            (animate_lanterns, show_defeated.after(animate_reactions)),
-        );
+        app.init_resource::<LanternSettings>()
+            .add_systems(
+                Update,
+                (spawn_visuals, react_to_events, animate_reactions).chain(),
+            )
+            .add_systems(FixedPostUpdate, record_motion)
+            .add_systems(
+                RunFixedMainLoop,
+                (
+                    send_movement.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                    interpolate_transforms.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    animate_lanterns,
+                    animate_lantern_holding,
+                    show_defeated.after(animate_reactions),
+                ),
+            );
     }
 }
 
@@ -60,6 +65,37 @@ struct LanternFlame {
     glow: LinearRgba,
     /// Extra brightness after using an ability; fades quickly.
     flare: f32,
+}
+
+/// Where the lantern hangs at the side (when "always show" is on).
+const LANTERN_AT_SIDE: Vec3 = Vec3::new(0.48, 0.75, -0.12);
+/// Where it is held up in both hands while the flame changes: raised
+/// above the head and a little forward, so it shows from behind too.
+const LANTERN_HELD_OUT: Vec3 = Vec3::new(0.0, 2.05, -0.45);
+/// The lantern looks a bit bigger while held up.
+const LANTERN_HELD_SCALE: f32 = 1.5;
+/// How long the lantern stays out after the new flame catches.
+const LANTERN_LINGER: f32 = 1.2;
+/// How quickly the lantern appears, disappears and moves (per second).
+const LANTERN_SPEED: f32 = 4.0;
+
+/// A character's lantern and how visible / held out it is right now.
+#[derive(Component)]
+struct Lantern {
+    owner: Entity,
+    hands: Entity,
+    /// 0 = put away, 1 = fully visible.
+    shown: f32,
+    /// 0 = at the side, 1 = held out in front.
+    held: f32,
+    /// Seconds left to keep showing it after a flame change.
+    linger: f32,
+}
+
+/// Player's choice: keep the lantern visible all the time (off by default).
+#[derive(Resource, Default)]
+pub struct LanternSettings {
+    pub always_show: bool,
 }
 
 /// A short squash-and-wobble after being hit.
@@ -134,6 +170,7 @@ fn spawn_visuals(
 fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) {
     let cloth = toon.material(Color::srgb(0.30, 0.38, 0.70));
     let skin = toon.material(Color::srgb(1.0, 0.86, 0.74));
+    let hand_skin = skin.clone();
     let eye = toon.material(Color::srgb(0.08, 0.06, 0.12));
     let brass = toon.material(Color::srgb(0.80, 0.62, 0.25));
     let flame = toon.glowing(Color::srgb(1.0, 0.7, 0.3), FLAME_GLOW);
@@ -165,14 +202,36 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
         );
     }
 
-    // The lantern, held at the character's right side.
+    // The lantern: hidden until the flame is changed (or always shown, if
+    // the player chose that in the lantern panel).
     let lantern = commands
         .spawn((
-            Transform::from_xyz(0.48, 0.75, -0.12),
-            Visibility::default(),
+            Transform::from_translation(LANTERN_AT_SIDE).with_scale(Vec3::ZERO),
+            Visibility::Hidden,
             ChildOf(player),
         ))
         .id();
+    // Placeholder hands, shown while the lantern is held out.
+    let hands = commands
+        .spawn((Transform::default(), Visibility::Hidden, ChildOf(lantern)))
+        .id();
+    for side in [-1.0, 1.0] {
+        toon.spawn_part(
+            commands,
+            hands,
+            Sphere::new(0.075).mesh().uv(12, 8),
+            hand_skin.clone(),
+            Outline::Smooth,
+            Transform::from_xyz(0.15 * side, -0.02, 0.06),
+        );
+    }
+    commands.entity(lantern).insert(Lantern {
+        owner: player,
+        hands,
+        shown: 0.0,
+        held: 0.0,
+        linger: 0.0,
+    });
     for y in [-0.13, 0.13] {
         toon.spawn_part(
             commands,
@@ -325,6 +384,7 @@ fn react_to_events(
     mut commands: Commands,
     mut received: MessageReader<Received>,
     mut flames: Query<&mut LanternFlame>,
+    mut lanterns: Query<&mut Lantern>,
     enemies: Query<(), With<EnemyKind>>,
 ) {
     for Received(event) in received.read() {
@@ -346,6 +406,11 @@ fn react_to_events(
                 for mut flame in &mut flames {
                     if flame.owner == *user {
                         flame.flare = 2.0;
+                    }
+                }
+                for mut lantern in &mut lanterns {
+                    if lantern.owner == *user {
+                        lantern.linger = LANTERN_LINGER;
                     }
                 }
             }
@@ -412,6 +477,58 @@ fn animate_lanterns(
             material.base.emissive = flame.glow * flicker * boost;
         }
     }
+}
+
+/// The lantern appears in the character's hands while the flame changes,
+/// stays a moment after the new flame catches, then is put away.
+fn animate_lantern_holding(
+    time: Res<Time>,
+    settings: Res<LanternSettings>,
+    owners: Query<Has<FlameChange>>,
+    mut lanterns: Query<(&mut Lantern, &mut Transform, &mut Visibility)>,
+    mut hands: Query<&mut Visibility, Without<Lantern>>,
+) {
+    let dt = time.delta_secs();
+    let step = dt * LANTERN_SPEED;
+    for (mut lantern, mut transform, mut visibility) in &mut lanterns {
+        let changing = owners.get(lantern.owner).unwrap_or(false);
+        lantern.linger = (lantern.linger - dt).max(0.0);
+        let holding = changing || lantern.linger > 0.0;
+        let want_shown = holding || settings.always_show;
+        lantern.shown = approach(lantern.shown, if want_shown { 1.0 } else { 0.0 }, step);
+        lantern.held = approach(lantern.held, if holding { 1.0 } else { 0.0 }, step);
+
+        let held = smooth(lantern.held);
+        let bob = Vec3::Y * 0.03 * held * (time.elapsed_secs() * 3.0).sin();
+        transform.translation = LANTERN_AT_SIDE.lerp(LANTERN_HELD_OUT, held) + bob;
+        transform.scale =
+            Vec3::splat(smooth(lantern.shown) * (1.0 + (LANTERN_HELD_SCALE - 1.0) * held));
+        *visibility = if lantern.shown > 0.01 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if let Ok(mut hands_visibility) = hands.get_mut(lantern.hands) {
+            *hands_visibility = if lantern.held > 0.5 {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+        }
+    }
+}
+
+fn approach(value: f32, target: f32, step: f32) -> f32 {
+    if value < target {
+        (value + step).min(target)
+    } else {
+        (value - step).max(target)
+    }
+}
+
+/// Ease in and out (0 → 1).
+fn smooth(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Defeated characters lie down.

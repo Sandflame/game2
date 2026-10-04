@@ -26,8 +26,6 @@ pub struct CombatConfig {
     pub queue_window: f32,
     /// A combo continues if its next step comes within this many seconds.
     pub combo_window: f32,
-    /// Damage/healing per point of potency at normal power.
-    pub potency_scale: f32,
     /// Chance (0–1) that a hit or heal is critical.
     pub crit_chance: f32,
     /// Critical hits and heals are multiplied by this.
@@ -54,7 +52,6 @@ impl Validate for CombatConfig {
         p.non_negative("cast_lock", self.cast_lock);
         p.non_negative("queue_window", self.queue_window);
         p.non_negative("combo_window", self.combo_window);
-        p.positive("potency_scale", self.potency_scale);
         if !(0.0..=1.0).contains(&self.crit_chance) {
             p.push(format!(
                 "`crit_chance` must be between 0 and 1 (got {})",
@@ -391,7 +388,6 @@ pub fn test_config() -> CombatConfig {
         cast_lock: 0.1,
         queue_window: 0.5,
         combo_window: 15.0,
-        potency_scale: 1.0,
         crit_chance: 0.0,
         crit_multiplier: 1.5,
         tick_interval: 3.0,
@@ -586,7 +582,7 @@ mod tests {
         let mut second = ability("second", true, 0.0, 0.0);
         second.combo = Some(Combo {
             after: "strike".into(),
-            potency: 300,
+            amount: 300,
         });
         assert!(!s.combo_ready(&second, 0.0, &config()));
         s.begin(&strike(), None, 0.0, &config());
