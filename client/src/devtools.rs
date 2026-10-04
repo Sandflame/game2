@@ -19,6 +19,7 @@ use shared::protocol::{ClientRequest, Link};
 use crate::camera::FollowCamera;
 use crate::characters::{LocalPlayer, ScriptedMove};
 use crate::hud::lantern::LanternPanel;
+use crate::hud::options::OptionsMenu;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
 
@@ -35,6 +36,7 @@ const PLAIN_SHOT_AT: f32 = 2.0;
 #[derive(Clone, Copy)]
 enum Step {
     OpenLantern,
+    OpenOptions,
     CloseLantern,
     ChangeClass(&'static str),
     /// Target the nearest enemy of this kind and turn the camera to it.
@@ -87,6 +89,8 @@ const CLASSES_DEMO: &[(f32, Step)] = &[
     (4.8, Step::Press(3)), // Ember Shield
     (5.6, Step::Press(0)), // Firebolt (1.5 s cast)
     (7.4, Step::Shot),     // lantern put away; fight in progress
+    (7.6, Step::OpenOptions),
+    (8.0, Step::Shot), // the options menu
 ];
 
 pub struct DevToolsPlugin;
@@ -151,6 +155,7 @@ fn run_script(
     me: Res<LocalPlayerId>,
     mut target: ResMut<CurrentTarget>,
     mut lantern: ResMut<LanternPanel>,
+    mut options: ResMut<OptionsMenu>,
     player: Option<Single<&Motion, With<LocalPlayer>>>,
     enemies: Query<(Entity, &Motion, &EnemyKind)>,
     mut camera: Single<&mut FollowCamera>,
@@ -167,6 +172,7 @@ fn run_script(
     for step in due {
         match step {
             Step::OpenLantern => lantern.open = true,
+            Step::OpenOptions => options.open = true,
             Step::CloseLantern => lantern.open = false,
             Step::ChangeClass(class) => send(
                 &mut link,

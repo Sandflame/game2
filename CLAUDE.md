@@ -118,7 +118,8 @@ extra beyond the Rust toolchain.
   flame changes; `LanternSettings::always_show`), flame colours.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
 - `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
-  status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L).
+  status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L),
+  options menu (O, or Esc with nothing targeted: volume slider, mute, quit).
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
   material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change, portals,
@@ -131,7 +132,10 @@ extra beyond the Rust toolchain.
   (shape, particles, sound); checks every look/particle/sound reference.
 - `client/src/particles.rs` — hanabi effects built from `particles.ron`, warmed up at
   start; bursts clean themselves up.
-- `client/src/audio.rs` — `Sounds` SystemParam, event sounds, M to mute.
+- `client/src/audio.rs` — `Sounds` SystemParam, event sounds, `SoundVolume` (0–100,
+  squared for loudness), M to mute.
+- `client/src/settings.rs` — the player's settings file (volume, mute, lantern):
+  `%APPDATA%\Lanternflame\settings.ron` or `~/.config/lanternflame/settings.ron`.
 - `client/src/animation.rs` — hit flashes, `BossRig` (sway, wind-up, slam, sink), `Hop`.
 - `client/src/hud/banner.rs` — big banners (boss speech, victory, wipes) + portal prompt.
 - `client/src/camera.rs` — FFXIV-style follow camera; stays inside zones with a

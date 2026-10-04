@@ -34,10 +34,15 @@ impl Plugin for TargetingPlugin {
                     click_target,
                     place_target_ring,
                 )
-                    .chain(),
+                    .chain()
+                    .in_set(TargetingInput),
             );
     }
 }
+
+/// The targeting systems (other key handlers can run before them).
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TargetingInput;
 
 /// The character this player has selected, if any.
 #[derive(Resource, Default, Debug)]

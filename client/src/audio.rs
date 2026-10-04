@@ -89,6 +89,25 @@ struct SoundHandles(HashMap<String, Handle<AudioSource>>);
 #[derive(Resource, Default)]
 pub struct Muted(pub bool);
 
+/// Player's sound volume, 0–100 (options menu).
+#[derive(Resource)]
+pub struct SoundVolume(pub u8);
+
+impl Default for SoundVolume {
+    fn default() -> Self {
+        Self(crate::settings::DEFAULT_VOLUME)
+    }
+}
+
+impl SoundVolume {
+    /// The slider feels even when the loudness follows its square (our
+    /// ears hear loudness roughly that way).
+    pub fn gain(&self) -> f32 {
+        let fraction = f32::from(self.0.min(100)) / 100.0;
+        fraction * fraction
+    }
+}
+
 /// Everything needed to play a sound from any system.
 #[derive(SystemParam)]
 pub struct Sounds<'w, 's> {
@@ -96,19 +115,20 @@ pub struct Sounds<'w, 's> {
     library: Res<'w, SoundLibrary>,
     handles: Res<'w, SoundHandles>,
     muted: Res<'w, Muted>,
+    volume: Res<'w, SoundVolume>,
 }
 
 impl Sounds<'_, '_> {
     /// Play a sound by its name in `sounds.ron`.
     pub fn play(&mut self, name: &str) {
-        if self.muted.0 {
+        if self.muted.0 || self.volume.0 == 0 {
             return;
         }
         let (Some(def), Some(handle)) = (self.library.sounds.get(name), self.handles.0.get(name))
         else {
             return;
         };
-        let volume = def.volume * self.library.master_volume;
+        let volume = def.volume * self.library.master_volume * self.volume.gain();
         self.commands.spawn((
             AudioPlayer::new(handle.clone()),
             PlaybackSettings::DESPAWN.with_volume(Volume::Linear(volume)),
@@ -129,6 +149,7 @@ impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SoundHandles>()
             .init_resource::<Muted>()
+            .init_resource::<SoundVolume>()
             .add_systems(Startup, load_sounds)
             .add_systems(Update, (toggle_mute, sounds_for_events));
     }

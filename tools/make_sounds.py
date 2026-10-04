@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Make Lanternflame's placeholder sound effects (assets/sounds/*.wav).
 
-The sounds are generated from simple waves and noise, so they are ours to
-use freely. Run from the project folder:  python3 tools/make_sounds.py
-Replace any file with a real recording of the same name whenever you like.
+These are built from soft waves and filtered noise, so they are ours to use
+freely. They are deliberately quiet and gentle: placeholders until real
+recordings replace them. Run from the project folder:
+
+    python3 tools/make_sounds.py
+
+To use better sounds, put a file with the same name in assets/sounds/ (or
+point `sounds.ron` at a new file). Free CC0 packs such as Kenney's
+"RPG Audio", "Impact Sounds" and "Interface Sounds" (kenney.nl) work well.
 """
 import math
 import random
@@ -13,65 +19,108 @@ from pathlib import Path
 
 RATE = 22050
 OUT = Path(__file__).resolve().parent.parent / "assets" / "sounds"
-random.seed(7)
+random.seed(11)
+TAU = 2 * math.pi
 
 
-def silence(seconds):
-    return [0.0] * int(RATE * seconds)
+def n(seconds):
+    return int(RATE * seconds)
 
 
-def tone(freq, seconds, start=0.0, decay=6.0, shape="sine", glide=None, attack=0.005):
-    """A note. `freq` may glide to `glide` Hz over its length."""
-    n = int(RATE * seconds)
+# --- building blocks -------------------------------------------------------
+
+def envelope(length, attack, decay):
+    """Soft rise over `attack` seconds, then an exponential fade."""
     out = []
-    phase = 0.0
-    for i in range(n):
+    for i in range(length):
         t = i / RATE
-        f = freq if glide is None else freq + (glide - freq) * (i / n)
-        phase += 2 * math.pi * f / RATE
-        if shape == "sine":
-            v = math.sin(phase)
-        elif shape == "square":
-            v = 0.6 if math.sin(phase) >= 0 else -0.6
-        else:  # soft saw
-            v = ((phase / math.pi) % 2.0) - 1.0
-            v *= 0.6
-        env = min(1.0, t / attack) * math.exp(-decay * t)
-        out.append(v * env)
+        rise = min(1.0, t / attack) if attack > 0 else 1.0
+        rise = rise * rise * (3 - 2 * rise)  # ease in
+        out.append(rise * math.exp(-decay * t))
     return out
 
 
-def noise(seconds, decay=8.0, smooth=0.0, sweep=None, attack=0.003):
-    """Noise; `smooth` (0-0.99) makes it duller, `sweep` = (start, end) smoothness."""
-    n = int(RATE * seconds)
-    out = []
-    last = 0.0
-    for i in range(n):
-        t = i / RATE
-        s = smooth if sweep is None else sweep[0] + (sweep[1] - sweep[0]) * (i / n)
-        last = last * s + random.uniform(-1, 1) * (1 - s)
-        env = min(1.0, t / attack) * math.exp(-decay * t)
-        out.append(last * env * (1.0 + 2.0 * s))
+def sine(freq, seconds, attack=0.01, decay=4.0, glide=None, vibrato=0.0):
+    length = n(seconds)
+    env = envelope(length, attack, decay)
+    out, phase = [], 0.0
+    for i in range(length):
+        f = freq if glide is None else freq * (glide / freq) ** (i / length)
+        f *= 1.0 + vibrato * math.sin(TAU * 5.0 * i / RATE)
+        phase += TAU * f / RATE
+        out.append(math.sin(phase) * env[i])
     return out
+
+
+def bell(freq, seconds, decay=3.0):
+    """A soft chime: a few gently detuned partials."""
+    return mix(
+        (0, sine(freq, seconds, 0.004, decay), 1.0),
+        (0, sine(freq * 2.0, seconds, 0.004, decay * 1.6), 0.35),
+        (0, sine(freq * 3.01, seconds, 0.004, decay * 2.5), 0.12),
+        (0, sine(freq * 1.003, seconds, 0.004, decay), 0.5),
+    )
+
+
+def noise(seconds):
+    return [random.uniform(-1, 1) for _ in range(n(seconds))]
+
+
+def band(samples, low, high):
+    """Band-pass filter; `low`/`high` may be (start, end) pairs to sweep."""
+    out = []
+    lp = hp_in = hp_out = 0.0
+    count = len(samples)
+    for i, x in enumerate(samples):
+        k = i / max(1, count - 1)
+        lo = low[0] + (low[1] - low[0]) * k if isinstance(low, tuple) else low
+        hi = high[0] + (high[1] - high[0]) * k if isinstance(high, tuple) else high
+        a = 1 - math.exp(-TAU * hi / RATE)
+        lp += a * (x - lp)
+        b = math.exp(-TAU * lo / RATE)
+        hp_out = b * (hp_out + lp - hp_in)
+        hp_in = lp
+        out.append(hp_out)
+    return out
+
+
+def shaped(samples, attack, decay):
+    env = envelope(len(samples), attack, decay)
+    return [s * e for s, e in zip(samples, env)]
 
 
 def mix(*parts):
-    """Mix (offset_seconds, samples, volume) parts together."""
-    length = max(int(o * RATE) + len(p) for o, p, _ in parts)
+    """Mix (offset seconds, samples, volume) parts."""
+    length = max(n(o) + len(p) for o, p, _ in parts)
     out = [0.0] * length
     for offset, samples, volume in parts:
-        start = int(offset * RATE)
+        start = n(offset)
         for i, v in enumerate(samples):
             out[start + i] += v * volume
     return out
 
 
-def save(name, samples):
+def reverb(samples, amount=0.25, tail=0.6):
+    """A small room: a few feedback echoes, softened."""
+    out = samples + [0.0] * n(tail)
+    for delay, gain in ((0.031, 0.5), (0.047, 0.45), (0.071, 0.4), (0.097, 0.35)):
+        d = n(delay)
+        line = [0.0] * len(out)
+        for i in range(len(out)):
+            prev = line[i - d] if i >= d else 0.0
+            src = out[i] if i < len(samples) else 0.0
+            line[i] = src + prev * gain
+        for i in range(len(out)):
+            out[i] += line[i] * amount * 0.25
+    return out
+
+
+def save(name, samples, loudness=0.5):
+    """Normalise to a modest level (never full scale) and write."""
     peak = max(1e-6, max(abs(v) for v in samples))
-    scale = 0.85 / peak
-    # Short fade-out so nothing clicks.
-    fade = int(RATE * 0.01)
-    for i in range(min(fade, len(samples))):
+    scale = loudness / peak
+    fade = min(len(samples), n(0.02))
+    for i in range(fade):
         samples[-1 - i] *= i / fade
     with wave.open(str(OUT / f"{name}.wav"), "wb") as w:
         w.setnchannels(1)
@@ -80,47 +129,57 @@ def save(name, samples):
         w.writeframes(b"".join(struct.pack("<h", int(v * scale * 32767)) for v in samples))
 
 
-def notes(freqs, gap, length, decay=5.0, shape="sine"):
-    return mix(*[(i * gap, tone(f, length, decay=decay, shape=shape), 1.0) for i, f in enumerate(freqs)])
+def whoosh(seconds, low, high, attack=0.05, decay=6.0):
+    return shaped(band(noise(seconds), low, high), attack, decay)
+
+
+def thud(freq=90, seconds=0.25, decay=14.0):
+    return mix(
+        (0, sine(freq, seconds, 0.003, decay, glide=freq * 0.55), 1.0),
+        (0, shaped(band(noise(seconds), 60, 400), 0.002, decay * 1.5), 0.5),
+    )
 
 
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Weapon hits.
-save("slash", noise(0.16, decay=18, sweep=(0.2, 0.8)))
-save("slash_heavy", mix((0, noise(0.28, decay=10, sweep=(0.3, 0.9)), 1.0), (0, tone(120, 0.25, decay=12), 0.6)))
-save("whoosh", noise(0.4, decay=5, sweep=(0.95, 0.5), attack=0.12))
-save("slam", mix((0, tone(90, 0.45, decay=7, glide=40), 1.0), (0, noise(0.3, decay=12, smooth=0.9), 0.8)))
-save("bash", mix((0, tone(170, 0.15, decay=25, glide=110), 1.0), (0, noise(0.1, decay=30, smooth=0.6), 0.5)))
+# Weapons: airy swishes, not clicks.
+save("slash", whoosh(0.22, (900, 500), (5000, 2500), 0.02, 14), 0.35)
+save("slash_heavy", mix((0, whoosh(0.32, (600, 300), (3500, 1500), 0.03, 9), 1.0), (0.08, thud(80, 0.3), 0.6)), 0.45)
+save("whoosh", whoosh(0.45, (300, 900), (1500, 3500), 0.12, 6), 0.35)
+save("bash", thud(110, 0.22, 16), 0.45)
+save("slam", reverb(mix((0, thud(70, 0.6, 6), 1.0), (0, whoosh(0.5, 40, 300, 0.005, 6), 0.7)), 0.3), 0.55)
 # Magic.
-save("fire", mix((0, noise(0.32, decay=9, smooth=0.5), 0.8), (0, tone(70, 0.3, decay=10), 0.5)))
-save("fire_big", mix((0, noise(0.65, decay=5, smooth=0.75), 1.0), (0, tone(55, 0.6, decay=5, glide=35), 0.7)))
-save("holy", mix((0, tone(880, 0.5, decay=7), 0.6), (0, tone(1320, 0.5, decay=9), 0.4), (0, tone(1760, 0.3, decay=14), 0.2)))
-save("heal", notes([660, 990], 0.09, 0.5, decay=6))
-save("buff", notes([523, 659, 784], 0.06, 0.3, decay=10))
-save("taunt", mix((0, tone(110, 0.32, decay=7, shape="saw"), 1.0), (0, tone(113, 0.32, decay=7, shape="saw"), 0.8)))
-save("boom", mix((0, noise(0.75, decay=5, smooth=0.95), 1.0), (0, tone(60, 0.7, decay=5, glide=30), 0.9)))
+fire = mix((0, whoosh(0.5, (200, 500), (1200, 2500), 0.04, 5), 1.0),
+           *[(random.uniform(0.02, 0.35), shaped(band(noise(0.02), 2000, 6000), 0.001, 120), 0.25) for _ in range(9)])
+save("fire", fire, 0.35)
+save("fire_big", reverb(mix((0, whoosh(0.8, (120, 400), (900, 2200), 0.06, 3.5), 1.0), (0, thud(60, 0.6, 5), 0.6)), 0.25), 0.45)
+save("holy", reverb(mix((0, bell(784, 0.8, 4), 1.0), (0.05, bell(1175, 0.7, 5), 0.5)), 0.35, 0.8), 0.3)
+save("heal", reverb(mix((0, bell(523, 0.9, 3.5), 0.8), (0.09, bell(659, 0.9, 3.5), 0.7), (0.18, bell(784, 0.9, 3.5), 0.6)), 0.4, 0.9), 0.3)
+save("buff", reverb(mix((0, sine(392, 0.5, 0.06, 5, glide=523), 1.0), (0, sine(587, 0.5, 0.06, 6, glide=784), 0.4)), 0.3), 0.25)
+save("taunt", mix((0, sine(110, 0.5, 0.03, 5, vibrato=0.015), 1.0), (0, sine(165, 0.5, 0.03, 6, vibrato=0.015), 0.4), (0, thud(90, 0.2), 0.5)), 0.4)
+save("boom", reverb(mix((0, thud(55, 0.9, 4.5), 1.0), (0, whoosh(0.8, 30, 250, 0.01, 4.5), 0.9)), 0.3, 0.8), 0.55)
 # Being hit.
-save("hit", mix((0, tone(140, 0.12, decay=30, glide=80), 1.0), (0, noise(0.08, decay=40, smooth=0.7), 0.6)))
-save("tick", noise(0.05, decay=60, smooth=0.5))
-save("crit", mix((0, noise(0.2, decay=16, smooth=0.1), 0.6), (0, tone(1200, 0.2, decay=14), 0.4), (0, tone(150, 0.15, decay=25), 0.8)))
+save("hit", thud(130, 0.18, 22), 0.4)
+save("tick", shaped(band(noise(0.04), 300, 1500), 0.002, 80), 0.15)
+save("crit", mix((0, thud(120, 0.25, 15), 1.0), (0, bell(1568, 0.3, 12), 0.3)), 0.45)
 # Interface.
-save("blip", mix((0, tone(330, 0.06, decay=10, shape="square"), 1.0), (0.08, tone(262, 0.08, decay=10, shape="square"), 1.0)))
+save("blip", mix((0, sine(660, 0.12, 0.005, 25), 1.0), (0.07, sine(523, 0.14, 0.005, 25), 0.8)), 0.15)
 # Lantern flame.
-shimmer = [v * (0.6 + 0.4 * math.sin(i / RATE * 2 * math.pi * 9)) for i, v in enumerate(tone(400, 1.4, decay=1.0, glide=1100, attack=0.3))]
-save("flame_change", shimmer)
-save("flame_caught", mix((0, noise(0.4, decay=8, smooth=0.8), 0.8), (0.05, tone(784, 0.6, decay=5), 0.5), (0.05, tone(1175, 0.6, decay=6), 0.3)))
+shimmer = mix(*[(i * 0.12, bell(f, 0.6, 5), 0.6) for i, f in enumerate([523, 659, 784, 988, 1175])],
+              (0, whoosh(1.2, (200, 600), (800, 2000), 0.5, 2.5), 0.5))
+save("flame_change", reverb(shimmer, 0.35, 0.8), 0.25)
+save("flame_caught", reverb(mix((0, whoosh(0.5, (150, 400), (900, 2000), 0.02, 6), 1.0), (0.04, bell(784, 0.8, 4), 0.6)), 0.3), 0.35)
 # Falling, rising, travelling.
-save("defeated", notes([392, 330, 262], 0.16, 0.5, decay=4))
-save("revived", notes([262, 330, 392, 523], 0.1, 0.5, decay=4))
-save("portal", mix((0, noise(0.6, decay=4, sweep=(0.9, 0.4), attack=0.15), 0.8), (0, tone(300, 0.6, decay=3, glide=700, attack=0.1), 0.4)))
+save("defeated", reverb(mix((0, sine(392, 0.7, 0.02, 3), 1.0), (0.22, sine(330, 0.7, 0.02, 3), 0.9), (0.44, sine(262, 1.0, 0.02, 2.5), 0.9)), 0.35, 0.9), 0.35)
+save("revived", reverb(mix(*[(i * 0.12, bell(f, 0.9, 3.5), 0.8) for i, f in enumerate([392, 523, 659, 784])]), 0.4, 0.9), 0.3)
+save("portal", reverb(mix((0, whoosh(0.9, (200, 800), (1000, 3000), 0.25, 3), 1.0), (0, sine(330, 0.9, 0.2, 3, glide=660), 0.25)), 0.35), 0.35)
 # The fight.
-save("pull", mix((0, tone(70, 0.6, decay=5), 1.0), (0, noise(0.2, decay=15, smooth=0.9), 0.8), (0.15, tone(147, 0.7, decay=3, shape="saw"), 0.4)))
-save("victory", mix(
-    (0.0, notes([523, 659, 784], 0.12, 0.4, decay=5), 0.8),
-    (0.42, tone(1047, 1.1, decay=2.5), 0.6),
-    (0.42, tone(784, 1.1, decay=2.5), 0.4),
-    (0.42, tone(659, 1.1, decay=2.5), 0.4),
-))
-save("wipe", notes([330, 311, 262, 196], 0.25, 0.7, decay=3, shape="saw"))
+save("pull", reverb(mix((0, thud(65, 0.8, 4), 1.0), (0.1, sine(98, 1.0, 0.15, 2.5, vibrato=0.01), 0.5), (0.1, sine(147, 1.0, 0.15, 3, vibrato=0.01), 0.3)), 0.3, 0.9), 0.45)
+save("victory", reverb(mix(
+    (0.00, bell(523, 1.2, 2.5), 0.8),
+    (0.15, bell(659, 1.2, 2.5), 0.8),
+    (0.30, bell(784, 1.4, 2.0), 0.8),
+    (0.50, bell(1047, 1.8, 1.6), 0.9),
+), 0.4, 1.2), 0.4)
+save("wipe", reverb(mix((0, sine(262, 1.0, 0.05, 2.5), 1.0), (0.35, sine(233, 1.0, 0.05, 2.5), 0.9), (0.7, sine(196, 1.4, 0.05, 2.0), 0.9)), 0.35, 1.0), 0.35)
 print("made", len(list(OUT.glob("*.wav"))), "sounds in", OUT)

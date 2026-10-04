@@ -2038,6 +2038,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "bevy_hanabi",
+ "ron",
  "serde",
  "server",
  "shared",

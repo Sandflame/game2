@@ -6,6 +6,7 @@ mod floating;
 mod frames;
 mod hotbar;
 pub mod lantern;
+pub mod options;
 
 use bevy::prelude::*;
 
@@ -20,6 +21,7 @@ impl Plugin for HudPlugin {
                 frames::FramesPlugin,
                 floating::FloatingPlugin,
                 lantern::LanternPlugin,
+                options::OptionsPlugin,
                 banner::BannerPlugin,
             ));
     }
@@ -116,6 +118,7 @@ fn spawn_help(mut commands: Commands) {
         "1-0 or click hotbar: abilities",
         "L: lantern (change class)",
         "E: use a portal   M: mute sound",
+        "O (or Esc): options, sound volume",
     ];
     commands
         .spawn((

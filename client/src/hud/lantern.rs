@@ -151,7 +151,7 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
         });
 }
 
-fn toggle_panel(keys: Res<ButtonInput<KeyCode>>, mut panel: ResMut<LanternPanel>) {
+pub(super) fn toggle_panel(keys: Res<ButtonInput<KeyCode>>, mut panel: ResMut<LanternPanel>) {
     if keys.just_pressed(KeyCode::KeyL) {
         panel.open = !panel.open;
     }

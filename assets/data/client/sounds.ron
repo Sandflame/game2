@@ -1,10 +1,11 @@
 // Sound effects (client only). Files live in `assets/sounds/`; the current
-// ones are simple placeholders made by `tools/make_sounds.py`. Replace any
-// file with a better one of the same name (.wav or change the extension
-// here to .ogg).
-//   volume: 0.0 - 1.0 (multiplied by master_volume)
+// ones are soft placeholders made by `tools/make_sounds.py`. To use better
+// sounds (for example the free CC0 packs from kenney.nl), copy them into
+// `assets/sounds/` and change `file` below (.wav and .ogg both work).
+//   volume: 0.0 - 1.0, multiplied by master_volume and by the player's
+//           volume slider (Options, O or Esc)
 (
-    master_volume: 0.6,
+    master_volume: 0.7,
     sounds: {
         "slash":        (file: "sounds/slash.wav", volume: 0.5),
         "slash_heavy":  (file: "sounds/slash_heavy.wav", volume: 0.6),
@@ -34,9 +35,9 @@
     // Which sound plays when something happens. Remove a line for silence.
     events: {
         "hit_taken":    "hit",     // you are hit
-        "hit_dealt":    "tick",    // your attack hits (the ability's own sound plays too)
+        // "hit_dealt": "tick",     // your attack hits (off: the ability's own sound plays)
         "crit":         "crit",    // a critical hit, by you or on you
-        "rejected":     "blip",    // "Not ready yet", "Out of range"...
+        // "rejected":  "blip",     // "Not ready yet", "Out of range"... (off: too frequent)
         "flame_change": "flame_change",
         "flame_caught": "flame_caught",
         "defeated":     "defeated",

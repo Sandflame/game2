@@ -12,6 +12,7 @@ bevy = { workspace = true, features = ["3d", "ui", "audio", "wav", "tonemapping_
 bevy_hanabi.workspace = true
 anyhow.workspace = true
 serde.workspace = true
+ron.workspace = true
 
 [lints]
 workspace = true

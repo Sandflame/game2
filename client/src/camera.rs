@@ -14,6 +14,7 @@ use bevy::window::{CursorGrabMode, CursorOptions};
 use shared::gamedata::Zones;
 
 use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
+use crate::hud::options::OptionsMenu;
 use crate::world::CurrentZone;
 
 /// Radians of turn per pixel of mouse movement.
@@ -106,8 +107,13 @@ fn orbit_camera(
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
+    menu: Res<OptionsMenu>,
     mut camera: Single<&mut FollowCamera>,
 ) {
+    // The mouse works the options menu while it is open.
+    if menu.open {
+        return;
+    }
     if mouse.pressed(MouseButton::Left) || mouse.pressed(MouseButton::Right) {
         camera.yaw -= motion.delta.x * MOUSE_SENSITIVITY;
         camera.pitch =

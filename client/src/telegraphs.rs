@@ -110,7 +110,7 @@ struct KnownMarkers(HashMap<Entity, (Telegraph, String)>);
 /// Just above the ground so it doesn't flicker against it.
 const MARKER_HEIGHT: f32 = 0.04;
 /// Width of the bright rim, in metres.
-const RIM_WIDTH: f32 = 0.18;
+const RIM_WIDTH: f32 = 0.1;
 /// Extra quad around the shape so its soft edge isn't cut off.
 const MARGIN: f32 = 0.2;
 /// Seconds to fade in.
@@ -154,6 +154,17 @@ fn shape_numbers(shape: MarkerShape) -> Vec4 {
             Vec4::new(2.0, radius, angle.to_radians() / 2.0, 0.0)
         }
         MarkerShape::Line { length, width } => Vec4::new(3.0, length, width, 0.0),
+    }
+}
+
+/// The moving pattern inside a marker that hints what to do:
+/// 0 none, 1 chevrons pointing the way it strikes (cones, lines),
+/// 2 rings drawing inwards (stack together; the safe middle of a donut).
+fn pattern(shape: MarkerShape, placement: Placement) -> f32 {
+    match (shape, placement) {
+        (_, Placement::StackOnTarget) | (MarkerShape::Donut { .. }, _) => 2.0,
+        (MarkerShape::Cone { .. } | MarkerShape::Line { .. }, _) => 1.0,
+        _ => 0.0,
     }
 }
 
@@ -204,7 +215,7 @@ fn dress_new_markers(
             settings: MarkerSettings {
                 color: marker_color(marker.placement),
                 shape: shape_numbers(marker.shape),
-                state: Vec4::new(0.0, RIM_WIDTH, 0.0, 0.0),
+                state: Vec4::new(0.0, RIM_WIDTH, 0.0, pattern(marker.shape, marker.placement)),
             },
         });
         commands.entity(entity).insert((

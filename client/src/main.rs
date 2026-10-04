@@ -12,6 +12,7 @@ mod devtools;
 mod hud;
 mod particles;
 mod session;
+mod settings;
 mod targeting;
 mod telegraphs;
 mod toon;
@@ -86,6 +87,7 @@ fn main() -> AppExit {
             particles::ParticlesPlugin,
             animation::AnimationPlugin,
             audio::SoundPlugin,
+            settings::SettingsPlugin,
             hud::HudPlugin,
             devtools::DevToolsPlugin,
         ))
