@@ -10,13 +10,26 @@
     power: 100,
     threat_multiplier: 1.0,
     core: ["pr_stone", "pr_mend", "pr_renew", "pr_sanctuary", "pr_smite"],
-    // Warden (barriers) and Judge (damage that heals) arrive in Milestone 10.
     specializations: [
         (
             id: "mender",
             name: "Mender",
             description: "Big, reliable heals.",
             abilities: ["pr_benediction", "pr_grace", "pr_blessing"],
+        ),
+        (
+            id: "enchanter",
+            name: "Enchanter",
+            description: "Protective barriers that stop damage before it lands.",
+            abilities: ["pr_aegis", "pr_circle_of_wards", "pr_enchanted_armour"],
+        ),
+        (
+            id: "judge",
+            name: "Judge",
+            description: "Holy damage, part of which heals whoever needs it most.",
+            // Counts towards these roles for party bonuses.
+            roles: {Sustain: 0.6, Damage: 0.4},
+            abilities: ["pr_verdict", "pr_condemn", "pr_final_judgement"],
         ),
     ],
     default_spec: "mender",
@@ -27,5 +40,6 @@
         (ability: "pr_renew", level: 5),
         (ability: "pr_grace", level: 10),
         (ability: "pr_sanctuary", level: 15),
+        (ability: "pr_aegis", level: 20),
     ],
 )

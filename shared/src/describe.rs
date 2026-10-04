@@ -89,6 +89,32 @@ impl Describer<'_> {
                 Effect::Raise { health_percent } => {
                     format!("Brings back a fallen friend with {health_percent:.0}% health.")
                 }
+                Effect::StackedDamage {
+                    amount,
+                    status,
+                    per_stack,
+                    consume,
+                } => {
+                    let name = self
+                        .data
+                        .statuses
+                        .get(status)
+                        .map_or(status.as_str(), |s| s.name.as_str());
+                    let used = if *consume { " (using them up)" } else { "" };
+                    format!(
+                        "Deals {} damage{who}, +{per_stack:.0}% for each stack of {name} on it{used}.",
+                        self.damage(*amount)
+                    )
+                }
+                Effect::HealingDamage {
+                    amount,
+                    heal_percent,
+                    radius,
+                } => format!(
+                    "Deals {} damage{who}; {heal_percent:.0}% of it heals the most hurt of you and allies within {radius:.0}m.",
+                    self.damage(*amount)
+                ),
+                Effect::Lunge => "Leaps to the target.".to_owned(),
             };
             lines.push(line);
         }
@@ -124,15 +150,21 @@ impl Describer<'_> {
             (m.damage_taken, "damage taken"),
             (m.healing_done, "healing done"),
             (m.healing_received, "healing received"),
+            (m.move_speed, "movement speed"),
         ] {
             if let Some(change) = percent_change(value) {
                 parts.push(format!("{change} {label}"));
             }
         }
-        if parts.is_empty() {
-            format!("lasts {:.0}s.", def.duration)
+        let stacks = if def.max_stacks > 1 {
+            format!(" Stacks up to {} times.", def.max_stacks)
         } else {
-            format!("{} for {:.0}s.", parts.join(", "), def.duration)
+            String::new()
+        };
+        if parts.is_empty() {
+            format!("lasts {:.0}s.{stacks}", def.duration)
+        } else {
+            format!("{} for {:.0}s.{stacks}", parts.join(", "), def.duration)
         }
     }
 }

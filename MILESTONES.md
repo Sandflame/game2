@@ -148,9 +148,22 @@ Earlier changes to your original list:
   N/E/S/W, people, enemies, doorways, and quest destinations in gold. Mute
   moved to Ctrl+M. Fixed: townsfolk nameplates never showed.
 
-## M10 — Remaining specializations
-- The other 10 specs, added as data (plus any new effect types).
-- Spec-switching UI.
+## M10 — Remaining specializations ✅
+- The other 9 specs (27 abilities), as data:
+  - Blademaster: Scissors (snips stack notches, Shear uses them, a lunge),
+    One-handed Sword (steady, parry, counter), Dual Blades (two full-sized
+    swords, many hits; no bleeds).
+  - Elementalist: Ice (slows, ice shields, frost nova), Storm (static
+    charges released by Thunderclap, Lightning Lance).
+  - Shield Knight: Oath (holy strikes that heal you, light healing),
+    Vanguard (more damage, Shield Charge, War Cry).
+  - Priest: Enchanter (barriers on friends, a circle of wards, armour),
+    Judge (damage that heals whoever needs it most).
+- New effect types: stacking statuses + `StackedDamage`, slows
+  (`move_speed`), `HealingDamage`, `Lunge`.
+- Spec switching in the lantern panel: free and instant out of combat, each
+  class remembers its choice (saved, migration 4). Hybrid specs count
+  partly towards other roles for party bonuses.
 
 ## M11 — Multiplayer
 - Headless server program using lightyear (UDP).

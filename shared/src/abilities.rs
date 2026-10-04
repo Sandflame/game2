@@ -74,6 +74,25 @@ pub enum Effect {
     Raise {
         health_percent: f32,
     },
+    /// Damage that grows with each stack of `status` the user has put on
+    /// the recipient: `per_stack` percent more per stack. With `consume`,
+    /// those stacks are used up.
+    StackedDamage {
+        amount: u32,
+        status: String,
+        per_stack: f32,
+        #[serde(default)]
+        consume: bool,
+    },
+    /// Damage; `heal_percent` of the damage dealt heals the most hurt of
+    /// you and your allies within `radius` metres of you.
+    HealingDamage {
+        amount: u32,
+        heal_percent: f32,
+        radius: f32,
+    },
+    /// Leap to the recipient, landing just in front of them.
+    Lunge,
 }
 
 /// An effect and who it lands on.
@@ -131,7 +150,9 @@ impl AbilityDef {
     /// Every status this ability refers to (for cross-file checks).
     pub fn statuses(&self) -> impl Iterator<Item = &str> {
         self.effects.iter().filter_map(|e| match &e.effect {
-            Effect::ApplyStatus { status } | Effect::Shield { status, .. } => Some(status.as_str()),
+            Effect::ApplyStatus { status }
+            | Effect::Shield { status, .. }
+            | Effect::StackedDamage { status, .. } => Some(status.as_str()),
             _ => None,
         })
     }
@@ -139,7 +160,9 @@ impl AbilityDef {
     /// Damage amount of the first damage effect, if any.
     pub fn damage_amount(&self) -> Option<u32> {
         self.effects.iter().find_map(|e| match e.effect {
-            Effect::Damage { amount } => Some(amount),
+            Effect::Damage { amount }
+            | Effect::StackedDamage { amount, .. }
+            | Effect::HealingDamage { amount, .. } => Some(amount),
             _ => None,
         })
     }
@@ -157,6 +180,23 @@ impl AbilityDef {
             p.push("`effects` is empty");
         }
         for (i, entry) in self.effects.iter().enumerate() {
+            match &entry.effect {
+                Effect::StackedDamage { per_stack, .. } => {
+                    p.non_negative(&format!("effects[{i}].per_stack"), *per_stack);
+                }
+                Effect::HealingDamage {
+                    heal_percent,
+                    radius,
+                    ..
+                } => {
+                    p.non_negative(&format!("effects[{i}].heal_percent"), *heal_percent);
+                    p.positive(&format!("effects[{i}].radius"), *radius);
+                }
+                Effect::Lunge if self.target != TargetKind::Enemy => {
+                    p.push(format!("effects[{i}]: `Lunge` needs `target: Enemy`"));
+                }
+                _ => {}
+            }
             if let Recipients::EnemiesAround { radius, .. }
             | Recipients::AlliesAround { radius, .. } = entry.to
             {

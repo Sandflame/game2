@@ -61,6 +61,13 @@ pub const MIGRATIONS: &[&str] = &[
         done INTEGER NOT NULL,
         PRIMARY KEY (character_id, quest)
     );",
+    // 4: each class's chosen specialization.
+    "CREATE TABLE class_specs (
+        character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+        class TEXT NOT NULL,
+        spec TEXT NOT NULL,
+        PRIMARY KEY (character_id, class)
+    );",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -104,6 +111,8 @@ pub struct CharacterSave {
     /// (main class, its secondary choice).
     pub secondaries: Vec<(String, SecondaryChoice)>,
     pub quests: Vec<SavedQuest>,
+    /// (class, its chosen specialization).
+    pub specs: Vec<(String, String)>,
 }
 
 /// A quest being done (its step and enemies counted) or finished.
@@ -224,6 +233,16 @@ pub fn save_character(conn: &mut Connection, save: &CharacterSave) -> rusqlite::
         "DELETE FROM secondary_choices WHERE character_id = ?1",
         params![id],
     )?;
+    tx.execute(
+        "DELETE FROM class_specs WHERE character_id = ?1",
+        params![id],
+    )?;
+    for (class, spec) in &save.specs {
+        tx.execute(
+            "INSERT INTO class_specs (character_id, class, spec) VALUES (?1, ?2, ?3)",
+            params![id, class, spec],
+        )?;
+    }
     tx.execute("DELETE FROM quests WHERE character_id = ?1", params![id])?;
     for quest in &save.quests {
         tx.execute(
@@ -280,6 +299,7 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                         items: Vec::new(),
                         secondaries: Vec::new(),
                         quests: Vec::new(),
+                        specs: Vec::new(),
                     },
                 ))
             },
@@ -339,6 +359,11 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                 done: row.get(3)?,
             })
         })?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut specs =
+        conn.prepare("SELECT class, spec FROM class_specs WHERE character_id = ?1 ORDER BY class")?;
+    save.specs = specs
+        .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
     Ok(Some(save))
 }
@@ -492,6 +517,7 @@ mod tests {
                     done: true,
                 },
             ],
+            specs: vec![("priest".into(), "judge".into())],
         }
     }
 

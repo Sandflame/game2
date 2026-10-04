@@ -98,6 +98,8 @@ pub enum Reject {
     SameClass,
     NotAtBoard,
     NoSuchPlace,
+    UnknownSpec,
+    AlreadyThatSpec,
 }
 
 impl Reject {
@@ -126,6 +128,8 @@ impl Reject {
             Reject::SameClass => "Your secondary flame must differ from your main one.",
             Reject::NotAtBoard => "You need to be at a dungeon board.",
             Reject::NoSuchPlace => "There's no such place.",
+            Reject::UnknownSpec => "Your class has no such specialization.",
+            Reject::AlreadyThatSpec => "That specialization is already chosen.",
         }
     }
 }

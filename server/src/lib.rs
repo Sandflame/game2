@@ -77,6 +77,7 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<progression::PendingGear>()
             .init_resource::<progression::LastAutosave>()
             .init_resource::<Instances>()
+            .init_resource::<classes::PendingSpecs>()
             .init_resource::<quests::PendingDeeds>()
             .configure_sets(
                 FixedUpdate,
@@ -97,6 +98,7 @@ impl Plugin for AuthorityPlugin {
                         requests::finish_joins,
                         requests::handle_interactions,
                         progression::handle_gear,
+                        classes::handle_spec_changes,
                     )
                         .chain()
                         .in_set(AuthoritySystems::Receive),
@@ -117,6 +119,7 @@ impl Plugin for AuthorityPlugin {
                         effects::spawn_telegraphs,
                         effects::follow_telegraphs,
                         effects::resolve_effects,
+                        effects::apply_lunges,
                         effects::tick_statuses,
                         characters::handle_defeats,
                     )

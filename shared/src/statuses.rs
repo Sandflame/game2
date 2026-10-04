@@ -27,6 +27,8 @@ pub struct Modifiers {
     pub damage_taken: f32,
     pub healing_done: f32,
     pub healing_received: f32,
+    /// Movement speed (0.7 = slowed by 30%).
+    pub move_speed: f32,
 }
 
 impl Default for Modifiers {
@@ -36,6 +38,7 @@ impl Default for Modifiers {
             damage_taken: 1.0,
             healing_done: 1.0,
             healing_received: 1.0,
+            move_speed: 1.0,
         }
     }
 }
@@ -48,6 +51,19 @@ impl Modifiers {
             damage_taken: self.damage_taken * other.damage_taken,
             healing_done: self.healing_done * other.healing_done,
             healing_received: self.healing_received * other.healing_received,
+            move_speed: self.move_speed * other.move_speed,
+        }
+    }
+
+    /// These modifiers applied `times` times over (for stacking statuses).
+    pub fn repeated(self, times: u32) -> Modifiers {
+        let n = times as i32;
+        Modifiers {
+            damage_dealt: self.damage_dealt.powi(n),
+            damage_taken: self.damage_taken.powi(n),
+            healing_done: self.healing_done.powi(n),
+            healing_received: self.healing_received.powi(n),
+            move_speed: self.move_speed.powi(n),
         }
     }
 }
@@ -66,9 +82,17 @@ pub struct StatusDef {
     pub tick: Option<Tick>,
     #[serde(default)]
     pub modifiers: Modifiers,
+    /// Applying it again adds a stack, up to this many (1 = it just
+    /// refreshes). Modifiers apply once per stack.
+    #[serde(default = "one_stack")]
+    pub max_stacks: u32,
     /// Visual effect name (client only).
     #[serde(default)]
     pub vfx: String,
+}
+
+fn one_stack() -> u32 {
+    1
 }
 
 impl StatusDef {
@@ -84,8 +108,12 @@ impl StatusDef {
             ("damage_taken", m.damage_taken),
             ("healing_done", m.healing_done),
             ("healing_received", m.healing_received),
+            ("move_speed", m.move_speed),
         ] {
             p.non_negative(&format!("modifiers.{name}"), value);
+        }
+        if self.max_stacks == 0 {
+            p.push("`max_stacks` must be 1 or more");
         }
         p.0.into_iter()
             .map(|m| format!("status `{}`: {m}", self.id))
@@ -124,6 +152,8 @@ pub struct ActiveStatus {
     /// Damage this status can still absorb (shields only).
     pub absorb: u32,
     pub is_shield: bool,
+    /// How many times it is stacked (1 for most statuses).
+    pub stacks: u32,
 }
 
 impl ActiveStatus {
@@ -147,22 +177,44 @@ pub struct Statuses(pub Vec<ActiveStatus>);
 impl Statuses {
     /// Add a status, or refresh it if the same source already applied it.
     pub fn apply(&mut self, status: ActiveStatus) {
+        self.apply_stacking(status, 1);
+    }
+
+    /// Add a status, or refresh it and add a stack (up to `max_stacks`) if
+    /// the same source already applied it.
+    pub fn apply_stacking(&mut self, mut status: ActiveStatus, max_stacks: u32) {
         match self
             .0
             .iter_mut()
             .find(|s| s.id == status.id && s.source == status.source)
         {
-            Some(existing) => *existing = status,
+            Some(existing) => {
+                status.stacks = (existing.stacks + 1).min(max_stacks.max(1));
+                *existing = status;
+            }
             None => self.0.push(status),
         }
+    }
+
+    /// How many stacks of a status this source has here (0 if none).
+    pub fn stacks_from(&self, id: &str, source: Entity) -> u32 {
+        self.0
+            .iter()
+            .find(|s| s.id == id && s.source == source)
+            .map_or(0, |s| s.stacks)
+    }
+
+    /// Remove a status this source applied.
+    pub fn remove_from(&mut self, id: &str, source: Entity) {
+        self.0.retain(|s| !(s.id == id && s.source == source));
     }
 
     /// Combined modifiers of every active status.
     pub fn modifiers<'a>(&self, def: impl Fn(&str) -> Option<&'a StatusDef>) -> Modifiers {
         self.0
             .iter()
-            .filter_map(|s| def(&s.id))
-            .fold(Modifiers::default(), |acc, d| acc.combine(d.modifiers))
+            .filter_map(|s| def(&s.id).map(|d| d.modifiers.repeated(s.stacks.max(1))))
+            .fold(Modifiers::default(), Modifiers::combine)
     }
 
     /// Let shields soak up damage, soonest-expiring first. Returns
@@ -248,6 +300,7 @@ mod tests {
             tick: None,
             absorb: 0,
             is_shield: false,
+            stacks: 1,
         }
     }
 
@@ -268,6 +321,7 @@ mod tests {
             duration: 10.0,
             tick: None,
             modifiers,
+            max_stacks: 1,
             vfx: String::new(),
         }
     }
@@ -282,6 +336,27 @@ mod tests {
         // A different caster's burn is separate.
         s.apply(active("burn", 2, 20.0));
         assert_eq!(s.0.len(), 2);
+    }
+
+    #[test]
+    fn stacks_build_up_and_multiply() {
+        let slow = def(
+            "chill",
+            Modifiers {
+                move_speed: 0.9,
+                ..Default::default()
+            },
+        );
+        let mut s = Statuses::default();
+        for _ in 0..5 {
+            s.apply_stacking(active("chill", 1, 10.0), 3);
+        }
+        assert_eq!(s.stacks_from("chill", entity(1)), 3, "capped");
+        assert_eq!(s.stacks_from("chill", entity(2)), 0);
+        let m = s.modifiers(|id| (id == "chill").then_some(&slow));
+        assert!((m.move_speed - 0.729).abs() < 1e-4, "{}", m.move_speed);
+        s.remove_from("chill", entity(1));
+        assert!(s.0.is_empty());
     }
 
     #[test]

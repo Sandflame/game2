@@ -84,6 +84,16 @@ const ABILITIES: &str = r#"[
      effects: [(effect: Damage(amount: 10))]),
     (id: "quake", name: "Quake", on_gcd: false, cast_time: 1.0, target: Myself,
      effects: [(to: EnemiesAround(centre: Me, radius: 60.0), effect: Damage(amount: 50))]),
+    (id: "snip", name: "Snip", on_gcd: true, range: 3.0, target: Enemy,
+     effects: [(effect: Damage(amount: 100)), (effect: ApplyStatus(status: "notch"))]),
+    (id: "shear", name: "Shear", on_gcd: true, range: 3.0, target: Enemy,
+     effects: [(effect: StackedDamage(amount: 100, status: "notch", per_stack: 50, consume: true))]),
+    (id: "lunge", name: "Lunge", on_gcd: false, cooldown: 10.0, range: 15.0, target: Enemy,
+     effects: [(effect: Lunge), (effect: Damage(amount: 50))]),
+    (id: "judgement", name: "Judgement", on_gcd: true, range: 25.0, target: Enemy,
+     effects: [(effect: HealingDamage(amount: 200, heal_percent: 50, radius: 30.0))]),
+    (id: "frost", name: "Frost", on_gcd: false, target: Myself,
+     effects: [(effect: ApplyStatus(status: "chilled"))]),
 ]"#;
 
 const WARDEN: &str = r#"(name: "Warden", max_health: 1000, hit_radius: 1.0, visual: "rootwarden",
@@ -151,6 +161,8 @@ const STATUSES: &str = r#"[
     (id: "steadfast", name: "Steadfast", kind: Buff, duration: 10.0,
      modifiers: (damage_taken: 0.9)),
     (id: "inner_light", name: "Inner Light", kind: Buff, duration: 10.0),
+    (id: "notch", name: "Notch", kind: Debuff, duration: 10.0, max_stacks: 3),
+    (id: "chilled", name: "Chilled", kind: Debuff, duration: 10.0, modifiers: (move_speed: 0.5)),
 ]"#;
 
 /// Synergy for the tests that want it (the others have none, so their
@@ -162,7 +174,11 @@ const FIGHTER: &str = r#"(
     name: "Fighter", flame: "crimson", role: Damage, max_health: 1000, power: 100,
     threat_multiplier: 1.0,
     core: ["strike", "bolt", "burst", "mend", "followup"],
-    specializations: [(id: "main", name: "Main", abilities: ["ignite", "guard", "barrier"])],
+    specializations: [
+        (id: "main", name: "Main", abilities: ["ignite", "guard", "barrier"]),
+        (id: "edge", name: "Edge", abilities: ["snip", "shear", "lunge"]),
+        (id: "oath", name: "Oath", abilities: ["judgement", "frost", "guard"]),
+    ],
     default_spec: "main",
 )"#;
 
@@ -2050,4 +2066,156 @@ fn quests_count_defeats_and_reward_when_finished() {
     game.run(7.0);
     game.interact_at(CAVE_DOOR);
     assert!(game.quest_log().done.contains("next"));
+}
+
+impl Game {
+    fn current_spec(&mut self) -> String {
+        let me = self.me();
+        self.app
+            .world()
+            .get::<CurrentClass>(me)
+            .unwrap()
+            .spec
+            .clone()
+    }
+
+    fn hotbar_slot(&mut self, slot: usize) -> Option<String> {
+        let me = self.me();
+        self.app.world().get::<Hotbar>(me).unwrap().0[slot].clone()
+    }
+}
+
+#[test]
+fn specializations_switch_out_of_combat_and_are_remembered() {
+    let mut game = Game::new();
+    game.send(ClientRequest::ChangeSpec {
+        spec: "edge".into(),
+    });
+    game.run(0.1);
+    assert_eq!(game.current_spec(), "edge");
+    assert_eq!(game.hotbar_slot(IGNITE).as_deref(), Some("snip"));
+    game.send(ClientRequest::ChangeSpec {
+        spec: "edge".into(),
+    });
+    game.send(ClientRequest::ChangeSpec {
+        spec: "nope".into(),
+    });
+    game.run(0.1);
+    assert_eq!(
+        game.rejections(),
+        vec![Reject::AlreadyThatSpec, Reject::UnknownSpec]
+    );
+
+    // Not in combat.
+    game.events.clear();
+    game.use_slot(STRIKE);
+    game.run(0.5);
+    game.send(ClientRequest::ChangeSpec {
+        spec: "oath".into(),
+    });
+    game.run(0.1);
+    assert_eq!(game.rejections(), vec![Reject::InCombat]);
+    assert_eq!(game.current_spec(), "edge");
+
+    // Each class remembers its own choice.
+    game.run(7.0);
+    game.send(ClientRequest::ChangeClass {
+        class: "guardian".into(),
+    });
+    game.run(2.5);
+    assert_eq!(game.current_spec(), "main");
+    game.send(ClientRequest::ChangeClass {
+        class: "fighter".into(),
+    });
+    game.run(2.5);
+    assert_eq!(game.current_spec(), "edge");
+}
+
+#[test]
+fn stacks_build_up_and_a_finisher_uses_them() {
+    let mut game = Game::new();
+    game.send(ClientRequest::ChangeSpec {
+        spec: "edge".into(),
+    });
+    game.run(0.1);
+    let dummy = game.dummy();
+    for _ in 0..4 {
+        game.use_on(IGNITE, Some(dummy));
+        game.run(1.6);
+    }
+    let me = game.me();
+    let stacks = game
+        .app
+        .world()
+        .get::<Statuses>(dummy)
+        .unwrap()
+        .stacks_from("notch", me);
+    assert_eq!(stacks, 3, "four snips, but at most three stacks");
+    game.use_on(GUARD, Some(dummy));
+    game.run(0.5);
+    assert_eq!(game.damage_from(dummy, "shear"), vec![250], "100 + 50% x 3");
+    let left = game
+        .app
+        .world()
+        .get::<Statuses>(dummy)
+        .unwrap()
+        .stacks_from("notch", me);
+    assert_eq!(left, 0, "used up");
+}
+
+#[test]
+fn lunges_land_in_front_of_the_target() {
+    let mut game = Game::with_enemies(&[("dummy", Vec3::new(0.0, 0.0, -10.0))]);
+    game.send(ClientRequest::ChangeSpec {
+        spec: "edge".into(),
+    });
+    game.run(0.1);
+    let (me, dummy) = (game.me(), game.dummy());
+    game.use_on(BARRIER, Some(dummy));
+    game.run(0.3);
+    let at = game.position(me);
+    // Dummy's edge (1 m) + our radius (0.5 m) + a small gap.
+    assert!((at.z - (-8.2)).abs() < 0.1, "{at}");
+    assert_eq!(game.damage_from(dummy, "lunge"), vec![50]);
+}
+
+#[test]
+fn damage_that_heals_mends_the_most_hurt_ally() {
+    let mut game = Game::new();
+    let friend = game.join_friend();
+    game.send(ClientRequest::ChangeSpec {
+        spec: "oath".into(),
+    });
+    game.run(0.1);
+    let me = game.me();
+    game.set_health(me, 900);
+    game.set_health(friend, 300);
+    game.events.clear();
+    let dummy = game.dummy();
+    game.use_on(IGNITE, Some(dummy));
+    game.run(0.3);
+    assert_eq!(game.damage_from(dummy, "judgement"), vec![200]);
+    assert_eq!(game.health(friend).current, 400, "half of the damage");
+    assert_eq!(game.health(me).current, 900);
+}
+
+#[test]
+fn slows_make_you_walk_slower() {
+    let mut game = Game::with_enemies(&[]);
+    let me = game.me();
+    game.walk(Vec2::new(1.0, 0.0), 1.0);
+    let normal = game.position(me).x;
+    game.send(ClientRequest::ChangeSpec {
+        spec: "oath".into(),
+    });
+    game.run(0.1);
+    game.use_on(GUARD, None);
+    game.run(0.1);
+    let before = game.position(me).x;
+    game.walk(Vec2::new(1.0, 0.0), 1.0);
+    let slowed = game.position(me).x - before;
+    assert!(
+        (slowed - normal / 2.0).abs() < 0.3,
+        "{normal} then {slowed}"
+    );
 }

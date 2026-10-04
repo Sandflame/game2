@@ -222,6 +222,23 @@ pub struct CurrentClass {
     pub spec: String,
 }
 
+/// The specialization each class last chose (classes not listed use their
+/// `default_spec`).
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChosenSpecs(pub std::collections::HashMap<String, String>);
+
+impl ChosenSpecs {
+    /// The specialization a class plays as: its chosen one if that still
+    /// exists, otherwise its default.
+    pub fn spec_of(&self, class_id: &str, class: &ClassDef) -> String {
+        self.0
+            .get(class_id)
+            .filter(|spec| class.specializations.iter().any(|s| &s.id == *spec))
+            .cloned()
+            .unwrap_or_else(|| class.default_spec.clone())
+    }
+}
+
 /// A character's fighting numbers, from their class, level and gear
 /// (see `items::character_stats`).
 #[derive(Component, Debug, Clone, Copy, PartialEq)]

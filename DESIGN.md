@@ -359,7 +359,7 @@ shown as part of gear or in other ways.
 | **Blademaster** | Damage | ★ Greatsword · Scissors · One-handed sword · Dual blades |
 | **Elementalist** | Damage | ★ Fire (damage) · Ice (shields & slows) · Storm (burst) |
 | **Shield Knight** | Durable | ★ Bulwark (defense) · Oath (holy, light healing) · Vanguard (damage) |
-| **Priest** | Sustain | ★ Mender (healing) · Warden (barriers) · Judge (damage that heals) |
+| **Priest** | Sustain | ★ Mender (healing) · Enchanter (barriers) · Judge (damage that heals) |
 
 The ★ picks are the "most classic" version of each class, so the first
 playable party covers all three role leans.
@@ -368,7 +368,9 @@ Each class defines in data: role lean, base stats, 5 core abilities,
 specializations (3 abilities each), and a short list of abilities that
 may be borrowed as a **secondary class** (2 slots). Spec abilities can
 also *modify* core abilities (e.g. Fire spec makes "Bolt" apply a burn) —
-expressed as data overrides.
+expressed as data overrides (not built yet). Specializations switch freely
+and instantly out of combat (lantern panel); each class remembers its own.
+Dual blades are two full-sized swords (no bleeds, not a rogue).
 
 ### 6.2b Lantern abilities (decided 2026-10-04)
 Every class also has two shared abilities, so no party mix (or solo
@@ -530,8 +532,8 @@ with one key; quest progress still records.
 3. **Prediction + physics** — avoided by keeping movement our own small
    shared function (§2.1).
 4. **Sliding down the root** — done as a scripted ride, not physics (§8.1).
-5. **All four specializations per class** — that's 14 specs. We build one
-   per class first and save the rest for Milestone 11 (as you planned).
+5. **All specializations per class** — 13 in total. One per class was
+   built first; the other 9 arrived in Milestone 10.
 6. **Bevy upgrades** — every 3–4 months Bevy breaks things. We pin
    versions and upgrade only between milestones.
 7. **Compile times** — Bevy is big. First build takes several minutes;

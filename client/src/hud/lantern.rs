@@ -1,9 +1,9 @@
 //! The lantern panel (L): pick which flame burns in your lantern, which
-//! sets your class. Only works out of combat; changing takes a moment and
-//! moving cancels it.
+//! sets your class (out of combat; changing takes a moment and moving
+//! cancels it), and your class's specialization (out of combat, instant).
 
 use bevy::prelude::*;
-use shared::classes::CurrentClass;
+use shared::classes::{ChosenSpecs, CurrentClass};
 use shared::gamedata::GameData;
 use shared::protocol::{ClientRequest, Link};
 
@@ -17,7 +17,17 @@ impl Plugin for LanternPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LanternPanel>()
             .add_systems(Startup, spawn_panel)
-            .add_systems(Update, (toggle_panel, choose_flame, update_panel).chain());
+            .add_systems(
+                Update,
+                (
+                    toggle_panel,
+                    choose_flame,
+                    choose_spec,
+                    update_panel,
+                    list_specs,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -38,6 +48,18 @@ pub struct SecondarySection;
 #[derive(Component)]
 struct FlameButton(String);
 
+/// Where the current class's specializations are listed.
+#[derive(Component)]
+struct SpecSection;
+
+/// A button that switches to this specialization.
+#[derive(Component)]
+struct SpecButton(String);
+
+/// The specialization line on a flame button.
+#[derive(Component)]
+struct FlameSpecLine(String);
+
 /// The "show lantern at all times" switch, and its label.
 #[derive(Component)]
 struct ShowLanternButton;
@@ -51,7 +73,7 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
             Node {
                 position_type: PositionType::Absolute,
                 width: percent(100),
-                top: percent(10),
+                top: percent(4),
                 justify_content: JustifyContent::Center,
                 ..default()
             },
@@ -132,6 +154,7 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
                                                 TextColor(palette::TEXT_DIM),
                                             ));
                                             button.spawn((
+                                                FlameSpecLine(id.clone()),
                                                 Text::new(format!(
                                                     "{spec}   Health {}   Power {:.0}%",
                                                     class.max_health, class.power
@@ -150,6 +173,15 @@ fn spawn_panel(mut commands: Commands, data: Res<GameData>) {
                                 ..default()
                             })
                             .with_children(|panel| {
+                                // Filled in by `list_specs`.
+                                panel.spawn((
+                                    SpecSection,
+                                    Node {
+                                        flex_direction: FlexDirection::Column,
+                                        row_gap: px(4),
+                                        ..default()
+                                    },
+                                ));
                                 // Filled in by `secondary.rs`.
                                 panel.spawn((
                                     SecondarySection,
@@ -227,6 +259,117 @@ fn choose_flame(
             panel.open = false;
         }
     }
+}
+
+/// Clicking a specialization switches to it (the panel stays open).
+fn choose_spec(
+    buttons: Query<(&Interaction, &SpecButton), Changed<Interaction>>,
+    me: Res<LocalPlayerId>,
+    mut link: ResMut<Link>,
+) {
+    for (interaction, button) in &buttons {
+        if *interaction == Interaction::Pressed {
+            send(
+                &mut link,
+                *me,
+                ClientRequest::ChangeSpec {
+                    spec: button.0.clone(),
+                },
+            );
+        }
+    }
+}
+
+/// List the current class's specializations (rebuilt when the class or
+/// specialization changes).
+fn list_specs(
+    mut commands: Commands,
+    data: Res<GameData>,
+    player: Option<Single<(Ref<CurrentClass>, &ChosenSpecs), With<LocalPlayer>>>,
+    section: Single<Entity, With<SpecSection>>,
+    mut buttons: Query<(&Interaction, &mut BackgroundColor), With<SpecButton>>,
+    mut spec_lines: Query<(&FlameSpecLine, &mut Text)>,
+) {
+    for (interaction, mut background) in &mut buttons {
+        background.0 = match interaction {
+            Interaction::Hovered | Interaction::Pressed => Color::srgba(1.0, 1.0, 1.0, 0.08),
+            Interaction::None => Color::srgba(0.0, 0.0, 0.0, 0.35),
+        };
+    }
+    let Some(player) = player else {
+        return;
+    };
+    let (current, chosen) = &*player;
+    if !current.is_changed() {
+        return;
+    }
+    // Each flame shows the specialization it will burn with.
+    for (line, mut text) in &mut spec_lines {
+        if let Some(class) = data.classes.get(&line.0) {
+            let spec_id = chosen.spec_of(&line.0, class);
+            let spec = class.spec(&spec_id).map_or("", |s| s.name.as_str());
+            text.0 = format!(
+                "{spec}   Health {}   Power {:.0}%",
+                class.max_health, class.power
+            );
+        }
+    }
+    let Some(class) = data.classes.get(&current.class) else {
+        return;
+    };
+    commands.entity(*section).despawn_children();
+    let (flame, _) = flame_look(&class.flame);
+    commands.entity(*section).with_children(|list| {
+        list.spawn((
+            Text::new(format!(
+                "{} specialization (out of combat, instant)",
+                class.name
+            )),
+            font(14.0),
+            TextColor(palette::TEXT),
+        ));
+        for spec in &class.specializations {
+            let chosen = spec.id == current.spec;
+            let abilities: Vec<&str> = spec
+                .abilities
+                .iter()
+                .filter_map(|a| data.abilities.get(a).map(|a| a.name.as_str()))
+                .collect();
+            list.spawn((
+                Button,
+                SpecButton(spec.id.clone()),
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::axes(px(8), px(4)),
+                    border: UiRect::all(px(if chosen { 2 } else { 1 })),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
+                BorderColor::all(if chosen { flame } else { palette::PANEL_BORDER }),
+                children![
+                    (
+                        Text::new(if chosen {
+                            format!("{}  (current)", spec.name)
+                        } else {
+                            spec.name.clone()
+                        }),
+                        font(14.0),
+                        TextColor(if chosen { flame } else { palette::TEXT }),
+                    ),
+                    (
+                        Text::new(spec.description.clone()),
+                        font(11.0),
+                        TextColor(palette::TEXT_DIM),
+                    ),
+                    (
+                        Text::new(format!("Slots 6-8: {}", abilities.join(", "))),
+                        font(11.0),
+                        TextColor(palette::TEXT_DIM),
+                    ),
+                ],
+            ));
+        }
+    });
 }
 
 fn update_panel(

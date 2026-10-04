@@ -65,4 +65,59 @@
         effects: [(effect: ApplyStatus(status: "pyre_heart"))],
         vfx: "buff_red",
     ),
+
+    // ---- Ice specialization: shields and slows ----
+    (
+        id: "el_frostbolt", name: "Frostbolt",
+        description: "A bolt of ice that chills the target, slowing it.",
+        on_gcd: true, cast_time: 1.5, range: 25.0, target: Enemy,
+        effects: [
+            (effect: Damage(amount: 240)),
+            (effect: ApplyStatus(status: "chilled")),
+        ],
+        vfx: "bolt_ice",
+    ),
+    (
+        id: "el_glacial_ward", name: "Glacial Ward",
+        description: "Wrap a friend (or yourself) in a shell of ice.",
+        on_gcd: false, cooldown: 45.0, range: 30.0, target: Ally,
+        effects: [(effect: Shield(amount: 1500, status: "glacial_ward"))],
+        vfx: "shield_ice",
+    ),
+    (
+        id: "el_frost_nova", name: "Frost Nova",
+        description: "A burst of frost around you that chills every enemy nearby.",
+        on_gcd: true, target: Myself,
+        effects: [
+            (to: EnemiesAround(centre: Me, radius: 8.0), effect: Damage(amount: 180)),
+            (to: EnemiesAround(centre: Me, radius: 8.0), effect: ApplyStatus(status: "chilled")),
+        ],
+        vfx: "burst_ice",
+    ),
+
+    // ---- Storm specialization: build static, then release it ----
+    (
+        id: "el_static_spark", name: "Static Spark",
+        description: "An instant spark that builds static on the target (up to 4 times).",
+        on_gcd: true, range: 25.0, target: Enemy,
+        effects: [
+            (effect: Damage(amount: 150)),
+            (effect: ApplyStatus(status: "static_charge")),
+        ],
+        vfx: "bolt_storm",
+    ),
+    (
+        id: "el_thunderclap", name: "Thunderclap",
+        description: "Release the static in a thunderclap: stronger for each charge on the target.",
+        on_gcd: true, range: 25.0, target: Enemy,
+        effects: [(effect: StackedDamage(amount: 200, status: "static_charge", per_stack: 60, consume: true))],
+        vfx: "burst_storm",
+    ),
+    (
+        id: "el_lightning_lance", name: "Lightning Lance",
+        description: "An instant lance of lightning for a big burst of damage.",
+        on_gcd: false, cooldown: 40.0, range: 25.0, target: Enemy,
+        effects: [(effect: Damage(amount: 650))],
+        vfx: "bolt_storm",
+    ),
 ]

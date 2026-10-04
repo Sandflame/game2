@@ -365,8 +365,9 @@ pub fn move_enemies(
             continue;
         }
         if let Some(direction) = stick {
+            let speed = statuses.modifiers(|id| data.statuses.get(id)).move_speed;
             let input = MoveInput {
-                direction,
+                direction: direction * speed,
                 ..Default::default()
             };
             motion.0 = movement::step(motion.0, input, &data.config.movement, level, dt);

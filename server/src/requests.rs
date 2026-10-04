@@ -33,7 +33,7 @@ pub fn receive_requests(
     mut link: ResMut<Link>,
     mut index: ResMut<PlayerIndex>,
     mut effects: ResMut<PendingEffects>,
-    mut gear: ResMut<PendingGear>,
+    mut queues: (ResMut<PendingGear>, ResMut<classes::PendingSpecs>),
     mut joining: ResMut<PendingJoins>,
     mut instances: ResMut<Instances>,
     database: Option<Res<Database>>,
@@ -92,20 +92,29 @@ pub fn receive_requests(
         match request {
             ClientRequest::Join { .. } => {}
             ClientRequest::Interact => interactions.0.push((player, entity, None)),
+            ClientRequest::ChangeSpec { spec } => queues.1.0.push((player, entity, spec)),
             ClientRequest::EnterFromBoard { zone } => {
                 interactions.0.push((player, entity, Some(zone)));
             }
             ClientRequest::Equip { item } => {
-                gear.0.push((player, entity, GearRequest::Equip(item)));
+                queues.0.0.push((player, entity, GearRequest::Equip(item)));
             }
             ClientRequest::Unequip { slot } => {
-                gear.0.push((player, entity, GearRequest::Unequip(slot)));
+                queues
+                    .0
+                    .0
+                    .push((player, entity, GearRequest::Unequip(slot)));
             }
             ClientRequest::Discard { item } => {
-                gear.0.push((player, entity, GearRequest::Discard(item)));
+                queues
+                    .0
+                    .0
+                    .push((player, entity, GearRequest::Discard(item)));
             }
             ClientRequest::SetSecondary { choice } => {
-                gear.0
+                queues
+                    .0
+                    .0
                     .push((player, entity, GearRequest::SetSecondary(choice)));
             }
             ClientRequest::Move(input) => {

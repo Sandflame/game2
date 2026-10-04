@@ -18,7 +18,9 @@ Guide for working in this repository (for Claude and for humans).
   board; the way out after a boss falls; bosses topple when defeated).
   **M9** (quests + skippable dialogue as data, starter chain hub → root →
   forest → dungeon, quest tracker and log; minimap + big map with N/E/S/W).
-- Next: **M10** (remaining specializations). See `MILESTONES.md`.
+  **M10** (all 13 specializations; stacking statuses, slows, lunges, damage
+  that heals; spec switching in the lantern panel, saved per class).
+- Next: **M11** (multiplayer). See `MILESTONES.md`.
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md`.
 
@@ -83,6 +85,8 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   `LANTERNFLAME_DEMO=dungeon` — the dungeon board, then a quick (cheating)
   tour of the Tangled Burrow and back.
   `LANTERNFLAME_DEMO=quests` — take Ilsa's quest, the map, Fen, the quest log.
+  `LANTERNFLAME_DEMO=specs` — specializations in the lantern panel, then
+  Scissors: five Snips and a Shear on a dummy.
   Leave ~1.5 s after a `Shot` before changing what's on screen: software
   rendering is slow and the shot is taken at the end of the frame.
   Each demo starts in its own zone
@@ -109,16 +113,18 @@ extra beyond the Rust toolchain.
 - `shared/src/combat.rs` — `CombatConfig`, `ActionState` (GCD, cooldowns, casts,
   animation lock, queue, combos), `Health`, `Reject`, range.
 - `shared/src/abilities.rs` — `AbilityDef`: timing + list of `EffectEntry`
-  (`Effect` × `Recipients`), combos, tooltip summary.
-- `shared/src/statuses.rs` — `StatusDef`, `Modifiers`, `Statuses` component
-  (apply/refresh, shields absorbing, ticks, expiry).
+  (`Effect` × `Recipients`: Damage, Heal, Shield, ApplyStatus, Taunt,
+  SharedDamage, Raise, StackedDamage, HealingDamage, Lunge), combos.
+- `shared/src/statuses.rs` — `StatusDef` (`max_stacks`), `Modifiers` (incl.
+  `move_speed`, once per stack), `Statuses` component (apply/refresh/stack,
+  shields absorbing, ticks, expiry).
 - `shared/src/formulas.rs` — damage/healing maths (`amount × power% × buffs`,
   crits), `Rng` (SplitMix64). No "potency": abilities list plain amounts.
 - `shared/src/describe.rs` — plain-language tooltips with the player's real numbers.
 - `shared/src/threat.rs` — `ThreatTable` (top, taunt, forget).
 - `shared/src/classes.rs` — `ClassDef`, `Role`, specializations (+ role weights),
   `lendable` abilities, `SecondaryChoice`/`Secondaries`, `check_secondary`,
-  `CurrentClass`, `Stats`, hotbar layout.
+  `CurrentClass`, `ChosenSpecs` (each class's chosen spec), `Stats`, hotbar layout.
 - `shared/src/synergy.rs` — `SynergyDef` (`synergy.ron`): which bonus status a party
   missing each role gets; `coverage`/`bonuses`.
 - `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
@@ -145,8 +151,10 @@ extra beyond the Rust toolchain.
 - `server/src/requests.rs` — reads `ClientRequest`s.
 - `server/src/actions.rs` — target validation (same zone only), using/queueing
   abilities, placing telegraphs when casts start, finishing casts.
-- `server/src/effects.rs` — effects landing (damage, shared damage, heal, shield,
-  status, taunt, raise), telegraphs going off/following players, status ticks, threat.
+- `server/src/effects.rs` — effects landing (damage, shared/stacked/healing
+  damage, heal, shield, status + stacks, taunt, raise, lunge → `apply_lunges`),
+  telegraphs going off/following players, status ticks, threat. Slows are
+  applied where characters move (`characters.rs`, `enemies.rs`).
 - `server/src/encounters.rs` — boss fight director (pull, phases, timeline queue,
   adds, enrage, victory → `ExitPortal`, wipe → reset at the entrance). A zone can
   hold several fights (a dungeon's bosses).
@@ -163,7 +171,8 @@ extra beyond the Rust toolchain.
 - `server/src/quests.rs` — `PendingDeeds` (kills, arrivals, boss wins) →
   `record_deeds`; `talked` (called from `travel::talk`: quest step or offer,
   else the person's idle lines); quest rewards go through `PendingRewards`.
-- `server/src/classes.rs` — flame changes (class switching).
+- `server/src/classes.rs` — flame changes (class switching; the new class uses
+  its remembered spec) and spec changes (`PendingSpecs`, out of combat).
 - `server/src/progression.rs` — kill XP (everyone on the threat table), boss rewards,
   gear + secondary requests, `refresh_stats` (stats + hotbar from class/level/gear/
   secondary/zone sync), `apply_synergy` (party = same zone until M11; lasting
@@ -183,7 +192,8 @@ extra beyond the Rust toolchain.
   flame changes; `LanternSettings::always_show`), flame colours.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
 - `client/src/hud/` — hotbar (combo glow, tooltips), unit frames (class, shield,
-  status chips) + cast bar, nameplates, floating numbers, messages, lantern panel (L),
+  status chips with stack counts) + cast bar, nameplates, floating numbers, messages,
+  lantern panel (L: flames, the current class's specializations, secondary),
   options menu (O, or Esc with nothing targeted: volume slider, mute, quit),
   character panel (C: levels, stats, secondary, party bonuses, worn gear, bag) + XP
   bar, secondary flame picker (`secondary.rs`, inside the lantern panel), speech box +

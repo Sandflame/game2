@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use shared::classes::{CurrentClass, Secondaries};
+use shared::classes::{ChosenSpecs, CurrentClass, Secondaries};
 use shared::combat::Reject;
 use shared::combat::{ActionState, Health};
 use shared::components::{
@@ -138,6 +138,10 @@ pub fn spawn_player(
         }
     };
     let quests = save.map_or_else(QuestLog::default, |s| restore_quests(s, data));
+    let specs = ChosenSpecs(
+        save.map(|s| s.specs.iter().cloned().collect())
+            .unwrap_or_default(),
+    );
     let build = Build {
         levels: &levels,
         bag: &bag,
@@ -148,8 +152,8 @@ pub fn spawn_player(
         return;
     };
     let current = CurrentClass {
+        spec: specs.spec_of(&class_id, class),
         class: class_id,
-        spec: class.default_spec.clone(),
     };
     let hotbar = player_hotbar(data, &current, &levels, &secondaries);
     let entity = commands
@@ -173,7 +177,7 @@ pub fn spawn_player(
                 Hotbar(hotbar),
                 current,
             ),
-            (levels, bag, worn, secondaries, quests),
+            (levels, bag, worn, secondaries, quests, specs),
         ))
         .id();
     index.0.insert(player, entity);
@@ -195,14 +199,23 @@ pub fn move_characters(
             &mut ActionState,
             Has<Defeated>,
             Option<&FlameChange>,
+            &Statuses,
         ),
         Without<Riding>,
     >,
 ) {
     let now = time.elapsed_secs_f64();
     let dt = time.delta_secs();
-    for (entity, zone, mut player_input, mut motion, mut actions, defeated, flame_change) in
-        &mut characters
+    for (
+        entity,
+        zone,
+        mut player_input,
+        mut motion,
+        mut actions,
+        defeated,
+        flame_change,
+        statuses,
+    ) in &mut characters
     {
         let Some(level) = zones.get(&zone.0) else {
             continue;
@@ -231,6 +244,9 @@ pub fn move_characters(
         if let Some(yaw) = player_input.face_once.take() {
             input.face_yaw = Some(yaw);
         }
+        // Slows (and speed-ups) from statuses.
+        let speed = statuses.modifiers(|id| data.statuses.get(id)).move_speed;
+        input.direction = input.direction.clamp_length_max(1.0) * speed;
         motion.0 = movement::step(motion.0, input, &data.config.movement, level, dt);
     }
 }

@@ -61,4 +61,84 @@
         effects: [(effect: ApplyStatus(status: "iron_will"))],
         vfx: "buff_grey",
     ),
+
+    // ---- Scissors specialization: snips build up, Shear cuts them all at once ----
+    (
+        id: "bm_snip", name: "Snip",
+        description: "A quick crossing cut that leaves a notch. Notches stack up to 5 times.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [
+            (effect: Damage(amount: 170)),
+            (effect: ApplyStatus(status: "snipped")),
+        ],
+        vfx: "slash",
+    ),
+    (
+        id: "bm_shear", name: "Shear",
+        description: "Close the blades on every notch at once: stronger for each notch on the target.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: StackedDamage(amount: 180, status: "snipped", per_stack: 40, consume: true))],
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "bm_scissor_lunge", name: "Scissor Lunge",
+        description: "Leap to the target and snap the blades shut.",
+        on_gcd: false, cooldown: 20.0, range: 15.0, target: Enemy,
+        effects: [(effect: Lunge), (effect: Damage(amount: 200))],
+        vfx: "slash",
+    ),
+
+    // ---- One-handed sword specialization: steady, with a parry ----
+    (
+        id: "bm_precise_thrust", name: "Precise Thrust",
+        description: "A clean, reliable thrust.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(amount: 260))],
+        vfx: "slash",
+    ),
+    (
+        id: "bm_parry", name: "Parry",
+        description: "Turn blows aside with your blade, taking half damage for a few seconds.",
+        on_gcd: false, cooldown: 25.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "parry"))],
+        vfx: "buff_grey",
+    ),
+    (
+        id: "bm_counterstrike", name: "Counterstrike",
+        description: "A sharp counter-attack woven between other attacks.",
+        on_gcd: false, cooldown: 15.0, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(amount: 380))],
+        vfx: "slash_heavy",
+    ),
+
+    // ---- Dual blades specialization: fast, many hits ----
+    (
+        id: "bm_twin_strike", name: "Twin Strike",
+        description: "Strike with both swords at once: two hits.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(amount: 130)), (effect: Damage(amount: 130))],
+        vfx: "slash",
+    ),
+    (
+        id: "bm_flurry", name: "Flurry",
+        description: "A rapid flurry of four cuts.",
+        on_gcd: false, cooldown: 30.0, range: 3.5, target: Enemy,
+        effects: [
+            (effect: Damage(amount: 110)),
+            (effect: Damage(amount: 110)),
+            (effect: Damage(amount: 110)),
+            (effect: Damage(amount: 110)),
+        ],
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "bm_blade_dance", name: "Blade Dance",
+        description: "Spin with both swords out, hitting every enemy around you twice.",
+        on_gcd: true, target: Myself,
+        effects: [
+            (to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(amount: 90)),
+            (to: EnemiesAround(centre: Me, radius: 5.0), effect: Damage(amount: 90)),
+        ],
+        vfx: "spin",
+    ),
 ]

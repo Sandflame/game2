@@ -44,7 +44,7 @@ pub fn demo_start_zone() -> Option<&'static str> {
         return None;
     }
     match std::env::var(DEMO_ENV).as_deref() {
-        Ok("classes" | "progress") => Some("sandbox"),
+        Ok("classes" | "progress" | "specs") => Some("sandbox"),
         Ok("world" | "dungeon" | "quests") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
@@ -93,7 +93,30 @@ enum Step {
     Journal(bool),
     /// Skip the conversation on screen.
     SkipDialogue,
+    /// Switch specialization.
+    Spec(&'static str),
 }
+
+/// Starts in the Training Grounds: pick the Scissors specialization in the
+/// lantern panel, then snip a dummy five times and Shear.
+const SPECS_DEMO: &[(f32, Step)] = &[
+    (0.5, Step::OpenLantern),
+    (2.5, Step::Shot), // the specializations of the Blademaster
+    (3.0, Step::Spec("scissors")),
+    (5.0, Step::Shot), // Scissors chosen; the hotbar has changed
+    (6.5, Step::CloseLantern),
+    (6.6, Step::Teleport(0.0, -3.3, 0.0)),
+    (6.7, Step::Camera(0.35, 7.0)),
+    (6.8, Step::Target("training_dummy")),
+    (7.0, Step::Press(5)),
+    (8.6, Step::Press(5)),
+    (10.2, Step::Press(5)),
+    (11.8, Step::Press(5)),
+    (13.4, Step::Press(5)),
+    (14.5, Step::Shot), // five notches on the dummy
+    (15.0, Step::Press(6)),
+    (15.7, Step::Shot), // Shear cuts them all at once
+];
 
 /// Starts in Lanternhold: take Ilsa's quest, look at the map and the quest
 /// log, finish it with Fen and take the next one.
@@ -266,6 +289,7 @@ impl Plugin for DevToolsPlugin {
             Ok("world") => WORLD_DEMO.to_vec(),
             Ok("dungeon") => DUNGEON_DEMO.to_vec(),
             Ok("quests") => QUEST_DEMO.to_vec(),
+            Ok("specs") => SPECS_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -375,9 +399,16 @@ fn run_script(
                     continue;
                 };
                 let (me_at, my_zone) = (player.0.0.position, player.1);
+                // The nearest one of that kind.
                 let found = enemies
                     .iter()
-                    .find(|(_, _, k, z)| k.0 == kind && *z == my_zone);
+                    .filter(|(_, _, k, z)| k.0 == kind && *z == my_zone)
+                    .min_by(|a, b| {
+                        a.1.0
+                            .position
+                            .distance(me_at)
+                            .total_cmp(&b.1.0.position.distance(me_at))
+                    });
                 if let Some((entity, motion, ..)) = found {
                     target.0 = Some(entity);
                     let offset = motion.0.position - me_at;
@@ -409,6 +440,11 @@ fn run_script(
             Step::Map(open) => panels.0.open = open,
             Step::Journal(open) => panels.1.open = open,
             Step::SkipDialogue => panels.2.skip(),
+            Step::Spec(spec) => send(
+                &mut link,
+                *me,
+                ClientRequest::ChangeSpec { spec: spec.into() },
+            ),
             Step::Board(zone) => send(
                 &mut link,
                 *me,

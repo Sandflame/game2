@@ -9,7 +9,7 @@ use shared::classes::Stats;
 use shared::combat::{Health, horizontal_distance};
 use shared::components::{Faction, HitRadius, Motion, Zone};
 use shared::formulas::{healing, incoming_damage, outgoing_damage};
-use shared::gamedata::GameData;
+use shared::gamedata::{GameData, Zones};
 use shared::protocol::{Link, ServerEvent};
 use shared::statuses::{ActiveStatus, Modifiers, Statuses, Tick, TickAmount};
 use shared::telegraphs::Telegraph;
@@ -40,6 +40,44 @@ pub struct PendingEffects {
     pub resolutions: Vec<Resolution>,
     /// Ground markers to put down (with the zone they belong to).
     pub new_markers: Vec<(Telegraph, Zone)>,
+    /// Characters leaping to a spot (`Lunge`), moved after effects land.
+    pub lunges: Vec<(Entity, Vec3)>,
+}
+
+/// A lunge lands this far (metres) from the target's edge.
+const LUNGE_GAP: f32 = 0.3;
+
+/// Move characters who lunged (stopping at walls).
+pub fn apply_lunges(
+    data: Res<GameData>,
+    zones: Res<Zones>,
+    mut pending: ResMut<PendingEffects>,
+    mut movers: Query<(&mut Motion, &Zone)>,
+) {
+    let config = &data.config.movement;
+    for (entity, landing) in std::mem::take(&mut pending.lunges) {
+        let Ok((mut motion, zone)) = movers.get_mut(entity) else {
+            continue;
+        };
+        let Some(level) = zones.get(&zone.0) else {
+            continue;
+        };
+        let flat = level.resolve_horizontal(
+            Vec2::new(landing.x, landing.z),
+            config.character_radius,
+            motion.0.position.y,
+            config.character_height,
+            config.step_height,
+        );
+        let facing = Vec2::new(
+            landing.x - motion.0.position.x,
+            landing.z - motion.0.position.z,
+        );
+        motion.0.position = Vec3::new(flat.x, motion.0.position.y, flat.y);
+        if facing.length_squared() > 1e-6 {
+            motion.0.yaw = shared::movement::yaw_from_direction(facing);
+        }
+    }
 }
 
 /// A living character that effects can land on.
@@ -164,12 +202,12 @@ fn land_damage(
     threat_multiplier: f32,
     cause: &str,
     tick: bool,
-) -> bool {
+) -> Option<u32> {
     let Ok(mut c) = living.get_mut(target) else {
-        return false;
+        return None;
     };
     if c.health.is_dead() {
-        return false;
+        return None;
     }
     let modifiers = c.statuses.modifiers(|id| data.statuses.get(id));
     let mitigated = incoming_damage(raw, modifiers, c.stats.guard);
@@ -193,7 +231,7 @@ fn land_damage(
         cause: cause.to_owned(),
         tick,
     });
-    true
+    Some(through)
 }
 
 /// Put down ground markers for casts that started this tick.
@@ -289,7 +327,113 @@ pub fn resolve_effects(
                                 info.threat_multiplier,
                                 &ability.id,
                                 false,
-                            );
+                            )
+                            .is_some();
+                        }
+                        Effect::StackedDamage {
+                            amount,
+                            status,
+                            per_stack,
+                            consume,
+                        } => {
+                            let stacks = living
+                                .get(recipient)
+                                .map_or(0, |c| c.statuses.stacks_from(status, source));
+                            let boosted = (*amount as f32
+                                * (1.0 + per_stack / 100.0 * stacks as f32))
+                                .round() as u32;
+                            let crit = rng.0.chance(info.crit_chance);
+                            let raw =
+                                outgoing_damage(boosted, info.power, info.modifiers, crit, combat);
+                            hostile |= land_damage(
+                                &mut living,
+                                &data,
+                                &mut link,
+                                now,
+                                source,
+                                recipient,
+                                raw,
+                                crit,
+                                info.threat_multiplier,
+                                &ability.id,
+                                false,
+                            )
+                            .is_some();
+                            if *consume && let Ok(mut c) = living.get_mut(recipient) {
+                                c.statuses.remove_from(status, source);
+                            }
+                        }
+                        Effect::HealingDamage {
+                            amount,
+                            heal_percent,
+                            radius,
+                        } => {
+                            let crit = rng.0.chance(info.crit_chance);
+                            let raw =
+                                outgoing_damage(*amount, info.power, info.modifiers, crit, combat);
+                            let Some(dealt) = land_damage(
+                                &mut living,
+                                &data,
+                                &mut link,
+                                now,
+                                source,
+                                recipient,
+                                raw,
+                                crit,
+                                info.threat_multiplier,
+                                &ability.id,
+                                false,
+                            ) else {
+                                continue;
+                            };
+                            hostile = true;
+                            // The most hurt of the user and their allies nearby.
+                            let hurt = living
+                                .iter()
+                                .filter(|c| {
+                                    (c.entity == source || !info.faction.can_harm(*c.faction))
+                                        && *c.zone == info.zone
+                                        && !c.health.is_dead()
+                                        && horizontal_distance(info.position, c.motion.0.position)
+                                            <= *radius
+                                })
+                                .min_by(|a, b| a.health.fraction().total_cmp(&b.health.fraction()))
+                                .map(|c| c.entity);
+                            if let Some(friend) = hurt
+                                && let Ok(mut c) = living.get_mut(friend)
+                            {
+                                let received = c.statuses.modifiers(|id| data.statuses.get(id));
+                                let amount = (dealt as f32 * heal_percent / 100.0
+                                    * received.healing_received)
+                                    .round() as u32;
+                                let restored = c.health.heal(amount);
+                                healing_threat.push((
+                                    source,
+                                    friend,
+                                    restored as f32 * info.threat_multiplier,
+                                ));
+                                link.to_client.push(ServerEvent::Heal {
+                                    source,
+                                    target: friend,
+                                    amount: restored,
+                                    crit: false,
+                                    cause: ability.id.clone(),
+                                    tick: false,
+                                });
+                            }
+                        }
+                        Effect::Lunge => {
+                            let (Ok(target), Ok(me)) = (living.get(recipient), living.get(source))
+                            else {
+                                continue;
+                            };
+                            let to_target = target.motion.0.position - info.position;
+                            let flat = Vec3::new(to_target.x, 0.0, to_target.z);
+                            let gap = target.hit.0 + me.hit.0 + LUNGE_GAP;
+                            if flat.length() > gap {
+                                let landing = target.motion.0.position - flat.normalize() * gap;
+                                pending.lunges.push((source, landing));
+                            }
                         }
                         Effect::Heal { amount } => {
                             let Ok(mut c) = living.get_mut(recipient) else {
@@ -345,6 +489,7 @@ pub fn resolve_effects(
                                 tick: None,
                                 absorb,
                                 is_shield: true,
+                                stacks: 1,
                             });
                         }
                         Effect::ApplyStatus { status } => {
@@ -372,16 +517,20 @@ pub fn resolve_effects(
                                 continue;
                             };
                             let harmful = info.faction.can_harm(*c.faction);
-                            c.statuses.apply(ActiveStatus {
-                                id: def.id.clone(),
-                                source,
-                                applied: now,
-                                expires: now + f64::from(def.duration),
-                                next_tick: now + f64::from(combat.tick_interval),
-                                tick,
-                                absorb: 0,
-                                is_shield: false,
-                            });
+                            c.statuses.apply_stacking(
+                                ActiveStatus {
+                                    id: def.id.clone(),
+                                    source,
+                                    applied: now,
+                                    expires: now + f64::from(def.duration),
+                                    next_tick: now + f64::from(combat.tick_interval),
+                                    tick,
+                                    absorb: 0,
+                                    is_shield: false,
+                                    stacks: 1,
+                                },
+                                def.max_stacks,
+                            );
                             if harmful {
                                 hostile = true;
                                 if let Some(threat) = c.threat.as_mut() {

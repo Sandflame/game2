@@ -35,6 +35,8 @@ pub enum ClientRequest {
     },
     /// At a dungeon board: go to this dungeon or trial (zone file name).
     EnterFromBoard { zone: String },
+    /// Switch the current class to this specialization (out of combat).
+    ChangeSpec { spec: String },
 }
 
 /// Something the authority tells clients about.
@@ -86,6 +88,8 @@ pub enum ServerEvent {
     FlameChangeStarted { user: Entity, class: String },
     /// Someone's class changed.
     ClassChanged { user: Entity, class: String },
+    /// Someone switched specialization.
+    SpecChanged { user: Entity, spec: String },
     /// A character was defeated.
     Defeated { entity: Entity },
     /// A defeated character got back up.

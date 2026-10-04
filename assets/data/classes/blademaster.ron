@@ -21,6 +21,24 @@
             description: "Slow, crushing blows that also hit nearby enemies.",
             abilities: ["bm_earthsplitter", "bm_overhead_crush", "bm_iron_will"],
         ),
+        (
+            id: "scissors",
+            name: "Scissors",
+            description: "Twin blades that snip: build up notches, then Shear them all at once. Leaps in to close the gap.",
+            abilities: ["bm_snip", "bm_shear", "bm_scissor_lunge"],
+        ),
+        (
+            id: "one_handed",
+            name: "One-handed Sword",
+            description: "Balanced and steady, with a parry to turn blows aside.",
+            abilities: ["bm_precise_thrust", "bm_parry", "bm_counterstrike"],
+        ),
+        (
+            id: "dual_blades",
+            name: "Dual Blades",
+            description: "Two full-sized swords: fast attacks that hit again and again.",
+            abilities: ["bm_twin_strike", "bm_flurry", "bm_blade_dance"],
+        ),
     ],
     default_spec: "greatsword",
     // Abilities other classes can borrow (secondary class), once this
@@ -30,5 +48,6 @@
         (ability: "bm_whirlwind", level: 5),
         (ability: "bm_iron_will", level: 10),
         (ability: "bm_overhead_crush", level: 15),
+        (ability: "bm_parry", level: 20),
     ],
 )

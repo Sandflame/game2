@@ -62,4 +62,53 @@
         effects: [(effect: ApplyStatus(status: "blessed"))],
         vfx: "buff_holy",
     ),
+
+    // ---- Enchanter specialization: protective barriers ----
+    (
+        id: "pr_aegis", name: "Aegis",
+        description: "Enchant a friend (or yourself) with a barrier that absorbs damage.",
+        on_gcd: true, cast_time: 1.5, range: 30.0, target: Ally,
+        effects: [(effect: Shield(amount: 900, status: "aegis"))],
+        vfx: "shield_light",
+    ),
+    (
+        id: "pr_circle_of_wards", name: "Circle of Wards",
+        description: "Barriers for you and every ally around you.",
+        on_gcd: false, cooldown: 60.0, target: Myself,
+        effects: [(to: AlliesAround(centre: Me, radius: 15.0), effect: Shield(amount: 600, status: "ward_circle"))],
+        vfx: "heal_area",
+    ),
+    (
+        id: "pr_enchanted_armour", name: "Enchanted Armour",
+        description: "A friend (or you) takes less damage for a while.",
+        on_gcd: false, cooldown: 60.0, range: 30.0, target: Ally,
+        effects: [(effect: ApplyStatus(status: "enchanted_armour"))],
+        vfx: "buff_holy",
+    ),
+
+    // ---- Judge specialization: damage that heals ----
+    (
+        id: "pr_verdict", name: "Verdict",
+        description: "Holy light strikes the target; part of the damage heals whoever needs it most.",
+        on_gcd: true, cast_time: 1.5, range: 25.0, target: Enemy,
+        effects: [(effect: HealingDamage(amount: 240, heal_percent: 60, radius: 30.0))],
+        vfx: "bolt_holy",
+    ),
+    (
+        id: "pr_condemn", name: "Condemn",
+        description: "An instant holy strike that heals whoever needs it most and leaves the target searing.",
+        on_gcd: true, range: 25.0, target: Enemy,
+        effects: [
+            (effect: HealingDamage(amount: 140, heal_percent: 80, radius: 30.0)),
+            (effect: ApplyStatus(status: "holy_burn")),
+        ],
+        vfx: "spark_holy",
+    ),
+    (
+        id: "pr_final_judgement", name: "Final Judgement",
+        description: "A great blow of holy light; all of its damage heals whoever needs it most.",
+        on_gcd: false, cooldown: 60.0, range: 25.0, target: Enemy,
+        effects: [(effect: HealingDamage(amount: 600, heal_percent: 100, radius: 30.0))],
+        vfx: "burst_holy",
+    ),
 ]

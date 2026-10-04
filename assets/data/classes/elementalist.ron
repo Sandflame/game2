@@ -10,13 +10,26 @@
     power: 115,
     threat_multiplier: 1.0,
     core: ["el_firebolt", "el_kindle", "el_flame_wave", "el_ember_shield", "el_fire_snap"],
-    // Ice (shields and slows) and Storm (burst) arrive in Milestone 10.
     specializations: [
         (
             id: "fire",
             name: "Fire",
             description: "Long casts and lingering burns for heavy damage.",
             abilities: ["el_inferno", "el_combust", "el_pyre_heart"],
+        ),
+        (
+            id: "ice",
+            name: "Ice",
+            description: "Chilling spells that slow enemies, and shells of ice to protect friends.",
+            // Counts towards these roles for party bonuses.
+            roles: {Damage: 0.8, Sustain: 0.2},
+            abilities: ["el_frostbolt", "el_glacial_ward", "el_frost_nova"],
+        ),
+        (
+            id: "storm",
+            name: "Storm",
+            description: "Build static on a target, then release it in a thunderclap. Quick bursts of damage.",
+            abilities: ["el_static_spark", "el_thunderclap", "el_lightning_lance"],
         ),
     ],
     default_spec: "fire",
@@ -27,5 +40,6 @@
         (ability: "el_ember_shield", level: 5),
         (ability: "el_fire_snap", level: 10),
         (ability: "el_pyre_heart", level: 15),
+        (ability: "el_glacial_ward", level: 20),
     ],
 )

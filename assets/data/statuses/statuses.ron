@@ -11,6 +11,11 @@
     (id: "iron_will", name: "Iron Will", kind: Buff, duration: 10.0,
      description: "Taking 20% less damage.",
      modifiers: (damage_taken: 0.8)),
+    (id: "snipped", name: "Snipped", kind: Debuff, duration: 12.0, max_stacks: 5,
+     description: "Notched by scissor blades. Shear cuts deeper for each notch."),
+    (id: "parry", name: "Parry", kind: Buff, duration: 4.0,
+     description: "Turning blows aside: taking 50% less damage.",
+     modifiers: (damage_taken: 0.5)),
 
     // ---- Elementalist ----
     (id: "burn", name: "Burn", kind: Debuff, duration: 18.0,
@@ -21,6 +26,13 @@
     (id: "pyre_heart", name: "Pyre Heart", kind: Buff, duration: 20.0,
      description: "Dealing 25% more damage.",
      modifiers: (damage_dealt: 1.25)),
+    (id: "chilled", name: "Chilled", kind: Debuff, duration: 8.0,
+     description: "Moving 40% slower.",
+     modifiers: (move_speed: 0.6)),
+    (id: "glacial_ward", name: "Glacial Ward", kind: Buff, duration: 12.0,
+     description: "A shell of ice absorbs damage."),
+    (id: "static_charge", name: "Static Charge", kind: Debuff, duration: 15.0, max_stacks: 4,
+     description: "Crackling with static. Thunderclap hits harder for each charge."),
 
     // ---- Shield Knight ----
     (id: "rampart", name: "Rampart", kind: Buff, duration: 15.0,
@@ -31,6 +43,9 @@
     (id: "iron_bastion", name: "Iron Bastion", kind: Buff, duration: 8.0,
      description: "Taking 60% less damage.",
      modifiers: (damage_taken: 0.4)),
+    (id: "war_cry", name: "War Cry", kind: Buff, duration: 15.0,
+     description: "Dealing 25% more damage.",
+     modifiers: (damage_dealt: 1.25)),
 
     // ---- Priest ----
     (id: "renew", name: "Renew", kind: Buff, duration: 15.0,
@@ -42,4 +57,11 @@
     (id: "blessed", name: "Blessed", kind: Buff, duration: 15.0,
      description: "Receiving 25% more healing.",
      modifiers: (healing_received: 1.25)),
+    (id: "aegis", name: "Aegis", kind: Buff, duration: 15.0,
+     description: "An enchanted barrier absorbs damage."),
+    (id: "ward_circle", name: "Ward", kind: Buff, duration: 12.0,
+     description: "A ward absorbs damage."),
+    (id: "enchanted_armour", name: "Enchanted Armour", kind: Buff, duration: 12.0,
+     description: "Taking 20% less damage.",
+     modifiers: (damage_taken: 0.8)),
 ]

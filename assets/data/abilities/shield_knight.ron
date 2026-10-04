@@ -63,4 +63,56 @@
         effects: [(effect: ApplyStatus(status: "iron_bastion"))],
         vfx: "buff_grey",
     ),
+
+    // ---- Oath specialization: holy strikes and light healing ----
+    (
+        id: "sk_holy_strike", name: "Holy Strike",
+        description: "A blessed strike that also mends your own wounds.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [
+            (effect: Damage(amount: 170)),
+            (to: Myself, effect: Heal(amount: 200)),
+        ],
+        vfx: "spark_holy",
+    ),
+    (
+        id: "sk_oathlight", name: "Oathlight",
+        description: "Heal a friend (or yourself) with the light of your oath.",
+        on_gcd: true, cast_time: 1.5, range: 30.0, target: Ally,
+        effects: [(effect: Heal(amount: 450))],
+        vfx: "heal",
+    ),
+    (
+        id: "sk_consecrate", name: "Consecrate",
+        description: "Bless the ground: enemies around you are burned and allies healed.",
+        on_gcd: false, cooldown: 45.0, target: Myself,
+        effects: [
+            (to: EnemiesAround(centre: Me, radius: 6.0), effect: Damage(amount: 200)),
+            (to: AlliesAround(centre: Me, radius: 15.0), effect: Heal(amount: 300)),
+        ],
+        vfx: "heal_area",
+    ),
+
+    // ---- Vanguard specialization: more damage ----
+    (
+        id: "sk_vanguard_cleave", name: "Vanguard Cleave",
+        description: "A heavy blow with the edge of your shield.",
+        on_gcd: true, range: 3.5, target: Enemy,
+        effects: [(effect: Damage(amount: 280))],
+        vfx: "slash_heavy",
+    ),
+    (
+        id: "sk_shield_charge", name: "Shield Charge",
+        description: "Charge at the target behind your shield.",
+        on_gcd: false, cooldown: 20.0, range: 15.0, target: Enemy,
+        effects: [(effect: Lunge), (effect: Damage(amount: 200))],
+        vfx: "bash",
+    ),
+    (
+        id: "sk_war_cry", name: "War Cry",
+        description: "A rallying shout: you deal more damage for a while.",
+        on_gcd: false, cooldown: 90.0, target: Myself,
+        effects: [(effect: ApplyStatus(status: "war_cry"))],
+        vfx: "buff_red",
+    ),
 ]

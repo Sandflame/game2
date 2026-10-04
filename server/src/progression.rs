@@ -8,7 +8,9 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use shared::classes::{CurrentClass, Role, Secondaries, SecondaryChoice, Stats, check_secondary};
+use shared::classes::{
+    ChosenSpecs, CurrentClass, Role, Secondaries, SecondaryChoice, Stats, check_secondary,
+};
 use shared::combat::{Health, Reject};
 use shared::components::Hotbar;
 use shared::components::{CharacterName, Motion, PlayerId, Zone};
@@ -157,6 +159,7 @@ pub fn to_save(
     motion: &Motion,
     build: &Build,
     quests: &QuestLog,
+    specs: &ChosenSpecs,
 ) -> CharacterSave {
     let Build {
         levels,
@@ -223,6 +226,15 @@ pub fn to_save(
                 done: true,
             }))
             .collect(),
+        specs: {
+            let mut list: Vec<_> = specs
+                .0
+                .iter()
+                .map(|(class, spec)| (class.clone(), spec.clone()))
+                .collect();
+            list.sort();
+            list
+        },
     }
 }
 
@@ -580,6 +592,7 @@ pub fn apply_synergy(
                 )),
             });
             statuses.apply(ActiveStatus {
+                stacks: 1,
                 id: id.clone(),
                 source: entity,
                 applied: now,
@@ -613,6 +626,7 @@ pub fn save_players(
                 Changed<Equipment>,
                 Changed<Secondaries>,
                 Changed<QuestLog>,
+                Changed<ChosenSpecs>,
             )>,
         ),
     >,
@@ -627,7 +641,7 @@ pub fn save_players(
             &Bag,
             &Equipment,
             &Secondaries,
-            &QuestLog,
+            (&QuestLog, &ChosenSpecs),
         ),
         With<PlayerId>,
     >,
@@ -641,7 +655,9 @@ pub fn save_players(
         last.0 = now;
     }
     let changed: HashSet<Entity> = changed.iter().collect();
-    for (entity, name, class, zone, motion, levels, bag, worn, secondaries, quests) in &players {
+    for (entity, name, class, zone, motion, levels, bag, worn, secondaries, (quests, specs)) in
+        &players
+    {
         if everyone || changed.contains(&entity) {
             let build = Build {
                 levels,
@@ -649,7 +665,7 @@ pub fn save_players(
                 worn,
                 secondaries,
             };
-            database.save(to_save(&name.0, class, zone, motion, &build, quests));
+            database.save(to_save(&name.0, class, zone, motion, &build, quests, specs));
         }
     }
 }
@@ -668,7 +684,7 @@ pub fn save_on_exit(
             &Bag,
             &Equipment,
             &Secondaries,
-            &QuestLog,
+            (&QuestLog, &ChosenSpecs),
         ),
         With<PlayerId>,
     >,
@@ -679,14 +695,14 @@ pub fn save_on_exit(
     let Some(database) = database else {
         return;
     };
-    for (name, class, zone, motion, levels, bag, worn, secondaries, quests) in &players {
+    for (name, class, zone, motion, levels, bag, worn, secondaries, (quests, specs)) in &players {
         let build = Build {
             levels,
             bag,
             worn,
             secondaries,
         };
-        database.save(to_save(&name.0, class, zone, motion, &build, quests));
+        database.save(to_save(&name.0, class, zone, motion, &build, quests, specs));
     }
     database.flush();
 }
@@ -752,7 +768,9 @@ mod tests {
                 active: [("down_the_root".to_owned(), Active { step: 1, count: 0 })].into(),
                 done: ["lamplighters_errand".to_owned()].into(),
             },
+            &ChosenSpecs([("priest".to_owned(), "judge".to_owned())].into()),
         );
+        assert_eq!(save.specs, vec![("priest".to_owned(), "judge".to_owned())]);
         let quests_back = restore_quests(&save, &data);
         assert_eq!(quests_back.active["down_the_root"].step, 1);
         assert!(quests_back.done.contains("lamplighters_errand"));
@@ -784,6 +802,7 @@ mod tests {
             levels: vec![("no_such_class".into(), ClassProgress::default())],
             secondaries: Vec::new(),
             quests: Vec::new(),
+            specs: Vec::new(),
             items: vec![
                 SavedItem {
                     item: "no_such_item".into(),

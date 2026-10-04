@@ -47,6 +47,12 @@
     // Enemies
     "burst_nature": (style: Burst, color: (0.6, 1.2, 0.4), size: 3.0, particles: ["leaves", "big_sparks"], sound: "slam"),
     "bolt_nature":  (style: Projectile, color: (0.6, 1.2, 0.4), size: 0.25, particles: ["leaves"], sound: "bash"),
+    "bolt_ice":     (style: Projectile, color: (0.6, 1.1, 1.8), size: 0.3, particles: ["sparks"], sound: "bash"),
+    "burst_ice":    (style: Burst, color: (0.6, 1.1, 1.8), size: 8.0, particles: ["ring_sparks"], sound: "fire_big"),
+    "shield_ice":   (style: Rise, color: (0.6, 1.1, 1.8), size: 1.2, particles: ["motes"], sound: "buff"),
+    "bolt_storm":   (style: Projectile, color: (1.4, 1.3, 2.0), size: 0.3, particles: ["sparks"], sound: "holy"),
+    "burst_storm":  (style: Burst, color: (1.3, 1.2, 2.2), size: 2.2, particles: ["big_sparks"], sound: "fire_big"),
+    "burst_holy":   (style: Burst, color: (1.6, 1.4, 0.8), size: 2.5, particles: ["big_sparks", "motes"], sound: "holy"),
     "bolt_rot":     (style: Projectile, color: (0.8, 0.5, 1.2), size: 0.25, particles: ["sparks"], sound: "bash"),
     "burst_rot":    (style: Burst, color: (0.8, 0.45, 1.2), size: 3.0, particles: ["big_sparks"], sound: "slam"),
 

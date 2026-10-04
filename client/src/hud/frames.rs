@@ -387,17 +387,21 @@ fn update_frames(
                     *vis = Visibility::Inherited;
                     // Lasting bonuses (party synergy) show no timer.
                     let lasting = status.expires.is_infinite();
-                    let label = if lasting {
+                    let name = if status.stacks > 1 {
+                        format!("{} x{}", def.name, status.stacks)
+                    } else {
                         def.name.clone()
+                    };
+                    let label = if lasting {
+                        name
                     } else if status.is_shield {
                         format!(
-                            "{} {}  {:.0}s",
-                            def.name,
+                            "{name} {}  {:.0}s",
                             status.absorb,
                             status.remaining(now).ceil()
                         )
                     } else {
-                        format!("{}  {:.0}s", def.name, status.remaining(now).ceil())
+                        format!("{name}  {:.0}s", status.remaining(now).ceil())
                     };
                     set_text(&mut texts, *text, &label);
                     let tint = if def.kind == StatusKind::Buff {
