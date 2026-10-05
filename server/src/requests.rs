@@ -35,10 +35,11 @@ pub fn receive_requests(
     mut index: ResMut<PlayerIndex>,
     mut effects: ResMut<PendingEffects>,
     mut queues: (ResMut<PendingGear>, ResMut<classes::PendingSpecs>),
-    (mut joining, mut account_requests, sessions): (
+    (mut joining, mut account_requests, sessions, mut leaving): (
         ResMut<PendingJoins>,
         ResMut<AccountRequests>,
         Res<Sessions>,
+        ResMut<PendingLeaves>,
     ),
     mut instances: ResMut<Instances>,
     database: Option<Res<Database>>,
@@ -57,6 +58,11 @@ pub fn receive_requests(
     };
     for (player, request) in requests {
         if account_requests.take(player, &request) {
+            continue;
+        }
+        if request == ClientRequest::Leave {
+            joining.0.remove(&player);
+            leaving.0.push(player);
             continue;
         }
         if let ClientRequest::Join { name } = &request {
@@ -111,7 +117,8 @@ pub fn receive_requests(
             | ClientRequest::Login { .. }
             | ClientRequest::Logout
             | ClientRequest::CreateCharacter { .. }
-            | ClientRequest::DeleteCharacter { .. } => {}
+            | ClientRequest::DeleteCharacter { .. }
+            | ClientRequest::Leave => {}
             ClientRequest::Interact => interactions.0.push((player, entity, None)),
             ClientRequest::ChangeSpec { spec } => queues.1.0.push((player, entity, spec)),
             ClientRequest::EnterFromBoard { zone } => {
@@ -146,6 +153,19 @@ pub fn receive_requests(
                     player_input.input.jump = jump;
                 }
             }
+            ClientRequest::Moved {
+                input,
+                state,
+                epoch,
+            } => {
+                if let Ok((.., Some(mut player_input), _, _)) = actors.get_mut(entity) {
+                    let jump = player_input.input.jump || input.jump;
+                    player_input.input = input;
+                    player_input.input.jump = jump;
+                    player_input.reported = Some((state, epoch));
+                    player_input.reports = true;
+                }
+            }
             ClientRequest::UseAbility { slot, target } => {
                 actions::request_slot(&mut ctx, entity, slot, target, &mut actors, &targets);
             }
@@ -170,6 +190,10 @@ pub fn receive_requests(
         }
     }
 }
+
+/// Players who left this tick (their connection closed).
+#[derive(Resource, Default)]
+pub struct PendingLeaves(pub Vec<PlayerId>);
 
 /// Players whose save is being loaded.
 #[derive(Resource, Default)]

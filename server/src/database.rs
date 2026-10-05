@@ -824,6 +824,30 @@ impl Database {
     }
 }
 
+/// Where the world is saved: `LANTERNFLAME_DB` if set, otherwise
+/// - Windows: `%APPDATA%\Lanternflame\world.db`
+/// - Linux: `~/.local/share/lanternflame/world.db`
+///
+/// The game on this computer and the `server` program use the same file,
+/// so characters made in one can be played in the other (just not both at
+/// once).
+pub fn save_file_path() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+    if let Some(path) = std::env::var_os("LANTERNFLAME_DB") {
+        return Some(PathBuf::from(path));
+    }
+    if cfg!(windows) {
+        let base = std::env::var_os("APPDATA")?;
+        return Some(PathBuf::from(base).join("Lanternflame").join("world.db"));
+    }
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
+        })?;
+    Some(base.join("lanternflame").join("world.db"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

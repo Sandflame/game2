@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::Component;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::data::{Problems, Validate};
 
@@ -100,7 +100,7 @@ impl ProgressionDef {
 }
 
 /// One class's level and experience towards the next level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClassProgress {
     pub level: u32,
     pub xp: u32,
@@ -113,7 +113,7 @@ impl Default for ClassProgress {
 }
 
 /// Every class's level for one character (classes never played are level 1).
-#[derive(Component, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ClassLevels(pub HashMap<String, ClassProgress>);
 
 impl ClassLevels {

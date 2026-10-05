@@ -19,6 +19,7 @@ mod effects;
 mod encounters;
 mod enemies;
 pub mod instances;
+pub mod net;
 pub mod progression;
 mod quests;
 mod requests;
@@ -28,7 +29,7 @@ use bevy::prelude::*;
 use shared::formulas::Rng;
 use shared::protocol::Link;
 
-pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput};
+pub use characters::{CombatClock, Defeated, PlayerIndex, PlayerInput, Settled};
 pub use classes::FlameChange;
 pub use database::Database;
 pub use encounters::{Encounter, FightState};
@@ -47,6 +48,51 @@ pub enum AuthoritySystems {
     Act,
     /// Housekeeping: class changes, regeneration, revives, resets.
     Maintain,
+}
+
+/// Whether the rules run in this program. The `server` program and a
+/// game played on this computer run them; a game connected to a server
+/// switches them off (the server runs them instead).
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthorityActive(pub bool);
+
+impl Default for AuthorityActive {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
+fn active(state: Res<AuthorityActive>) -> bool {
+    state.0
+}
+
+/// The zones' enemies and people are put in place once, the first time the
+/// rules run.
+#[derive(Resource, Default)]
+struct ZonesFilled(bool);
+
+fn zones_unfilled(filled: Res<ZonesFilled>) -> bool {
+    !filled.0
+}
+
+fn mark_filled(mut filled: ResMut<ZonesFilled>) {
+    filled.0 = true;
+}
+
+/// Keep the shared clock entity up to date (clients use it to time
+/// cooldowns, casts and markers).
+fn tick_world_clock(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut clocks: Query<&mut shared::components::WorldClock>,
+) {
+    let now = time.elapsed_secs_f64();
+    match clocks.single_mut() {
+        Ok(mut clock) => clock.0 = now,
+        Err(_) => {
+            commands.spawn(shared::components::WorldClock(now));
+        }
+    }
 }
 
 /// Random numbers for critical hits.
@@ -82,6 +128,9 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<Instances>()
             .init_resource::<classes::PendingSpecs>()
             .init_resource::<quests::PendingDeeds>()
+            .init_resource::<requests::PendingLeaves>()
+            .init_resource::<AuthorityActive>()
+            .init_resource::<ZonesFilled>()
             .configure_sets(
                 FixedUpdate,
                 (
@@ -90,9 +139,16 @@ impl Plugin for AuthorityPlugin {
                     AuthoritySystems::Act,
                     AuthoritySystems::Maintain,
                 )
-                    .chain(),
+                    .chain()
+                    .run_if(active),
             )
-            .add_systems(Startup, instances::fill_zones)
+            .add_systems(
+                FixedUpdate,
+                (instances::fill_zones, mark_filled)
+                    .chain()
+                    .run_if(active.and_then(zones_unfilled))
+                    .before(AuthoritySystems::Receive),
+            )
             .add_systems(
                 FixedUpdate,
                 (
@@ -143,8 +199,11 @@ impl Plugin for AuthorityPlugin {
                         characters::recover_wipes,
                         enemies::reset_idle_enemies,
                         characters::forget_absent,
+                        progression::handle_leaves,
                         instances::close_empty_instances,
                         progression::save_players,
+                        characters::count_forced_moves,
+                        tick_world_clock,
                     )
                         .chain()
                         .in_set(AuthoritySystems::Maintain),

@@ -19,8 +19,11 @@ use crate::hud::{
     options::OptionsMenu, palette,
 };
 use crate::models::{ModelLook, ModelPending};
+use crate::net::{self, Connection};
 use crate::session::{LocalPlayerId, Received, send};
+use crate::settings::LastServer;
 use crate::toon::{Outline, ToonAssets};
+use server::AuthorityActive;
 
 /// Which screen is showing.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -37,9 +40,11 @@ pub struct MenusPlugin;
 impl Plugin for MenusPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuState>()
+            .init_resource::<PendingLogin>()
             .init_resource::<Focus>()
             .init_resource::<MenuActions>()
-            .add_systems(Startup, spawn_menu_scenery)
+            .add_systems(OnEnter(Screen::Login), spawn_menu_scenery)
+            .add_systems(Update, watch_connection)
             .add_systems(OnExit(Screen::Playing), dusk)
             .add_systems(OnEnter(Screen::Login), spawn_login)
             .add_systems(OnEnter(Screen::Characters), spawn_characters)
@@ -137,6 +142,7 @@ pub struct MenuActions(pub Vec<MenuAction>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldId {
+    Server,
     Account,
     Password,
     Name,
@@ -246,6 +252,17 @@ fn text_field(
     secret: bool,
     max: usize,
 ) {
+    text_field_with(parent, id, label, secret, max, "");
+}
+
+fn text_field_with(
+    parent: &mut ChildSpawnerCommands,
+    id: FieldId,
+    label: &str,
+    secret: bool,
+    max: usize,
+    value: &str,
+) {
     parent.spawn((Text::new(label), font(13.0), TextColor(palette::TEXT_DIM)));
     parent
         .spawn((
@@ -253,7 +270,7 @@ fn text_field(
             MenuAction::Focus(id),
             TextField {
                 id,
-                value: String::new(),
+                value: value.to_owned(),
                 secret,
                 max,
             },
@@ -283,9 +300,9 @@ fn message_line(parent: &mut ChildSpawnerCommands) {
     ));
 }
 
-fn spawn_login(mut commands: Commands, mut focus: ResMut<Focus>, mut state: ResMut<MenuState>) {
+fn spawn_login(mut commands: Commands, mut focus: ResMut<Focus>, server: Res<LastServer>) {
     focus.0 = Some(FieldId::Account);
-    state.message = None;
+    // A message from before (a lost connection) stays.
     commands.spawn(root(Screen::Login)).with_children(|row| {
         row.spawn(panel(400.0)).with_children(|p| {
             p.spawn((
@@ -298,6 +315,14 @@ fn spawn_login(mut commands: Commands, mut focus: ResMut<Focus>, mut state: ResM
                 font(13.0),
                 TextColor(palette::TEXT_DIM),
             ));
+            text_field_with(
+                p,
+                FieldId::Server,
+                "Server (leave empty to play on this computer)",
+                false,
+                64,
+                &server.0,
+            );
             text_field(p, FieldId::Account, "Account name", false, 16);
             text_field(p, FieldId::Password, "Password", true, 64);
             p.spawn(Node {
@@ -401,9 +426,9 @@ fn spawn_menu_scenery(
     mut commands: Commands,
     mut toon: ToonAssets,
     data: Res<GameData>,
-    screen: Res<State<Screen>>,
+    existing: Query<(), With<Preview>>,
 ) {
-    if *screen.get() == Screen::Playing {
+    if !existing.is_empty() {
         return;
     }
     commands.insert_resource(ClearColor(MENU_SKY));
@@ -444,6 +469,30 @@ fn spawn_menu_scenery(
         Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
         Visibility::default(),
     ));
+}
+
+/// A lost connection goes back to the login screen with a message.
+fn watch_connection(
+    mut commands: Commands,
+    mut connection: ResMut<Connection>,
+    mut state: ResMut<MenuState>,
+    mut pending: ResMut<PendingLogin>,
+    mut next: ResMut<NextState<Screen>>,
+    remote: Query<Entity, With<lightyear::prelude::client::Remote>>,
+) {
+    let Connection::Lost(why) = &*connection else {
+        return;
+    };
+    state.message = Some((why.clone(), true));
+    state.waiting = false;
+    state.characters.clear();
+    pending.0 = None;
+    // What the server sent is gone with it.
+    for entity in &remote {
+        commands.entity(entity).despawn();
+    }
+    *connection = Connection::Local;
+    next.set(Screen::Login);
 }
 
 fn dusk(mut sky: ResMut<ClearColor>) {
@@ -496,6 +545,7 @@ fn show_hud(
 }
 
 fn hear_answers(
+    (mut pending, mut link): (ResMut<PendingLogin>, ResMut<Link>),
     mut received: MessageReader<Received>,
     me: Res<LocalPlayerId>,
     data: Res<GameData>,
@@ -531,6 +581,12 @@ fn hear_answers(
             }
             ServerEvent::Joined { player, .. } if *player == me.0 => {
                 next.set(Screen::Playing);
+            }
+            ServerEvent::Welcome { player } => {
+                if let Some(request) = pending.0.take() {
+                    link.to_authority.push((*player, request));
+                    state.message = Some(("Just a moment...".into(), false));
+                }
             }
             _ => {}
         }
@@ -576,8 +632,9 @@ fn type_text(
         match &key.logical_key {
             Key::Tab => {
                 focus.0 = match (*screen.get(), focus.0) {
+                    (Screen::Login, Some(FieldId::Server)) => Some(FieldId::Account),
                     (Screen::Login, Some(FieldId::Account)) => Some(FieldId::Password),
-                    (Screen::Login, _) => Some(FieldId::Account),
+                    (Screen::Login, _) => Some(FieldId::Server),
                     (Screen::Create, _) => Some(FieldId::Name),
                     _ => None,
                 };
@@ -625,6 +682,45 @@ fn field_value(fields: &Query<&mut TextField>, id: FieldId) -> String {
         .unwrap_or_default()
 }
 
+/// Where the login screen's request goes.
+#[derive(Debug, PartialEq)]
+pub enum Where {
+    /// The rules half in this game.
+    Here,
+    /// The server we are already connected to.
+    Connected,
+    /// Connect to the server first.
+    Connect,
+}
+
+/// Decide where to log in, given the server box (`""` = this computer),
+/// the connection, and whether the rules have already run in this game.
+pub fn where_to_play(
+    server: &str,
+    connection: &Connection,
+    ran_here: bool,
+) -> Result<Where, String> {
+    match (server.is_empty(), connection) {
+        (_, Connection::Connecting(_)) => Err("Still connecting, just a moment...".into()),
+        (true, Connection::Online(_)) => {
+            Err("You are connected to a server. Restart the game to play on this computer.".into())
+        }
+        (true, _) => Ok(Where::Here),
+        (false, Connection::Online(address)) if address == server => Ok(Where::Connected),
+        (false, Connection::Online(_)) => {
+            Err("Restart the game to switch to another server.".into())
+        }
+        (false, _) if ran_here => {
+            Err("You played on this computer. Restart the game to join a server.".into())
+        }
+        (false, _) => Ok(Where::Connect),
+    }
+}
+
+/// A login waiting for the connection to the server.
+#[derive(Resource, Default)]
+pub struct PendingLogin(pub Option<ClientRequest>);
+
 /// Step through a list of `count` choices, wrapping round.
 fn step(index: usize, count: usize, by: i32) -> usize {
     if count == 0 {
@@ -656,6 +752,13 @@ fn run_actions(
     me: Res<LocalPlayerId>,
     mut link: ResMut<Link>,
     mut next: ResMut<NextState<Screen>>,
+    mut commands: Commands,
+    (mut connection, mut authority, mut last_server, mut pending): (
+        ResMut<Connection>,
+        ResMut<AuthorityActive>,
+        ResMut<LastServer>,
+        ResMut<PendingLogin>,
+    ),
 ) {
     for action in std::mem::take(&mut actions.0) {
         if !matches!(action, MenuAction::Delete) {
@@ -671,9 +774,36 @@ fn run_actions(
                 } else {
                     ClientRequest::Register { account, password }
                 };
-                send(&mut link, *me, request);
-                state.waiting = true;
-                state.message = Some(("Just a moment...".into(), false));
+                let server = field_value(&fields, FieldId::Server).trim().to_owned();
+                last_server.0 = server.clone();
+                match where_to_play(&server, &connection, authority.0) {
+                    Ok(Where::Here) => {
+                        // The rules run in this game.
+                        authority.0 = true;
+                        send(&mut link, *me, request);
+                        state.waiting = true;
+                        state.message = Some(("Just a moment...".into(), false));
+                    }
+                    Ok(Where::Connected) => {
+                        send(&mut link, *me, request);
+                        state.waiting = true;
+                        state.message = Some(("Just a moment...".into(), false));
+                    }
+                    Ok(Where::Connect) => {
+                        let started = net::parse_address(&server, data.config.network.port)
+                            .and_then(|address| net::connect(&mut commands, address, &data));
+                        match started {
+                            Ok(()) => {
+                                *connection = Connection::Connecting(server.clone());
+                                pending.0 = Some(request);
+                                state.waiting = true;
+                                state.message = Some((format!("Connecting to {server}..."), false));
+                            }
+                            Err(why) => state.message = Some((why, true)),
+                        }
+                    }
+                    Err(why) => state.message = Some((why, true)),
+                }
             }
             MenuAction::Logout => {
                 send(&mut link, *me, ClientRequest::Logout);
@@ -1205,5 +1335,27 @@ mod tests {
         let mut plain = Appearance::first(&data.races);
         change_look(&mut plain, human, Choice::Feature, 1);
         assert_eq!(plain.feature, 0);
+    }
+
+    #[test]
+    fn the_server_box_decides_where_to_play() {
+        let online = Connection::Online("1.2.3.4".into());
+        assert_eq!(
+            where_to_play("", &Connection::Local, false),
+            Ok(Where::Here)
+        );
+        assert_eq!(where_to_play("", &Connection::Local, true), Ok(Where::Here));
+        assert_eq!(
+            where_to_play("1.2.3.4", &Connection::Local, false),
+            Ok(Where::Connect)
+        );
+        assert_eq!(
+            where_to_play("1.2.3.4", &online, false),
+            Ok(Where::Connected)
+        );
+        assert!(where_to_play("1.2.3.4", &Connection::Local, true).is_err());
+        assert!(where_to_play("", &online, false).is_err());
+        assert!(where_to_play("5.6.7.8", &online, false).is_err());
+        assert!(where_to_play("1.2.3.4", &Connection::Connecting("x".into()), false).is_err());
     }
 }

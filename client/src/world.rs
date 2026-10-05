@@ -101,6 +101,10 @@ fn rebuild_scenery(
     mut standard: ResMut<Assets<StandardMaterial>>,
 ) {
     let Some(zone) = &current.0 else {
+        // Back at the menus: no zone around them.
+        for (entity, _) in &shown {
+            commands.entity(entity).despawn();
+        }
         return;
     };
     if shown.iter().any(|(_, s)| &s.0 == zone) {

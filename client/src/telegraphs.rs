@@ -19,7 +19,6 @@ use shared::components::Zone;
 use shared::telegraphs::{MarkerShape, Placement, Telegraph, covers};
 
 use crate::camera::CameraShake;
-use crate::hud::game_now;
 use crate::vfx::Looks;
 use crate::world::CurrentZone;
 
@@ -240,12 +239,12 @@ fn dress_new_markers(
 /// Follow moving markers, grow the fill, and remember each marker.
 fn update_markers(
     time: Res<Time>,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     mut known: ResMut<KnownMarkers>,
     mut markers: Query<(Entity, &Telegraph, &Zone, &mut MarkerVisual, &mut Transform)>,
     mut materials: ResMut<Assets<MarkerMaterial>>,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     for (entity, marker, zone, mut visual, mut transform) in &mut markers {
         transform.translation = marker.origin;
         transform.rotation = Quat::from_rotation_y(marker.yaw);
@@ -286,7 +285,7 @@ pub fn burst_points(marker: &Telegraph) -> Vec<Vec3> {
 /// Dust and light over the area of markers that just went off.
 fn markers_going_off(
     mut commands: Commands,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     current: Res<CurrentZone>,
     mut known: ResMut<KnownMarkers>,
     mut removed: RemovedComponents<Telegraph>,
@@ -294,7 +293,7 @@ fn markers_going_off(
     mut materials: ResMut<Assets<MarkerMaterial>>,
     mut looks: Looks,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     for entity in removed.read() {
         let Some((marker, zone)) = known.0.remove(&entity) else {
             continue;

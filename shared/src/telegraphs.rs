@@ -111,7 +111,8 @@ pub fn covers(shape: MarkerShape, origin: Vec3, yaw: f32, point: Vec3, grace: f3
 }
 
 /// A telegraph currently on the ground (a logic entity; the client draws it).
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+#[component(map_entities)]
 pub struct Telegraph {
     pub shape: MarkerShape,
     pub placement: Placement,
@@ -135,6 +136,13 @@ impl Telegraph {
 
     pub fn covers(&self, point: Vec3, grace: f32) -> bool {
         covers(self.shape, self.origin, self.yaw, point, grace)
+    }
+}
+
+impl bevy::ecs::entity::MapEntities for Telegraph {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        self.follow = self.follow.map(|e| mapper.get_mapped(e));
+        self.caster = mapper.get_mapped(self.caster);
     }
 }
 

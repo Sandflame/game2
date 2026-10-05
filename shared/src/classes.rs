@@ -180,14 +180,14 @@ impl Validate for ClassDef {
 
 /// A class's choice of secondary class: which class it borrows from and
 /// the abilities it put in its two secondary slots.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SecondaryChoice {
     pub class: String,
     pub abilities: [Option<String>; SECONDARY_ABILITIES],
 }
 
 /// Each class's secondary choice for one character (keyed by main class).
-#[derive(Component, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Secondaries(pub HashMap<String, SecondaryChoice>);
 
 /// Can a character playing `main` borrow these abilities from `choice.class`,
@@ -216,7 +216,7 @@ pub fn check_secondary(
 }
 
 /// A character's current class and specialization.
-#[derive(Component, Debug, Clone, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CurrentClass {
     pub class: String,
     pub spec: String,
@@ -224,7 +224,7 @@ pub struct CurrentClass {
 
 /// The specialization each class last chose (classes not listed use their
 /// `default_spec`).
-#[derive(Component, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChosenSpecs(pub std::collections::HashMap<String, String>);
 
 impl ChosenSpecs {
@@ -241,7 +241,7 @@ impl ChosenSpecs {
 
 /// A character's fighting numbers, from their class, level and gear
 /// (see `items::character_stats`).
-#[derive(Component, Debug, Clone, Copy, PartialEq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Stats {
     pub max_health: u32,
     pub power: f32,

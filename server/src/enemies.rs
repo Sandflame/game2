@@ -20,7 +20,7 @@ use crate::effects::PendingEffects;
 use shared::movement::yaw_from_direction;
 
 /// Which enemy type this is (file name in `assets/data/enemies/`).
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnemyKind(pub String);
 
 /// Heal to full and forget all threat after this long without being hit.

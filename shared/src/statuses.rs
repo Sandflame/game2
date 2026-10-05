@@ -134,14 +134,14 @@ impl Validate for StatusFile {
 
 /// What an active status does each tick, worked out when it was applied
 /// (so later buffs on the caster don't change a running damage-over-time).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TickAmount {
     Damage(u32),
     Heal(u32),
 }
 
 /// A status currently on a character.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActiveStatus {
     pub id: String,
     pub source: Entity,
@@ -171,7 +171,8 @@ pub struct DueTick {
 }
 
 /// All statuses on one character.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
+#[component(map_entities)]
 pub struct Statuses(pub Vec<ActiveStatus>);
 
 impl Statuses {
@@ -279,6 +280,14 @@ impl Statuses {
 
     pub fn has(&self, id: &str) -> bool {
         self.0.iter().any(|s| s.id == id)
+    }
+}
+
+impl bevy::ecs::entity::MapEntities for Statuses {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        for status in &mut self.0 {
+            status.source = mapper.get_mapped(status.source);
+        }
     }
 }
 

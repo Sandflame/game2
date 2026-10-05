@@ -8,7 +8,7 @@ use shared::classes::{ChosenSpecs, CurrentClass, Secondaries};
 use shared::combat::Reject;
 use shared::combat::{ActionState, Health};
 use shared::components::{
-    CharacterName, Faction, HitRadius, Hotbar, Motion, PlayerId, VisualKey, Zone,
+    CharacterName, Faction, HitRadius, Hotbar, Motion, MoveEpoch, PlayerId, VisualKey, Zone,
 };
 use shared::enemy_ai::ground_distance;
 use shared::gamedata::{GameData, Zones};
@@ -41,7 +41,21 @@ pub struct PlayerInput {
     pub input: MoveInput,
     /// Turn to face this way on the next tick (set when using an ability).
     pub face_once: Option<f32>,
+    /// Over a network: where the player's own game says they got to, and
+    /// the move counter it had seen (checked on the next movement tick).
+    pub reported: Option<(MoveState, u32)>,
+    /// When a reported move was last accepted (game time).
+    pub accepted_at: f64,
+    /// This player's own game moves them (over a network): between reports
+    /// they stay put rather than being moved by their last keys.
+    pub reports: bool,
 }
+
+/// Where the last movement tick (or an accepted report) left a player.
+/// If they are anywhere else at the end of a tick, the authority moved
+/// them itself and their [`MoveEpoch`] goes up.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Settled(pub Vec3);
 
 /// When this character last took part in a fight.
 #[derive(Component, Debug, Default, Clone, Copy)]
@@ -63,7 +77,7 @@ impl CombatClock {
 }
 
 /// This character is down. Players get back up after a while.
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Defeated {
     pub at: f64,
 }
@@ -172,6 +186,8 @@ pub fn spawn_player(
                 Motion(motion),
                 Zone(zone),
                 PlayerInput::default(),
+                MoveEpoch::default(),
+                Settled(motion.position),
                 Faction::Player,
                 HitRadius(data.player.hit_radius),
                 VisualKey("player".to_owned()),
@@ -209,6 +225,7 @@ pub fn move_characters(
             Has<Defeated>,
             Option<&FlameChange>,
             &Statuses,
+            (&MoveEpoch, &mut Settled),
         ),
         Without<Riding>,
     >,
@@ -224,6 +241,7 @@ pub fn move_characters(
         defeated,
         flame_change,
         statuses,
+        (epoch, mut settled),
     ) in &mut characters
     {
         let Some(level) = zones.get(&zone.0) else {
@@ -231,6 +249,7 @@ pub fn move_characters(
         };
         let mut input = player_input.input;
         player_input.input.jump = false;
+        let reported = player_input.reported.take();
         if defeated {
             continue;
         }
@@ -255,8 +274,56 @@ pub fn move_characters(
         }
         // Slows (and speed-ups) from statuses.
         let speed = statuses.modifiers(|id| data.statuses.get(id)).move_speed;
-        input.direction = input.direction.clamp_length_max(1.0) * speed;
-        motion.0 = movement::step(motion.0, input, &data.config.movement, level, dt);
+        match reported {
+            // Over a network the player's own game moved them; take its
+            // word if the move was possible.
+            Some((state, seen)) => {
+                if seen != epoch.0 {
+                    // Sent before we last moved them ourselves: stale.
+                    continue;
+                }
+                let since = (now - player_input.accepted_at).max(dt as f64) as f32;
+                if movement::plausible(
+                    motion.0,
+                    state,
+                    &data.config.movement,
+                    level,
+                    speed,
+                    since,
+                    (
+                        data.config.network.move_tolerance,
+                        data.config.network.move_slack,
+                    ),
+                ) {
+                    motion.0 = state;
+                    player_input.accepted_at = now;
+                } else {
+                    // Not possible: they go back to where we have them
+                    // (moving `Settled` makes the counter go up).
+                    settled.0 = state.position;
+                    continue;
+                }
+            }
+            None if player_input.reports => {}
+            None => {
+                input.direction = input.direction.clamp_length_max(1.0) * speed;
+                motion.0 = movement::step(motion.0, input, &data.config.movement, level, dt);
+            }
+        }
+        settled.0 = motion.0.position;
+    }
+}
+
+/// Players the authority moved itself this tick (portals, lunges, rides,
+/// revives, wipes…) get a new move counter, so a player whose own game
+/// moves them knows to jump to the authority's position.
+pub fn count_forced_moves(mut players: Query<(Ref<Zone>, &Motion, &mut Settled, &mut MoveEpoch)>) {
+    for (zone, motion, mut settled, mut epoch) in &mut players {
+        let moved = motion.0.position.distance_squared(settled.0) > 1e-8;
+        if moved || (zone.is_changed() && !zone.is_added()) {
+            epoch.0 = epoch.0.wrapping_add(1);
+            settled.0 = motion.0.position;
+        }
     }
 }
 
@@ -442,7 +509,7 @@ pub fn forget_absent(
     for (zone, mut table) in &mut enemies {
         table
             .0
-            .retain(|who, _| characters.get(*who).map_or(true, |z| z == zone));
+            .retain(|who, _| characters.get(*who).is_ok_and(|z| z == zone));
     }
 }
 

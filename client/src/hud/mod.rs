@@ -64,11 +64,6 @@ pub mod palette {
     pub const DEBUFF: Color = Color::srgb(0.95, 0.40, 0.35);
 }
 
-/// The current time on the game clock, smoothed between ticks.
-pub fn game_now(fixed: &Time<Fixed>) -> f64 {
-    fixed.elapsed_secs_f64() + fixed.overstep().as_secs_f64()
-}
-
 /// A crisp one-pixel shadow that keeps text readable over bright scenery.
 pub fn text_shadow() -> TextShadow {
     TextShadow {

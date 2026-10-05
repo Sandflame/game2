@@ -11,7 +11,6 @@ use shared::combat::ActionState;
 use shared::components::VisualKey;
 use shared::protocol::ServerEvent;
 
-use crate::hud::game_now;
 use crate::models::ModelPending;
 use crate::session::Received;
 use crate::toon::ToonMaterial;
@@ -190,7 +189,7 @@ const ROOT_SINK: f32 = 1.2;
 
 fn animate_bosses(
     time: Res<Time>,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     mut received: MessageReader<Received>,
     mut bosses: Query<(Entity, &mut BossRig, &ActionState, Has<Defeated>)>,
     mut parts: Query<&mut Transform>,
@@ -202,7 +201,7 @@ fn animate_bosses(
             rig.slam = 1.0;
         }
     }
-    let now = game_now(&fixed);
+    let now = clock.now;
     let t = time.elapsed_secs();
     let dt = time.delta_secs();
     for (_, mut rig, actions, defeated) in &mut bosses {

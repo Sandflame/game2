@@ -477,7 +477,11 @@ fn build_thornling(commands: &mut Commands, toon: &mut ToonAssets, add: Entity) 
 }
 
 /// After each tick, remember where every character was and now is.
-fn record_motion(mut characters: Query<(&Motion, &mut DisplayMotion)>) {
+/// (Our own character on a server is drawn where our own game has it; see
+/// `net::move_myself`.)
+fn record_motion(
+    mut characters: Query<(&Motion, &mut DisplayMotion), Without<crate::net::Predicted>>,
+) {
     for (motion, mut display) in &mut characters {
         display.previous = display.current;
         display.current = motion.0;
@@ -507,7 +511,18 @@ pub fn send_movement(
     scripted: Res<ScriptedMove>,
     conversation: Res<Conversation>,
     mut link: ResMut<Link>,
+    (mut held, connection): (ResMut<crate::net::HeldInput>, Res<crate::net::Connection>),
 ) {
+    // On a server our own game moves us (`net::move_myself`); here the
+    // rules half does.
+    let online = matches!(*connection, crate::net::Connection::Online(_));
+    let mut send_move = |link: &mut Link, input: MoveInput| {
+        if online {
+            held.set(input);
+        } else {
+            send(link, *me, ClientRequest::Move(input));
+        }
+    };
     // The interact key uses portals and talks to people (during a
     // conversation it shows the next line instead).
     if keys.just_pressed(KeyCode::KeyE) && !conversation.open() {
@@ -518,7 +533,7 @@ pub fn send_movement(
             direction,
             ..default()
         };
-        send(&mut link, *me, ClientRequest::Move(input));
+        send_move(&mut link, input);
         return;
     }
     let mut wish = Vec2::ZERO;
@@ -548,7 +563,7 @@ pub fn send_movement(
         // Steering with the right mouse button turns the character to match the camera.
         face_yaw: mouse.pressed(MouseButton::Right).then_some(yaw),
     };
-    send(&mut link, *me, ClientRequest::Move(input));
+    send_move(&mut link, input);
 }
 
 fn react_to_events(
@@ -619,14 +634,14 @@ fn animate_reactions(
 /// casting, flare on use, and sputter while the flame is being changed.
 fn animate_lanterns(
     time: Res<Time>,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     data: Res<GameData>,
     owners: Query<(&ActionState, Option<&CurrentClass>, Has<FlameChange>)>,
     mut flames: Query<&mut LanternFlame>,
     mut materials: ResMut<Assets<ToonMaterial>>,
 ) {
     let t = time.elapsed_secs();
-    let now = fixed.elapsed_secs_f64() + fixed.overstep().as_secs_f64();
+    let now = clock.now;
     let flicker = 1.0 + 0.12 * (t * 9.0).sin() + 0.08 * (t * 23.0 + 1.3).sin();
     for mut flame in &mut flames {
         flame.flare = (flame.flare - time.delta_secs() * 3.0).max(0.0);

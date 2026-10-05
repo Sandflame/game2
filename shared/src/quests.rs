@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use bevy::prelude::Component;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::data::{Problems, Validate};
 use crate::items::LootEntry;
@@ -133,14 +133,14 @@ impl QuestDef {
 }
 
 /// A quest in progress: which step, and how far through it (for `Defeat`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Active {
     pub step: usize,
     pub count: u32,
 }
 
 /// A player's quests.
-#[derive(Component, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct QuestLog {
     /// Quests being done, by id.
     pub active: BTreeMap<String, Active>,

@@ -20,12 +20,13 @@ Guide for working in this repository (for Claude and for humans).
   forest → dungeon, quest tracker and log; minimap + big map with N/E/S/W).
   **M10** (all 13 specializations; stacking statuses, slows, lunges, damage
   that heals; spec switching in the lantern panel, saved per class).
-- **M11** in three stages (see `MILESTONES.md`). Stage 1 is **built,
-  waiting for the user's feedback**: real character models (KayKit, longer
-  and slimmer), five races (Humans, Elves, Drakes, Demons, Lynari) with
-  customization, gear looks for five rarities (Common to Legendary),
-  accounts + character list + character creation. Next: 2) networking;
-  3) parties + chat. The art direction is agreed: `docs/art-direction.md`
+- **M11** in three stages (see `MILESTONES.md`). Stages 1 and 2 are
+  **built, waiting for the user's feedback** (they asked to test both
+  together): 1) real character models (KayKit, longer and slimmer), five
+  races (Humans, Elves, Drakes, Demons, Lynari) with customization, gear
+  looks for five rarities (Common to Legendary), accounts + character list +
+  character creation; 2) networking: the `server` program, the login
+  screen's Server box, playing together over UDP. Next: 3) parties + chat. The art direction is agreed: `docs/art-direction.md`
   (samples in `docs/art/`, made by `client/examples/art_samples.rs`).
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
 - Full design: `DESIGN.md` (all user decisions: §12 and §13).
@@ -70,10 +71,11 @@ render.
   game rules** (formulas, cooldowns, movement, hit tests). No rendering.
   Every rule gets unit tests here.
 - `server/` — the **authority** (rules half) as a library (`AuthorityPlugin`),
-  plus a headless binary for multiplayer later. Owns the truth (and later the
+  plus the headless `server` program for multiplayer. Owns the truth (and later the
   SQLite database). Must build and run on Windows and Linux unchanged.
-- `client/` — rendering, input, UI, effects. **Runs `AuthorityPlugin`
-  in-process** until multiplayer (M11). Never decides outcomes.
+- `client/` — rendering, input, UI, effects. Playing on this computer it
+  **runs `AuthorityPlugin` in-process**; connected to a server it doesn't
+  (`AuthorityActive`). Never decides outcomes.
 - The halves talk only through `shared::protocol::Link`: the client pushes
   `ClientRequest`s, the authority pushes `ServerEvent`s. The client may *read*
   logic components (they'll be replicated later) but never writes them.
@@ -98,7 +100,7 @@ cargo build                                   # whole workspace
 cargo clippy --all-targets -- -D warnings     # lints (must be clean)
 cargo test                                    # all tests
 cargo run -p client                           # run the game client
-cargo run -p server                           # run the headless server
+cargo run -p server                           # run the server (UDP 5888; --port N)
 cargo test -p shared                          # just the game-rule tests
 cargo fmt                                     # format code
 
@@ -133,8 +135,13 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   `LANTERNFLAME_DEMO=races` — each race up close (cheats the look).
   `LANTERNFLAME_DEMO=gear` — the five gear rarities on one character
   (cheats with `gear::ShowRarity`).
-  `LANTERNFLAME_DEMO=menus` — the only demo with a save file (a fresh one
+  `LANTERNFLAME_DEMO=menus` — a demo with a save file (a fresh one
   in the temp folder): make an account, two characters, play.
+  `LANTERNFLAME_DEMO=online` — connects to `LANTERNFLAME_SERVER` (default
+  127.0.0.1; start `./target/debug/server` first), makes an account
+  `LANTERNFLAME_ACCOUNT` and a character `LANTERNFLAME_CHARACTER`, plays and
+  walks. Start a second one a few seconds later with other names to see two
+  players together.
   Leave ~1.5 s after a `Shot` before changing what's on screen: software
   rendering is slow and the shot is taken at the end of the frame.
   Each demo starts in its own zone
@@ -236,6 +243,18 @@ extra beyond the Rust toolchain.
   `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save;
   accounts (migration 5: `accounts` table, characters get `account_id` +
   `appearance`; `saved_at = 0` = never played), argon2 hashing, `AccountJob`s.
+- `server/src/net.rs` — playing over a network (lightyear 0.30, UDP +
+  netcode, built on bevy_replicon): `ProtocolPlugin` (messages
+  `ClientRequest`/`ServerEvent` with entity mapping on channels `Reliable` and
+  `Moves`; the replicated components — **a component the client reads must
+  be registered here**), `NetServerPlugin` (a `PlayerId` per connection,
+  `Welcome`, requests → `Link`, events routed to their player or zone,
+  `zone_visibility`: players only receive their own zone, disconnect →
+  `ClientRequest::Leave`). `PROTOCOL_ID`, `PRIVATE_KEY` (built in).
+- `server/src/main.rs` — the server program: `AuthorityPlugin` + `Database`
+  (same `world.db` as the game on that computer) + `NetServerPlugin`.
+- `server/tests/network.rs` — a real server and a bare client over UDP:
+  connect, join, movement reports accepted/refused, entity mapping.
 - `server/src/accounts.rs` — `Sessions` (who is logged in), checks account
   requests and sends them to the database thread, turns answers into events.
 - `server/src/characters.rs` — players: joining (a save inside a dungeon copy
@@ -246,6 +265,13 @@ extra beyond the Rust toolchain.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining (only without a save
   file; otherwise the character list joins), `Received` event messages.
+- `client/src/net.rs` — the game's side of playing on a server: `Connection`
+  (Local/Connecting/Online/Lost), `connect`, requests ↔ lightyear messages,
+  `GameClock` (the rules half's time: the fixed clock locally, the
+  server's `WorldClock` online — **use `clock.now` for anything compared
+  with server times**), `move_myself` (own movement predicted with
+  `movement::step`, reported as `Moved`; snaps on a new `MoveEpoch`),
+  `MotionHistory` + `smooth_others` (others shown `smoothing` s in the past).
 - `client/src/menus.rs` — the `Screen` state (Login → Characters → Create →
   Playing): login/make account, the character list, character creation
   (class, race, steppers for each choice) with a turning 3D preview on a
@@ -319,7 +345,6 @@ extra beyond the Rust toolchain.
 - `client/src/camera.rs` — FFXIV-style follow camera; stays inside zones with a
   `border` and in front of box walls; faces the arrival direction on entering a
   zone; swings behind the rider on rides; `CameraShake`.
-- `server/src/main.rs` — placeholder until M11: validates data and exits.
 - `client/examples/art_samples.rs` — the approved art direction as a runnable
   scene (`cargo run -p client --example art_samples`): KayKit bodies with
   stretched bones, toon materials + skinned outlines, race parts, gear tiers,
@@ -377,6 +402,15 @@ extra beyond the Rust toolchain.
   well as from the dungeon board (`listing`). Use `Zones::get` (it understands
   `zone#n` ids), never the map directly.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
+- Networking: the rules half is `server::AuthorityActive` (off in a game
+  connected to a server). Over a network a player's own game moves them and
+  sends `Moved`; the server checks `movement::plausible` and otherwise only
+  moves players itself (portals, lunges, rides…), which bumps their
+  `MoveEpoch` automatically (`count_forced_moves`). New logic components
+  the client reads must be registered in `server::net::ProtocolPlugin`
+  (with `#[component(map_entities)]` if they hold entities); new events
+  must list their entities in `ServerEvent::entities_mut`. Network numbers
+  are in `config/network.ron`.
 - Accounts: with a `Database`, `Join` needs a logged-in account and only
   loads that account's characters. Races, faces and colours are data
   (`races.ron`); the client maps face/feature ids to looks in `models.ron`

@@ -3,7 +3,7 @@
 //! everyone really is, the client to predict its own character instantly.
 
 use bevy::math::{Vec2, Vec3};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::data::{Problems, Validate};
 use crate::level::Level;
@@ -48,7 +48,7 @@ impl Validate for MovementConfig {
 }
 
 /// What the player wants to do this tick.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct MoveInput {
     /// Desired direction on the ground in world space (x = world X,
     /// y = world Z). Longer than 1 is treated as 1.
@@ -60,7 +60,7 @@ pub struct MoveInput {
 }
 
 /// Where a character is and how it is moving.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct MoveState {
     /// Position of the character's feet.
     pub position: Vec3,
@@ -144,6 +144,49 @@ pub fn step(
 
     next.position = Vec3::new(horizontal.x, y, horizontal.y);
     next
+}
+
+/// Could a character have moved from `from` to `to` in `seconds`, at
+/// `speed` times the normal walking speed? Used to check moves a player's
+/// own game reports over a network. `(tolerance, slack)` forgive uneven
+/// network timing: the distance may be `tolerance` times the expected one
+/// plus `slack` metres.
+pub fn plausible(
+    from: MoveState,
+    to: MoveState,
+    config: &MovementConfig,
+    level: &Level,
+    speed: f32,
+    seconds: f32,
+    (tolerance, slack): (f32, f32),
+) -> bool {
+    /// Rounding allowance for "inside a wall" and "below the ground".
+    const EPSILON: f32 = 0.05;
+    let flat = |p: Vec3| Vec2::new(p.x, p.z);
+    let (start, end) = (flat(from.position), flat(to.position));
+    if !end.is_finite() || !to.position.y.is_finite() {
+        return false;
+    }
+    let reach = config.walk_speed * speed.max(0.0) * seconds.max(0.0) * tolerance + slack;
+    if start.distance(end) > reach {
+        return false;
+    }
+    // Not inside a wall or object.
+    let feet = to.position.y;
+    let pushed = level.resolve_horizontal(
+        end,
+        config.character_radius,
+        feet,
+        config.character_height,
+        config.step_height,
+    );
+    if pushed.distance(end) > EPSILON {
+        return false;
+    }
+    // Not below the ground, and no higher than a jump above where they
+    // were or the ground.
+    let ground = level.ground_height(end, config.character_radius, feet, config.step_height);
+    feet >= ground - EPSILON && feet <= from.position.y.max(ground) + config.jump_height + slack
 }
 
 #[cfg(test)]
@@ -366,5 +409,35 @@ mod tests {
             ..config()
         };
         assert_eq!(bad.validate().len(), 2);
+    }
+
+    #[test]
+    fn reported_moves_must_be_possible() {
+        let config = config();
+        let level = with(vec![block(5.0, 0.0, 1.0, 3.0)]);
+        let from = MoveState::spawn_at(Vec3::ZERO);
+        let at = |x: f32, y: f32, z: f32| MoveState::spawn_at(Vec3::new(x, y, z));
+        let check = |to: MoveState, seconds: f32| {
+            plausible(from, to, &config, &level, 1.0, seconds, (1.5, 0.5))
+        };
+        // A second of walking covers 6 m (9.5 m with the allowance).
+        assert!(check(at(0.0, 0.0, -6.0), 1.0));
+        assert!(check(at(0.0, 0.0, -9.0), 1.0));
+        assert!(!check(at(0.0, 0.0, -12.0), 1.0));
+        // Slowed to half speed: 6 m is too far.
+        assert!(!plausible(
+            from,
+            at(0.0, 0.0, -6.0),
+            &config,
+            &level,
+            0.5,
+            1.0,
+            (1.5, 0.5)
+        ));
+        // Not inside the block, not underground, not flying.
+        assert!(!check(at(5.0, 0.0, 0.0), 2.0));
+        assert!(!check(at(0.0, -1.0, 0.0), 1.0));
+        assert!(check(at(0.0, 1.0, -1.0), 1.0));
+        assert!(!check(at(0.0, 5.0, -1.0), 1.0));
     }
 }

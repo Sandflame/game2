@@ -11,7 +11,7 @@ use shared::statuses::Statuses;
 use crate::characters::{CombatClock, Defeated};
 
 /// A flame change in progress. Moving cancels it.
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FlameChange {
     pub class: String,
     pub ends: f64,

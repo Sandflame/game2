@@ -234,6 +234,23 @@ Progress: **built (2026-10-05), waiting for the user's feedback.**
   stage 1.
 
 ### Stage 2 — Networking
+Progress: **built (2026-10-05), waiting for the user's feedback** (to be
+tested together with stage 1).
+- `cargo run -p server` runs the rules for everyone (UDP port 5888 from
+  `config/network.ron`, or `--port N`), saving to the same `world.db` the
+  game uses on that computer. Ctrl+C saves everyone and stops.
+- The login screen has a **Server** box: empty = play on this computer
+  (as before); an address (`127.0.0.1`, `192.168.1.20`, `name:port`) =
+  connect, then log in or make an account on the server. The address is
+  remembered. A lost connection returns to the login screen.
+- What was built differs a little from the plan, for simplicity: your own
+  character is moved by your game at once and the server checks each
+  move could have happened (instead of lightyear's rollback); others are
+  shown 0.1 s in the past and slide smoothly (our own smoothing).
+  Abilities, combat, zones, dungeon copies, quests and loot all run on the
+  server as before.
+- Tested: an automated test over real UDP; a server with two game windows
+  that see each other. Not yet tried over the internet.
 - Headless server program using lightyear (UDP); clients enter `IP:port`
   and log in; the in-process rules half is swapped for the connection.
 - Your own movement predicted, others interpolated.

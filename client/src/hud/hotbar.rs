@@ -12,7 +12,7 @@ use shared::gamedata::GameData;
 use shared::protocol::{ClientRequest, Link};
 use shared::statuses::Statuses;
 
-use super::{font, game_now, palette};
+use super::{font, palette};
 use crate::characters::LocalPlayer;
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
@@ -197,7 +197,7 @@ fn press_slots(
 
 fn update_slots(
     time: Res<Time>,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     data: Res<GameData>,
     target: Res<CurrentTarget>,
     player: Option<Single<(&Hotbar, &ActionState, &Motion), With<LocalPlayer>>>,
@@ -211,7 +211,7 @@ fn update_slots(
         return;
     };
     let (hotbar, actions, motion) = *player;
-    let now = game_now(&fixed);
+    let now = clock.now;
     let ability_in = |index: usize| -> Option<&AbilityDef> {
         hotbar
             .0

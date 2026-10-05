@@ -28,7 +28,7 @@ pub struct Npc {
 
 /// A character on a scripted ride (e.g. sliding down the giant root).
 /// They can't move or act until it ends.
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Riding {
     pub ride: String,
     pub started: f64,

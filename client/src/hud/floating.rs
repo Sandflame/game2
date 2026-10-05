@@ -150,7 +150,13 @@ fn spawn_nameplates(
                 if *faction == Faction::Neutral {
                     return;
                 }
-                let fill = spawn_bar(plate, 70.0, 5.0, palette::ENEMY_HEALTH);
+                // Other players' health is green, like your own.
+                let bar = if *faction == Faction::Player {
+                    palette::HEALTH
+                } else {
+                    palette::ENEMY_HEALTH
+                };
+                let fill = spawn_bar(plate, 70.0, 5.0, bar);
                 plate
                     .commands()
                     .entity(fill)

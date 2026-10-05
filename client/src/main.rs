@@ -15,6 +15,7 @@ mod hud;
 mod looks;
 mod menus;
 mod models;
+mod net;
 mod particles;
 mod props;
 mod session;
@@ -84,6 +85,7 @@ fn main() -> AppExit {
         return AppExit::error();
     }
 
+    let tick_hz = data.config.simulation.tick_hz;
     let mut app = App::new();
     // With a save file you log in and pick a character first; without one
     // (demos) you start playing straight away.
@@ -117,8 +119,12 @@ fn main() -> AppExit {
     .insert_resource(particles)
     .insert_resource(sounds)
     .insert_resource(models)
-    // The rules half, running in-process for now.
+    // The rules half, for playing on this computer. With a save file it
+    // waits until the login screen says where to play.
     .add_plugins(AuthorityPlugin)
+    .insert_resource(server::AuthorityActive(
+        first_screen == menus::Screen::Playing,
+    ))
     // The screen half.
     .add_plugins((
         session::SessionPlugin,
@@ -138,5 +144,10 @@ fn main() -> AppExit {
         devtools::DevToolsPlugin,
     ))
     .add_plugins((looks::LooksPlugin, menus::MenusPlugin, gear::GearPlugin))
+    // Playing on a server.
+    .add_plugins(lightyear::prelude::client::ClientPlugins {
+        tick_duration: std::time::Duration::from_secs_f64(1.0 / tick_hz),
+    })
+    .add_plugins((server::net::ProtocolPlugin, net::NetPlugin))
     .run()
 }

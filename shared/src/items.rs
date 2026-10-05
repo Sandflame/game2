@@ -188,14 +188,14 @@ impl Validate for ItemFile {
 }
 
 /// An item a character owns (the id tells two copies apart).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnedItem {
     pub id: u64,
     pub item: String,
 }
 
 /// Everything a character carries, worn gear included.
-#[derive(Component, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Bag {
     pub items: Vec<OwnedItem>,
     next_id: u64,
@@ -227,7 +227,7 @@ impl Bag {
 
 /// What a character is wearing: armour shared by all classes, and one
 /// weapon per class. Values are ids of items in their [`Bag`].
-#[derive(Component, Debug, Clone, Default, PartialEq)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Equipment {
     pub armour: HashMap<Slot, u64>,
     pub weapons: HashMap<String, u64>,

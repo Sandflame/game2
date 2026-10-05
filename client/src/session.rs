@@ -49,6 +49,6 @@ fn join(mut link: ResMut<Link>, me: Res<LocalPlayerId>, screen: Res<State<Screen
     );
 }
 
-fn receive_events(mut link: ResMut<Link>, mut received: MessageWriter<Received>) {
+pub fn receive_events(mut link: ResMut<Link>, mut received: MessageWriter<Received>) {
     received.write_batch(link.to_client.drain(..).map(Received));
 }

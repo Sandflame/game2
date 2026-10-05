@@ -140,13 +140,23 @@ work at that point.
 - **Tick:** the server simulates at a fixed **60 Hz** and sends state
   updates at **~20 Hz** (both configurable). Small player counts make
   this cheap.
-- **Your own character:** *predicted*. Your keyboard input moves you on
-  your screen immediately; the same input is sent to the server; if the
-  server's result differs, the client quietly corrects (rollback and
-  replay, handled by lightyear).
-- **Other players and enemies:** *interpolated*. You see them ~100 ms in
-  the past, smoothly sliding between known positions. This is what makes
-  other people's movement look smooth instead of jittery.
+- **Your own character (as built, M11 stage 2):** your game moves you at
+  once with the same `movement::step` the server uses and reports where
+  you got to (`ClientRequest::Moved`). The server accepts the move if it
+  was possible (`movement::plausible`: speed incl. slows, a tolerance for
+  uneven timing, not inside walls, not flying), otherwise keeps you where
+  it has you. Whenever the server moves you itself (portals, lunges, rides,
+  revives, refused moves) your `MoveEpoch` goes up and your game jumps to
+  the server's position. Simpler than lightyear's rollback and feels the
+  same; fine for a game among friends (a cheater could only walk a bit
+  faster).
+- **Other players and enemies:** *interpolated* by the game itself
+  (`client/src/net.rs`): shown `smoothing` (0.1 s) in the past, sliding
+  between the positions the server sent.
+- **What is sent:** every logic component the client reads is replicated
+  (lightyear/bevy_replicon), only to players in the same zone; events go
+  to their player or to everyone in their zone. The server's clock is
+  replicated too (`WorldClock`), so cooldowns and markers line up.
 - **Combat actions:** *not* predicted. Pressing an ability sends a request;
   the client immediately starts the GCD spinner and cast bar optimistically,
   and rolls back the UI if the server rejects it. Damage numbers appear

@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 shared.workspace = true
 server = { path = "../server" }
+lightyear.workspace = true
 bevy = { workspace = true, features = ["3d", "ui", "audio", "wav", "tonemapping_luts"] }
 bevy_hanabi.workspace = true
 anyhow.workspace = true

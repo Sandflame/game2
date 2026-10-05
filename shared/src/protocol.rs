@@ -3,6 +3,7 @@
 //! the same messages go over the network.
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::combat::Reject;
 use crate::components::PlayerId;
@@ -10,7 +11,7 @@ use crate::items::Slot;
 use crate::movement::MoveInput;
 
 /// One of an account's characters, for the character list.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CharacterSummary {
     pub name: String,
     /// Current class id.
@@ -23,7 +24,7 @@ pub struct CharacterSummary {
 }
 
 /// Something a player asks the authority to do.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ClientRequest {
     /// Make an account (and log in to it).
     Register { account: String, password: String },
@@ -42,8 +43,22 @@ pub enum ClientRequest {
     /// Enter the world with this character name (one of the logged-in
     /// account's; without a save file, any name).
     Join { name: String },
-    /// Latest movement keys. Sent every frame.
+    /// Latest movement keys. Sent every frame when the authority moves
+    /// the character itself (playing on this computer).
     Move(MoveInput),
+    /// Over a network the client moves its own character at once and
+    /// reports where it got to; the authority checks it could have.
+    /// `epoch` is the last [`MoveEpoch`](crate::components::MoveEpoch) the
+    /// client saw: reports from before the authority last moved the
+    /// character itself (a portal, a lunge…) are ignored.
+    Moved {
+        input: MoveInput,
+        state: crate::movement::MoveState,
+        epoch: u32,
+    },
+    /// Leave the world (the connection closed): the character is saved
+    /// and removed.
+    Leave,
     /// Use the ability in a hotbar slot (0-based) on a target.
     UseAbility { slot: usize, target: Option<Entity> },
     /// Change the flame in your lantern to switch class.
@@ -68,8 +83,10 @@ pub enum ClientRequest {
 }
 
 /// Something the authority tells clients about.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerEvent {
+    /// Sent when a client connects over the network: its player id.
+    Welcome { player: PlayerId },
     /// Logged in to this account.
     LoggedIn { player: PlayerId, account: String },
     /// An account or character request was refused (shown as it is).
@@ -177,6 +194,104 @@ pub enum ServerEvent {
     QuestProgressed { player: PlayerId, quest: String },
     /// The player finished a quest.
     QuestCompleted { player: PlayerId, quest: String },
+}
+
+impl bevy::ecs::entity::MapEntities for ClientRequest {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        if let ClientRequest::UseAbility {
+            target: Some(target),
+            ..
+        } = self
+        {
+            *target = mapper.get_mapped(*target);
+        }
+    }
+}
+
+impl bevy::ecs::entity::MapEntities for ServerEvent {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        for entity in self.entities_mut() {
+            *entity = mapper.get_mapped(*entity);
+        }
+    }
+}
+
+impl ServerEvent {
+    /// Every entity this event mentions.
+    pub fn entities_mut(&mut self) -> Vec<&mut Entity> {
+        use ServerEvent as E;
+        match self {
+            E::Joined { entity, .. }
+            | E::CastInterrupted { user: entity, .. }
+            | E::FlameChangeStarted { user: entity, .. }
+            | E::ClassChanged { user: entity, .. }
+            | E::SpecChanged { user: entity, .. }
+            | E::Defeated { entity }
+            | E::Revived { entity }
+            | E::ZoneChanged { entity, .. }
+            | E::XpGained { entity, .. }
+            | E::LevelUp { entity, .. }
+            | E::ItemReceived { entity, .. } => vec![entity],
+            E::AbilityUsed { user, target, .. } => {
+                let mut list = vec![user];
+                list.extend(target.as_mut());
+                list
+            }
+            E::AbilityLanded { user, target, .. } => vec![user, target],
+            E::Damage { source, target, .. } | E::Heal { source, target, .. } => {
+                vec![source, target]
+            }
+            E::Welcome { .. }
+            | E::LoggedIn { .. }
+            | E::AccountError { .. }
+            | E::Characters { .. }
+            | E::Rejected { .. }
+            | E::Queued { .. }
+            | E::Announce { .. }
+            | E::EncounterStarted { .. }
+            | E::EncounterWon { .. }
+            | E::EncounterWiped { .. }
+            | E::Speech { .. }
+            | E::OpenBoard { .. }
+            | E::Dialogue { .. }
+            | E::QuestAccepted { .. }
+            | E::QuestProgressed { .. }
+            | E::QuestCompleted { .. } => Vec::new(),
+        }
+    }
+
+    /// The one player this event is for, if it is private.
+    pub fn for_player(&self) -> Option<PlayerId> {
+        use ServerEvent as E;
+        match self {
+            E::Welcome { player }
+            | E::LoggedIn { player, .. }
+            | E::AccountError { player, .. }
+            | E::Characters { player, .. }
+            | E::Joined { player, .. }
+            | E::Rejected { player, .. }
+            | E::Queued { player, .. }
+            | E::Speech { player, .. }
+            | E::OpenBoard { player }
+            | E::Dialogue { player, .. }
+            | E::QuestAccepted { player, .. }
+            | E::QuestProgressed { player, .. }
+            | E::QuestCompleted { player, .. } => Some(*player),
+            _ => None,
+        }
+    }
+
+    /// The zone this event happens in, if it names one.
+    pub fn zone(&self) -> Option<&str> {
+        use ServerEvent as E;
+        match self {
+            E::Announce { zone, .. }
+            | E::EncounterStarted { zone, .. }
+            | E::EncounterWon { zone, .. }
+            | E::EncounterWiped { zone, .. } => Some(zone),
+            _ => None,
+        }
+    }
 }
 
 /// The in-process connection between the client and the authority.

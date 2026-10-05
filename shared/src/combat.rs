@@ -140,7 +140,7 @@ impl Reject {
 pub const TIME_TOLERANCE: f64 = 1e-4;
 
 /// A cast in progress.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cast {
     pub ability: String,
     pub target: Option<Entity>,
@@ -151,7 +151,7 @@ pub struct Cast {
 }
 
 /// A request waiting for the GCD or a cooldown to come back.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Queued {
     pub ability: String,
     pub target: Option<Entity>,
@@ -167,7 +167,8 @@ pub enum Started {
 }
 
 /// A character's action timers: GCD, cooldowns, cast, lock and queue.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default, Serialize, Deserialize)]
+#[component(map_entities)]
 pub struct ActionState {
     pub gcd_start: f64,
     pub gcd_end: f64,
@@ -348,7 +349,7 @@ fn remaining_fraction(start: f64, end: f64, now: f64) -> Option<f32> {
 }
 
 /// Hit points.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Health {
     pub current: u32,
     pub max: u32,
@@ -423,6 +424,17 @@ pub fn test_config() -> CombatConfig {
         revive_after: 5.0,
         tab_target_range: 40.0,
         marker_grace: 0.0,
+    }
+}
+
+impl bevy::ecs::entity::MapEntities for ActionState {
+    fn map_entities<M: bevy::ecs::entity::EntityMapper>(&mut self, mapper: &mut M) {
+        if let Some(cast) = &mut self.cast {
+            cast.target = cast.target.map(|e| mapper.get_mapped(e));
+        }
+        if let Some(queued) = &mut self.queued {
+            queued.target = queued.target.map(|e| mapper.get_mapped(e));
+        }
     }
 }
 

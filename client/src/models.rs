@@ -25,7 +25,6 @@ use shared::protocol::ServerEvent;
 
 use crate::animation::BodyMaterials;
 use crate::characters::DisplayMotion;
-use crate::hud::game_now;
 use crate::session::Received;
 use crate::toon::{
     OUTLINE_COLOR, OUTLINE_THICKNESS, OutlineMaterial, OutlineSettings, ToonExtension, ToonMaterial,
@@ -970,10 +969,10 @@ fn start_actions(
     data: Res<GameData>,
     models: Res<ModelLibrary>,
     library: Res<AnimationLibrary>,
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     mut rigs: Query<&mut Rig>,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     let names = &models.animations;
     for Received(event) in received.read() {
         let (user, ability, landed) = match event {
@@ -1017,6 +1016,7 @@ fn choose_animations(
     models: Res<ModelLibrary>,
     library: Res<AnimationLibrary>,
     fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     mut rigs: Query<(
         &mut Rig,
         Option<&DisplayMotion>,
@@ -1027,7 +1027,7 @@ fn choose_animations(
     )>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     let names = &models.animations;
     let blend = Duration::from_secs_f32(names.blend);
     let tick = 1.0 / fixed.timestep().as_secs_f32().max(1e-6);

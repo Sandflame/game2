@@ -9,7 +9,7 @@ use shared::components::{CharacterName, Faction};
 use shared::gamedata::GameData;
 use shared::statuses::{StatusKind, Statuses};
 
-use super::{font, game_now, palette, spawn_bar};
+use super::{font, palette, spawn_bar};
 use crate::characters::LocalPlayer;
 use crate::targeting::CurrentTarget;
 
@@ -236,7 +236,7 @@ struct Shown<'a> {
 }
 
 fn update_frames(
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     data: Res<GameData>,
     target: Res<CurrentTarget>,
     player: Option<Single<Entity, With<LocalPlayer>>>,
@@ -258,7 +258,7 @@ fn update_frames(
     mut borders: Query<&mut BorderColor>,
     parents: Query<&ChildOf>,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     for (frame, frame_entity) in &frames {
         let who = match frame.of {
             FrameOf::Player => player.as_deref().copied(),
@@ -431,14 +431,14 @@ fn set_text(texts: &mut Query<&mut Text>, entity: Entity, value: &str) {
 }
 
 fn update_cast_bar(
-    fixed: Res<Time<Fixed>>,
+    clock: Res<crate::net::GameClock>,
     data: Res<GameData>,
     player: Option<Single<(&ActionState, Option<&FlameChange>), With<LocalPlayer>>>,
     mut root: Single<&mut Visibility, With<CastBarRoot>>,
     mut fill: Single<&mut Node, With<CastBarFill>>,
     mut label: Single<&mut Text, With<CastBarLabel>>,
 ) {
-    let now = game_now(&fixed);
+    let now = clock.now;
     let bar = player.and_then(|player| {
         let (actions, flame_change) = *player;
         if let Some(change) = flame_change {

@@ -1,0 +1,19 @@
+// Playing over a network (the `server` program and clients that connect).
+(
+    // The port the server listens on (UDP). Friends connect to
+    // `your-address:port`; forward this port on your router to host.
+    port: 5888,
+    // How often the server sends the world's state to players (seconds).
+    send_every: 0.05,
+    // A player who sends nothing for this long is disconnected (seconds).
+    timeout: 10.0,
+    // Your own character moves on your screen at once and the server checks
+    // the move was possible: up to this much faster than your speed
+    // (1.5 = 50% more, for uneven network timing)...
+    move_tolerance: 1.5,
+    // ...plus this many metres.
+    move_slack: 0.75,
+    // Other characters are shown this far behind the newest news (seconds),
+    // so they move smoothly.
+    smoothing: 0.1,
+)

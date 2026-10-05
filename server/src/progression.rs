@@ -673,6 +673,47 @@ pub fn save_players(
     }
 }
 
+/// Players who left: save them, then take them out of the world.
+pub fn handle_leaves(
+    mut commands: Commands,
+    database: Option<Res<Database>>,
+    mut leaving: ResMut<crate::requests::PendingLeaves>,
+    mut index: ResMut<crate::PlayerIndex>,
+    mut sessions: ResMut<crate::accounts::Sessions>,
+    players: Query<
+        (
+            &CharacterName,
+            &CurrentClass,
+            &Zone,
+            &Motion,
+            &ClassLevels,
+            &Bag,
+            &Equipment,
+            &Secondaries,
+            (&QuestLog, &ChosenSpecs),
+        ),
+        With<PlayerId>,
+    >,
+) {
+    for player in std::mem::take(&mut leaving.0) {
+        sessions.0.remove(&player);
+        let Some(entity) = index.0.remove(&player) else {
+            continue;
+        };
+        if let (Some(database), Ok(row)) = (&database, players.get(entity)) {
+            let (name, class, zone, motion, levels, bag, worn, secondaries, (quests, specs)) = row;
+            let build = Build {
+                levels,
+                bag,
+                worn,
+                secondaries,
+            };
+            database.save(to_save(&name.0, class, zone, motion, &build, quests, specs));
+        }
+        commands.entity(entity).despawn();
+    }
+}
+
 /// When the game closes, save everyone and wait for the file to be written.
 pub fn save_on_exit(
     mut exits: MessageReader<AppExit>,

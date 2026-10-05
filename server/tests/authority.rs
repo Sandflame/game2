@@ -213,6 +213,7 @@ fn test_data() -> GameData {
             },
             movement: parse(MOVEMENT),
             combat: parse(COMBAT),
+            network: Default::default(),
         },
         player: PlayerConfig {
             hit_radius: 0.5,

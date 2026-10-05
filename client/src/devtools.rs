@@ -48,7 +48,7 @@ pub fn demo_start_zone() -> Option<&'static str> {
     }
     match std::env::var(DEMO_ENV).as_deref() {
         Ok("classes" | "progress" | "specs" | "models" | "races" | "gear") => Some("sandbox"),
-        Ok("world" | "dungeon" | "quests" | "menus") | Err(_) => None,
+        Ok("world" | "dungeon" | "quests" | "menus" | "online") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
 }
@@ -56,10 +56,11 @@ pub fn demo_start_zone() -> Option<&'static str> {
 /// The menus demo's save file: a fresh one in the temporary folder (the
 /// other demos have none, so they never save).
 pub fn demo_save_file() -> Option<PathBuf> {
-    if std::env::var(DEMO_ENV).as_deref() != Ok("menus") {
+    if !matches!(std::env::var(DEMO_ENV).as_deref(), Ok("menus" | "online")) {
         return None;
     }
-    let path = std::env::temp_dir().join("lanternflame-menus-demo.db");
+    // One per running game, so two can run at once.
+    let path = std::env::temp_dir().join(format!("lanternflame-demo-{}.db", std::process::id()));
     for end in ["", "-wal", "-shm"] {
         let mut file = path.clone().into_os_string();
         file.push(end);
@@ -124,6 +125,8 @@ enum Step {
     Rarity(Rarity),
     /// Type into a box on the menus.
     Type(FieldId, &'static str),
+    /// Type the value of an environment variable (or this default).
+    TypeEnv(FieldId, &'static str, &'static str),
     /// Press a menu button.
     Menu(fn() -> MenuAction),
 }
@@ -151,13 +154,46 @@ const GEAR_DEMO: &[(f32, Step)] = &[
     (18.0, Step::Shot), // a Legendary staff
 ];
 
+/// Starts at the login screen with an empty save file, connects to the
+/// server at `LANTERNFLAME_SERVER` (default 127.0.0.1), makes an account
+/// (`LANTERNFLAME_ACCOUNT`) and a character (`LANTERNFLAME_CHARACTER`),
+/// plays and walks a little. Run two at once to see each other.
+const ONLINE_DEMO: &[(f32, Step)] = &[
+    (
+        0.3,
+        Step::TypeEnv(FieldId::Server, "LANTERNFLAME_SERVER", "127.0.0.1"),
+    ),
+    (
+        0.3,
+        Step::TypeEnv(FieldId::Account, "LANTERNFLAME_ACCOUNT", "sandflame"),
+    ),
+    (0.3, Step::Type(FieldId::Password, "lantern")),
+    (3.5, Step::Shot), // the login screen with a server
+    (3.7, Step::Menu(|| MenuAction::Register)),
+    (8.0, Step::Shot), // the character list, from the server
+    (8.2, Step::Menu(|| MenuAction::NewCharacter)),
+    (
+        8.6,
+        Step::TypeEnv(FieldId::Name, "LANTERNFLAME_CHARACTER", "Ari"),
+    ),
+    (8.6, Step::Menu(|| MenuAction::Race("drake".into()))),
+    (8.7, Step::Menu(|| MenuAction::Class("elementalist".into()))),
+    (9.0, Step::Menu(|| MenuAction::Create)),
+    (12.0, Step::Menu(|| MenuAction::Play)),
+    (18.0, Step::Shot), // in Lanternhold, on the server
+    (18.2, Step::Walk(Some((0.3, -1.0)))),
+    (20.0, Step::Shot), // walking (our own game moves us at once)
+    (20.5, Step::Walk(None)),
+    (26.0, Step::Shot), // the other player, if there is one
+];
+
 /// Starts at the login screen with an empty save file: make an account,
 /// make two characters, pick one and play.
 const MENUS_DEMO: &[(f32, Step)] = &[
     (0.3, Step::Type(FieldId::Account, "sandflame")),
     (0.3, Step::Type(FieldId::Password, "lantern")),
-    (2.0, Step::Shot), // the login screen
-    (2.2, Step::Menu(|| MenuAction::Register)),
+    (3.0, Step::Shot), // the login screen
+    (3.2, Step::Menu(|| MenuAction::Register)),
     (4.0, Step::Shot), // no characters yet
     (4.2, Step::Menu(|| MenuAction::NewCharacter)),
     (6.5, Step::Shot), // creation: the first choice of everything
@@ -427,6 +463,7 @@ impl Plugin for DevToolsPlugin {
             Ok("models") => MODELS_DEMO.to_vec(),
             Ok("races") => RACES_DEMO.to_vec(),
             Ok("menus") => MENUS_DEMO.to_vec(),
+            Ok("online") => ONLINE_DEMO.to_vec(),
             Ok("gear") => GEAR_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
@@ -602,6 +639,14 @@ fn run_script(
             Step::Rarity(rarity) => {
                 if let Some(entity) = me_entity.as_deref() {
                     commands.entity(*entity).insert(ShowRarity(rarity));
+                }
+            }
+            Step::TypeEnv(id, var, default) => {
+                let text = std::env::var(var).unwrap_or_else(|_| default.to_owned());
+                for mut field in &mut extra.2 {
+                    if field.id == id {
+                        field.value = text.clone();
+                    }
                 }
             }
             Step::Type(id, text) => {

@@ -20,6 +20,8 @@ pub struct SavedSettings {
     pub volume: u8,
     pub muted: bool,
     pub always_show_lantern: bool,
+    /// The server last played on ("" = this computer).
+    pub server: String,
 }
 
 /// Volume when there is no settings file yet.
@@ -31,9 +33,14 @@ impl Default for SavedSettings {
             volume: DEFAULT_VOLUME,
             muted: false,
             always_show_lantern: false,
+            server: String::new(),
         }
     }
 }
+
+/// The server address typed on the login screen (remembered for next time).
+#[derive(Resource, Default)]
+pub struct LastServer(pub String);
 
 impl SavedSettings {
     pub fn from_text(text: &str) -> Self {
@@ -65,19 +72,7 @@ fn settings_path() -> Option<PathBuf> {
 /// - Windows: `%APPDATA%\Lanternflame\world.db`
 /// - Linux: `~/.local/share/lanternflame/world.db`
 pub fn save_file_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("LANTERNFLAME_DB") {
-        return Some(PathBuf::from(path));
-    }
-    if cfg!(windows) {
-        let base = std::env::var_os("APPDATA")?;
-        return Some(PathBuf::from(base).join("Lanternflame").join("world.db"));
-    }
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
-        })?;
-    Some(base.join("lanternflame").join("world.db"))
+    server::database::save_file_path()
 }
 
 pub fn load() -> SavedSettings {
@@ -110,6 +105,7 @@ impl Plugin for SettingsPlugin {
             .insert_resource(LanternSettings {
                 always_show: saved.always_show_lantern,
             })
+            .insert_resource(LastServer(saved.server.clone()))
             .insert_resource(LastSaved(saved))
             .add_systems(Last, save_changes);
     }
@@ -125,6 +121,7 @@ fn save_changes(
     volume: Res<SoundVolume>,
     muted: Res<Muted>,
     lantern: Res<LanternSettings>,
+    server: Res<LastServer>,
     mut last: ResMut<LastSaved>,
 ) {
     if mouse.pressed(MouseButton::Left) {
@@ -134,6 +131,7 @@ fn save_changes(
         volume: volume.0,
         muted: muted.0,
         always_show_lantern: lantern.always_show,
+        server: server.0.clone(),
     };
     if now != last.0 {
         save(&now);
@@ -151,6 +149,7 @@ mod tests {
             volume: 35,
             muted: true,
             always_show_lantern: true,
+            server: "10.0.0.2:5888".into(),
         };
         assert_eq!(SavedSettings::from_text(&settings.to_text()), settings);
         assert_eq!(
