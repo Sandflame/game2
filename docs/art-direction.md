@@ -46,14 +46,21 @@ How characters, races and gear should look. Sample pictures are in
      of spines that curls up at the end.
    - **Demons** (like succubi / TERA's Castanic): horns that rise and curve
      forward; a long, thin S-shaped tail ending in a heart-shaped spade.
+   - **Felari** (cat folk, like FFXIV's Miqo'te; the name was chosen on
+     2026-10-05 so it is our own): cat ears on top of the head (fur outside,
+     pink inside) and a long tail that curls upward, both in the hair colour,
+     with a pale tail tip.
    - Horns must touch the head (rooted in it, never floating). Tails start at
      the hips. Capes cover tails, so tailed races need capes that make room
      (the sample hides the demon's cape for now).
    - A very minor racial bonus might come later. For now races are cosmetic
      only.
-4. **Gear tiers get bigger, brighter and more alive** (`docs/art/gear-*.png`).
+4. **Five gear tiers get bigger, brighter and more alive** (`docs/art/gear-*.png`).
    This is where most of the art effort goes:
    - **Common:** the pack's own weapons and armour.
+   - **Uncommon** (added 2026-10-05): a touch of green. Lightly tinted armour,
+     small plain shoulder caps, a sturdier steel sword with a green grip and
+     pommel. No glow yet.
    - **Rare:** recoloured armour, shoulder plates with gold trim, a sword with
      a gold guard and a glowing gem.
    - **Epic:** dark armour with glowing trim, spiked shoulders, a large

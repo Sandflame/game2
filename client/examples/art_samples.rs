@@ -83,12 +83,14 @@ enum Race {
     Elf,
     Drake,
     Demon,
+    Felari,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum Tier {
     /// The pack's own weapon(s).
     Plain,
+    Uncommon,
     Rare,
     Epic,
     Legendary,
@@ -180,18 +182,18 @@ fn main() {
             vec![
                 s(0.0, [0.0, 1.45, 5.6], [0.0, 1.0, 0.0], false),
                 s(7.0, [0.0, 1.45, 5.6], [0.0, 1.0, 0.0], true),
-                s(8.5, [12.0, 1.45, 5.6], [12.0, 1.0, 0.0], false),
-                s(10.5, [12.0, 1.45, 5.6], [12.0, 1.0, 0.0], true),
-                s(12.0, [14.6, 2.0, 2.2], [12.9, 1.5, 0.0], false),
-                s(14.0, [14.6, 2.0, 2.2], [12.9, 1.5, 0.0], true),
-                s(14.8, [15.2, 1.7, -3.2], [12.9, 0.9, 0.0], false),
-                s(16.8, [15.2, 1.7, -3.2], [12.9, 0.9, 0.0], true),
-                s(18.0, [24.2, 1.6, 7.0], [24.2, 1.15, 0.0], false),
-                s(20.0, [24.2, 1.6, 7.0], [24.2, 1.15, 0.0], true),
-                s(21.5, [27.6, 1.7, 3.0], [26.7, 1.25, 0.0], false),
-                s(23.5, [27.6, 1.7, 3.0], [26.7, 1.25, 0.0], true),
-                s(25.0, [40.0, 1.3, 4.6], [40.0, 1.05, 0.0], false),
-                s(27.0, [40.0, 1.3, 4.6], [40.0, 1.05, 0.0], true),
+                s(8.5, [12.0, 1.45, 6.4], [12.0, 1.0, 0.0], false),
+                s(10.5, [12.0, 1.45, 6.4], [12.0, 1.0, 0.0], true),
+                s(12.0, [15.6, 2.0, 2.4], [13.4, 1.5, 0.0], false),
+                s(14.0, [15.6, 2.0, 2.4], [13.4, 1.5, 0.0], true),
+                s(14.8, [15.8, 1.7, -3.8], [13.0, 0.9, 0.0], false),
+                s(16.8, [15.8, 1.7, -3.8], [13.0, 0.9, 0.0], true),
+                s(18.0, [23.9, 1.6, 8.2], [23.9, 1.15, 0.0], false),
+                s(20.0, [23.9, 1.6, 8.2], [23.9, 1.15, 0.0], true),
+                s(21.5, [27.9, 1.7, 3.0], [27.0, 1.25, 0.0], false),
+                s(23.5, [27.9, 1.7, 3.0], [27.0, 1.25, 0.0], true),
+                s(25.0, [40.1, 1.3, 5.2], [40.1, 1.05, 0.0], false),
+                s(27.0, [40.1, 1.3, 5.2], [40.1, 1.05, 0.0], true),
                 s(28.5, [0.0; 3], [0.0; 3], false),
             ],
             0,
@@ -322,7 +324,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        10.2,
+        9.6,
         Hero {
             show: &["Knife"],
             ..base("Rogue.glb", "Idle")
@@ -331,7 +333,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        11.4,
+        10.8,
         Hero {
             race: Race::Elf,
             hide: &["Mage_Hat"],
@@ -342,7 +344,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        12.6,
+        12.0,
         Hero {
             race: Race::Drake,
             hide: &["Barbarian_Hat"],
@@ -354,7 +356,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        13.8,
+        13.2,
         Hero {
             race: Race::Demon,
             // The cape would cover the tail.
@@ -364,12 +366,23 @@ fn setup(
             ..base("Rogue.glb", "Idle")
         },
     );
+    hero(
+        &mut commands,
+        &assets,
+        14.4,
+        Hero {
+            race: Race::Felari,
+            hide: &["Rogue_Cape"],
+            show: &["1H_Crossbow"],
+            ..base("Rogue.glb", "Idle")
+        },
+    );
 
     // 3. Gear tiers on the same knight.
     hero(
         &mut commands,
         &assets,
-        21.5,
+        20.8,
         Hero {
             show: &["1H_Sword", "Round_Shield"],
             ..base("Knight.glb", "Idle")
@@ -378,7 +391,18 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        23.2,
+        22.3,
+        Hero {
+            tier: Tier::Uncommon,
+            armour_tint: Some(Color::srgb(0.8, 1.05, 0.8)),
+            show: &["Round_Shield"],
+            ..base("Knight.glb", "Idle")
+        },
+    );
+    hero(
+        &mut commands,
+        &assets,
+        23.8,
         Hero {
             tier: Tier::Rare,
             armour_tint: Some(Color::srgb(0.7, 0.85, 1.15)),
@@ -389,7 +413,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        24.9,
+        25.3,
         Hero {
             tier: Tier::Epic,
             armour_tint: Some(Color::srgb(0.55, 0.42, 0.85)),
@@ -399,7 +423,7 @@ fn setup(
     hero(
         &mut commands,
         &assets,
-        26.7,
+        27.0,
         Hero {
             tier: Tier::Legendary,
             armour_tint: Some(Color::srgb(1.7, 1.35, 0.65)),
@@ -418,12 +442,13 @@ fn setup(
                 .with_scale(Vec3::splat(0.8)),
         ));
     };
-    kay("sword_1handed.gltf", 37.4, &mut commands);
-    kay("axe_2handed.gltf", 38.3, &mut commands);
+    kay("sword_1handed.gltf", 37.0, &mut commands);
+    kay("axe_2handed.gltf", 37.9, &mut commands);
     for (x, tier) in [
-        (39.3, Tier::Rare),
-        (40.4, Tier::Epic),
-        (41.6, Tier::Legendary),
+        (38.9, Tier::Uncommon),
+        (39.9, Tier::Rare),
+        (40.9, Tier::Epic),
+        (42.0, Tier::Legendary),
     ] {
         let holder = commands
             .spawn(
@@ -878,6 +903,66 @@ fn race_parts(
                 }
             }
         }
+        Race::Felari => {
+            // Cat ears on top of the head and a long, swishing tail, in the
+            // hair colour.
+            let fur = mat(toon, Color::srgb(0.55, 0.28, 0.18), 0.0);
+            let inner = mat(toon, Color::srgb(0.98, 0.7, 0.7), 0.0);
+            let tip = mat(toon, Color::srgb(0.95, 0.9, 0.85), 0.0);
+            for side in [-1.0f32, 1.0] {
+                let ear = commands
+                    .spawn((
+                        Transform::from_xyz(side * 0.3, 0.78, 0.0).with_rotation(
+                            Quat::from_rotation_z(-side * 0.3) * Quat::from_rotation_x(-0.12),
+                        ),
+                        ChildOf(head),
+                    ))
+                    .id();
+                part(
+                    commands,
+                    toon,
+                    ear,
+                    blade(&[(0.0, 0.19), (0.14, 0.15), (0.38, 0.0)], 0.4),
+                    &fur,
+                    Transform::IDENTITY,
+                );
+                part(
+                    commands,
+                    toon,
+                    ear,
+                    blade(&[(0.05, 0.11), (0.15, 0.08), (0.3, 0.0)], 0.2),
+                    &inner,
+                    Transform::from_xyz(0.0, 0.0, 0.04),
+                );
+            }
+            if let Some(hips) = hips {
+                let pts = curve(
+                    Vec3::new(0.0, 0.3, -0.5),
+                    Vec3::new(-0.12, -0.55, -1.0),
+                    Vec3::X,
+                    0.24,
+                    0.12,
+                    12,
+                );
+                let radii: Vec<f32> = (0..=12).map(|i| 0.075 - 0.02 * i as f32 / 12.0).collect();
+                part(
+                    commands,
+                    toon,
+                    hips,
+                    tube(&pts, &radii, 7),
+                    &fur,
+                    Transform::IDENTITY,
+                );
+                part(
+                    commands,
+                    toon,
+                    hips,
+                    Sphere::new(0.07).mesh().ico(1).unwrap(),
+                    &tip,
+                    Transform::from_translation(pts[12]),
+                );
+            }
+        }
         Race::Demon => {
             let horn = mat(toon, Color::srgb(0.12, 0.05, 0.08), 0.0);
             let red = mat(toon, Color::srgb(0.75, 0.1, 0.18), 0.6);
@@ -959,6 +1044,43 @@ fn weapon(commands: &mut Commands, toon: &mut toon::ToonAssets, holder: Entity, 
     let grip = mat(toon, Color::srgb(0.25, 0.15, 0.1), 0.0);
     match tier {
         Tier::Plain => {}
+        Tier::Uncommon => {
+            // A cleaner, sturdier steel sword: no glow yet, a touch of green.
+            let steel = mat(toon, Color::srgb(0.78, 0.8, 0.84), 0.0);
+            let green = mat(toon, Color::srgb(0.3, 0.75, 0.35), 0.4);
+            part(
+                commands,
+                toon,
+                holder,
+                Cylinder::new(0.04, 0.28).into(),
+                &green,
+                Transform::IDENTITY,
+            );
+            part(
+                commands,
+                toon,
+                holder,
+                blade(&[(0.0, 0.14), (0.75, 0.13), (0.95, 0.0)], 0.32),
+                &steel,
+                Transform::from_xyz(0.0, 0.17, 0.0),
+            );
+            part(
+                commands,
+                toon,
+                holder,
+                Cuboid::new(0.42, 0.06, 0.1).into(),
+                &steel,
+                Transform::from_xyz(0.0, 0.17, 0.0),
+            );
+            part(
+                commands,
+                toon,
+                holder,
+                Sphere::new(0.05).mesh().ico(1).unwrap(),
+                &green,
+                Transform::from_xyz(0.0, -0.17, 0.0),
+            );
+        }
         Tier::Rare => {
             let steel = mat(toon, Color::srgb(0.82, 0.88, 0.95), 0.0);
             let gold = mat(toon, Color::srgb(0.95, 0.75, 0.3), 0.0);
@@ -1243,6 +1365,29 @@ fn armour(
     head: Option<Entity>,
     tier: Tier,
 ) {
+    if tier == Tier::Uncommon {
+        let steel = mat(toon, Color::srgb(0.7, 0.74, 0.7), 0.0);
+        let green = mat(toon, Color::srgb(0.3, 0.75, 0.35), 0.4);
+        for side in [-1.0f32, 1.0] {
+            part(
+                commands,
+                toon,
+                chest,
+                Sphere::new(0.2).mesh().ico(1).unwrap(),
+                &steel,
+                Transform::from_xyz(side * 0.42, 0.2, 0.0).with_scale(Vec3::new(1.0, 0.55, 0.95)),
+            );
+        }
+        part(
+            commands,
+            toon,
+            chest,
+            Sphere::new(0.06).mesh().ico(1).unwrap(),
+            &green,
+            Transform::from_xyz(0.0, -0.05, 0.38),
+        );
+        return;
+    }
     let (plate, trim, glow) = match tier {
         Tier::Rare => (
             Color::srgb(0.75, 0.82, 0.95),

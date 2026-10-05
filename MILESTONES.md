@@ -179,17 +179,17 @@ the next. See `docs/art-direction.md` for the agreed look.
   sword and shield, censer…); the lantern on the belt or held up.
   Toon shading + skinned outlines. Proportion numbers in a data file.
 - **Races as data** (cosmetic only for now; a very minor bonus may come
-  later): Humans, Elves, Drakes, Demons. Race parts attach to bones (ears,
+  later): Humans, Elves, Drakes, Demons, Felari (cat folk). Race parts attach to bones (ears,
   horns, cheek scales, tails); horns must touch the head; capes must make
   room for tails.
 - **Customization as data:** body type, height, build, skin tone, face,
   eye colour, hairstyle, hair colour, outfit colour; per race: ear length
   and angle (Elves); horn style, scale colour, tail length (Drakes); horn
   style, skin tones incl. red/purple/blue/grey, tail, optional small wings,
-  glowing eyes (Demons). Sliders reshape, parts attach, recolours change
+  glowing eyes (Demons); ear shape, tail length, fur pattern (Felari). Sliders reshape, parts attach, recolours change
   materials.
-- **Gear looks by tier** (the user's top priority): Common / Rare / Epic /
-  Legendary — bigger, brighter, more alive per tier (glow, floating and
+- **Gear looks by tier** (the user's top priority): Common / Uncommon /
+  Rare / Epic / Legendary — bigger, brighter, more alive per tier (glow, floating and
   spinning parts, wings, halos, sparkles); see the art samples. Item data
   gets an `appearance` (DESIGN.md §10 already planned this field).
 - **Accounts:** register and log in (argon2-hashed passwords, DESIGN.md
@@ -197,10 +197,10 @@ the next. See `docs/art-direction.md` for the agreed look.
   screen with starting class, race and customization and a live 3D preview
   you can rotate. Works offline first, before networking exists.
 - **Saving:** appearance and account in the database (new migrations).
-- Open questions (ask the user when starting this stage; suggestions in
-  brackets): characters per account [8]; does the first account take over
-  the characters already in the save file [yes]; should monsters
-  (wolves, mushrooms, bosses) move to real models later [probably].
+- Answered 2026-10-05: up to **8 characters per account** (for now); the
+  **first account takes over the character already in the save file**;
+  **monsters** (wolves, mushrooms, bosses) get real models later, after
+  stage 1.
 
 ### Stage 2 — Networking
 - Headless server program using lightyear (UDP); clients enter `IP:port`

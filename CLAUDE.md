@@ -21,8 +21,8 @@ Guide for working in this repository (for Claude and for humans).
   **M10** (all 13 specializations; stacking statuses, slows, lunges, damage
   that heals; spec switching in the lantern panel, saved per class).
 - Next: **M11** in three stages (see `MILESTONES.md`): 1) real character
-  models (KayKit, longer and slimmer), races, customization, gear looks by
-  tier, accounts + character list + character creation; 2) networking;
+  models (KayKit, longer and slimmer), five races (Humans, Elves, Drakes,
+  Demons, Felari), customization, five gear tiers (Common to Legendary), accounts + character list + character creation; 2) networking;
   3) parties + chat. The art direction is agreed: `docs/art-direction.md`
   (samples in `docs/art/`, made by `client/examples/art_samples.rs`).
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
