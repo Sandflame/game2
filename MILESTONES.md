@@ -165,16 +165,58 @@ Earlier changes to your original list:
   class remembers its choice (saved, migration 4). Hybrid specs count
   partly towards other roles for party bonuses.
 
-## M11 — Multiplayer
-- Headless server program using lightyear (UDP).
-- Clients enter `IP:port` and a name; the in-process rules half is
-  swapped for the network connection.
-- Your own movement predicted, others interpolated; parties (up to 8).
-- Everything from M2–M10 works with friends.
-- **Test:** one server + two clients on one PC, then a friend over the internet.
+## M11 — Characters, accounts and multiplayer (planned 2026-10-04/05)
+Accounts and login moved here from M12 (the server needs to know who is
+connecting). Three stages, each tested, pushed and shown to the user before
+the next. See `docs/art-direction.md` for the agreed look.
 
-## M12 — Accounts and hosting
-- Register/login with argon2-hashed passwords; characters per account.
+### Stage 1 — Real characters, races, accounts, character creation
+- **Real character models** replace the capsule bodies for players (and
+  townsfolk): KayKit Adventurers (CC0, in `assets/models/kaykit/`) with the
+  longer, slimmer proportions from the art samples. Skeleton + animations
+  (idle, run, jump, attacks, casting, hit, death); held weapons on the
+  hand-slot bones, chosen by class/spec (greatsword, two swords, staff,
+  sword and shield, censer…); the lantern on the belt or held up.
+  Toon shading + skinned outlines. Proportion numbers in a data file.
+- **Races as data** (cosmetic only for now; a very minor bonus may come
+  later): Humans, Elves, Drakes, Demons. Race parts attach to bones (ears,
+  horns, cheek scales, tails); horns must touch the head; capes must make
+  room for tails.
+- **Customization as data:** body type, height, build, skin tone, face,
+  eye colour, hairstyle, hair colour, outfit colour; per race: ear length
+  and angle (Elves); horn style, scale colour, tail length (Drakes); horn
+  style, skin tones incl. red/purple/blue/grey, tail, optional small wings,
+  glowing eyes (Demons). Sliders reshape, parts attach, recolours change
+  materials.
+- **Gear looks by tier** (the user's top priority): Common / Rare / Epic /
+  Legendary — bigger, brighter, more alive per tier (glow, floating and
+  spinning parts, wings, halos, sparkles); see the art samples. Item data
+  gets an `appearance` (DESIGN.md §10 already planned this field).
+- **Accounts:** register and log in (argon2-hashed passwords, DESIGN.md
+  §3.6); a character list (create, pick, delete); the character-creation
+  screen with starting class, race and customization and a live 3D preview
+  you can rotate. Works offline first, before networking exists.
+- **Saving:** appearance and account in the database (new migrations).
+- Open questions (ask the user when starting this stage; suggestions in
+  brackets): characters per account [8]; does the first account take over
+  the characters already in the save file [yes]; should monsters
+  (wolves, mushrooms, bosses) move to real models later [probably].
+
+### Stage 2 — Networking
+- Headless server program using lightyear (UDP); clients enter `IP:port`
+  and log in; the in-process rules half is swapped for the connection.
+- Your own movement predicted, others interpolated.
+- Then combat, zones, dungeon copies, quests and loot through the server.
+- "Play offline" keeps working (a hidden server inside the game).
+- **Test:** one server + two clients on one PC, then a friend over the
+  internet.
+
+### Stage 3 — Playing together
+- Parties (up to 8): invites, party frames, shared dungeon copies, party
+  bonuses use the real party instead of "everyone in the zone".
+- Text chat (recommended; not in the original plan).
+
+## M12 — Hosting
 - `HOSTING.md`: running the server on Windows, port forwarding, the
   virtual-LAN alternative, backing up/moving `world.db`, Linux.
 - Release build script producing zips for server and client.

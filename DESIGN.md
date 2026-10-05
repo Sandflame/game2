@@ -495,9 +495,11 @@ with one key; quest progress still records.
   plus black outlines drawn with the "inverted hull" trick (a slightly
   bigger copy of the mesh drawn inside-out in black). Cheap, robust, and
   looks anime.
-- **Characters:** simple placeholders (capsules with a head and a lantern)
-  at first; later free CC0 low-poly characters (e.g. from Quaternius or
-  KayKit packs) recoloured.
+- **Characters (decided 2026-10-05):** KayKit Adventurers (CC0) bodies made
+  longer and slimmer in code, races as attached parts, gear tiers that grow
+  bigger, brighter and more alive. Full details, the user's references and
+  the rejected options: `docs/art-direction.md` (pictures in `docs/art/`).
+  Until M11 stage 1 lands, the game still shows capsule placeholders.
 - **Effort goes into effects:** GPU particles (`bevy_hanabi`), animated
   ground-marker shaders (pulsing edges, filling sweep), bloom, coloured
   point lights on spells, screen shake on big hits.
@@ -553,3 +555,28 @@ with one key; quest progress still records.
    character, left-drag orbits the camera only, WASD moves, wheel zooms).
 6. **Party size:** dungeons are 4 players now; 8-player raids planned later
    (parties already support 8).
+
+## 13. Decisions (2026-10-04 and 2026-10-05)
+
+1. **Order:** single-player content first; multiplayer is M11.
+2. **Numbers players see are simple:** plain amounts, Power as a
+   percentage, buffs as +/- percentages.
+3. **Words:** say *dungeon* and *trial*, never "duty".
+4. **Dungeons and trials** are places in the world you can walk into, and
+   are also listed on the dungeon board in Lanternhold. A way out appears
+   near the last boss and returns you to where you came in from. The first
+   dungeon is about 3 minutes long.
+5. **Specializations:** the Priest spec is *Enchanter* (not Warden). Dual
+   Blades use regular-sized swords, have no bleeds, and are not a rogue.
+   Switching specs is free and instant out of combat.
+6. **Keys:** M is the map; Ctrl+M mutes.
+7. **Lantern** hidden by default (an option shows it always).
+8. **Sounds** are placeholders, to be reworked later.
+9. **Accounts:** register/login, then a character list with create/select.
+   Character creation: starting class, race, MMO-style customization.
+10. **Races** (cosmetic for now, maybe a very minor bonus later): Humans,
+    Elves (elegant, blood/high elf), Drakes (like FFXIV's Au Ra), Demons
+    (succubi / TERA's Castanic).
+11. **Art:** see §9 and `docs/art-direction.md`. VRoid/VRM anime models
+    were rejected. Blender modelling is the user's side project.
+

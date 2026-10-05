@@ -20,9 +20,43 @@ Guide for working in this repository (for Claude and for humans).
   forest → dungeon, quest tracker and log; minimap + big map with N/E/S/W).
   **M10** (all 13 specializations; stacking statuses, slows, lunges, damage
   that heals; spec switching in the lantern panel, saved per class).
-- Next: **M11** (multiplayer). See `MILESTONES.md`.
+- Next: **M11** in three stages (see `MILESTONES.md`): 1) real character
+  models (KayKit, longer and slimmer), races, customization, gear looks by
+  tier, accounts + character list + character creation; 2) networking;
+  3) parties + chat. The art direction is agreed: `docs/art-direction.md`
+  (samples in `docs/art/`, made by `client/examples/art_samples.rs`).
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
-- Full design: `DESIGN.md`.
+- Full design: `DESIGN.md` (all user decisions: §12 and §13).
+
+## Working with the user
+- The user is not an experienced programmer: explain in plain language,
+  give exact steps, and push back honestly on ideas that won't work well.
+- They play on **Windows** (PowerShell, project in
+  `Documents\game2`). To try a pushed change: `git pull`, then
+  `cargo run -p client`.
+- Milestone by milestone (or stage by stage): at the end `cargo build`,
+  `cargo clippy --all-targets -- -D warnings` and `cargo test` pass; explain
+  how to run and test it; commit and push; stop for feedback. Show
+  screenshots of visual work (see the screenshot commands below).
+- Don't open pull requests unless asked.
+- Keep this file, `DESIGN.md` and `MILESTONES.md` up to date: new threads
+  only know what is written here.
+
+## Working in parallel threads
+The user may split work across several Claude threads (sessions) on this
+repository. Each thread starts knowing nothing of earlier chats, only these
+files.
+- One area per thread, so threads don't edit the same files. Natural splits:
+  **characters & gear art** (`client/` visuals, `assets/models/`,
+  `docs/art-direction.md`); **accounts & networking** (`server/`,
+  `shared/protocol.rs`, database migrations); **content** (zones, quests,
+  enemies in `assets/data/`).
+- Each thread works on its own branch, named after its area. Merging into the
+  main development branch `claude/multiplayer-rpg-rust-jwkfhc` is done by one
+  thread at a time, after build, clippy and tests pass.
+- Shared hot spots that need care: `shared/src/protocol.rs`,
+  `server/src/database.rs` `MIGRATIONS` (two threads must never add the
+  same migration number), `CLAUDE.md`, `MILESTONES.md`.
 
 ## What this is
 Lanternflame: a small online tab-target RPG (FFXIV-style combat) for 4–8 friends,
@@ -232,6 +266,14 @@ extra beyond the Rust toolchain.
   `border` and in front of box walls; faces the arrival direction on entering a
   zone; swings behind the rider on rides; `CameraShake`.
 - `server/src/main.rs` — placeholder until M11: validates data and exits.
+- `client/examples/art_samples.rs` — the approved art direction as a runnable
+  scene (`cargo run -p client --example art_samples`): KayKit bodies with
+  stretched bones, toon materials + skinned outlines, race parts, gear tiers,
+  `blade()`/`tube()` mesh helpers. Not part of the game yet (M11 stage 1).
+- `assets/models/kaykit/` — KayKit Adventurers (CC0, see `CREDITS.md`).
+- `assets/shaders/outline_skinned.wgsl` — the outline shader with skinning
+  (for animated models); to be merged into `outline.wgsl`.
+- `docs/art-direction.md`, `docs/art/` — the agreed look, with pictures.
 
 ## Conventions
 - **Game logic belongs in `shared`** as plain functions where possible
