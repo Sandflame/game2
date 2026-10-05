@@ -64,10 +64,46 @@ impl Slot {
     }
 }
 
+/// How rare (and how splendid-looking) an item is. Rarer gear looks
+/// grander on the character; the stats come from the item's own numbers.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize,
+)]
+pub enum Rarity {
+    #[default]
+    Common,
+    Uncommon,
+    Rare,
+    Epic,
+    Legendary,
+}
+
+impl Rarity {
+    pub const ALL: [Rarity; 5] = [
+        Rarity::Common,
+        Rarity::Uncommon,
+        Rarity::Rare,
+        Rarity::Epic,
+        Rarity::Legendary,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Rarity::Common => "Common",
+            Rarity::Uncommon => "Uncommon",
+            Rarity::Rare => "Rare",
+            Rarity::Epic => "Epic",
+            Rarity::Legendary => "Legendary",
+        }
+    }
+}
+
 /// One kind of item.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ItemDef {
     pub name: String,
+    #[serde(default)]
+    pub rarity: Rarity,
     #[serde(default)]
     pub description: String,
     pub slot: Slot,
@@ -333,6 +369,7 @@ mod tests {
     fn item(slot: Slot, level: u32, class: Option<&str>) -> ItemDef {
         ItemDef {
             name: "Thing".into(),
+            rarity: Rarity::Common,
             description: String::new(),
             slot,
             level,

@@ -150,6 +150,23 @@ pub struct ModelLibrary {
     pub classes: HashMap<String, ClassLook>,
     pub people: HashMap<String, PersonLook>,
     pub animations: AnimationNames,
+    /// Faces with hair for players (`races.ron` faces), by id.
+    pub heads: HashMap<String, HeadDef>,
+    /// What each race feature style adds: pieces built by `looks.rs`.
+    pub features: HashMap<String, Vec<String>>,
+    /// Parts of a body players never show (matched by name): their face,
+    /// hair and hats come from their look instead.
+    pub player_hides: Vec<String>,
+    /// How each gear rarity looks (`gear.rs`).
+    pub tiers: HashMap<shared::items::Rarity, crate::gear::TierLook>,
+}
+
+/// A head (face and hair) taken from one of the pack's bodies.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeadDef {
+    pub file: String,
+    /// The node holding the head mesh in that file.
+    pub mesh: String,
 }
 
 const STYLES: [Style; 4] = [
@@ -229,7 +246,7 @@ impl ModelLibrary {
         data: &GameData,
         zones: &Zones,
     ) -> Vec<String> {
-        let mut problems = Vec::new();
+        let mut problems = crate::gear::check_tiers(&self.tiers);
         for (id, class) in &data.classes {
             let Some(look) = self.classes.get(id) else {
                 problems.push(format!("models.ron: class `{id}` has no look in `classes`"));
@@ -257,11 +274,44 @@ impl ModelLibrary {
                 self.weapons
                     .iter()
                     .map(|(k, w)| (format!("weapons.{k}"), &w.file)),
+            )
+            .chain(
+                self.heads
+                    .iter()
+                    .map(|(k, h)| (format!("heads.{k}"), &h.file)),
             );
         for (user, file) in files {
             let path: std::path::PathBuf = file.split('/').collect();
             if !assets_dir.join(path).is_file() {
                 problems.push(format!("models.ron: {user}: file `{file}` not found"));
+            }
+        }
+        for race in &data.races.0 {
+            for face in &race.faces {
+                if !self.heads.contains_key(&face.id) {
+                    problems.push(format!(
+                        "models.ron: no head called `{}` (a face of race `{}`)",
+                        face.id, race.id
+                    ));
+                }
+            }
+            for feature in &race.features {
+                if !self.features.contains_key(&feature.id) {
+                    problems.push(format!(
+                        "models.ron: no feature called `{}` (race `{}`)",
+                        feature.id, race.id
+                    ));
+                }
+            }
+        }
+        for (id, parts) in &self.features {
+            for part in parts {
+                if !crate::looks::PARTS.contains(&part.as_str()) {
+                    problems.push(format!(
+                        "models.ron: features.{id}: no piece called `{part}` (known: {})",
+                        crate::looks::PARTS.join(", ")
+                    ));
+                }
             }
         }
         for zone in zones.0.values() {
@@ -286,7 +336,7 @@ impl ModelLibrary {
     }
 
     /// How much bigger a bone's part of the body is (`None`: unchanged).
-    fn bone_shape(&self, bone: &str) -> Option<Vec3> {
+    pub(crate) fn bone_shape(&self, bone: &str) -> Option<Vec3> {
         let bones = &self.proportions.bones;
         let (x, y, z) = bones.get(bone).or_else(|| {
             let side_free = bone
@@ -322,12 +372,16 @@ struct BodyLoading;
 #[derive(Component)]
 pub struct Rig {
     /// The model's root (a child of the character).
-    root: Entity,
+    pub(crate) root: Entity,
     body: String,
     file: String,
     /// The entity with the `AnimationPlayer`.
     player: Option<Entity>,
-    bones: HashMap<String, Entity>,
+    pub(crate) bones: HashMap<String, Entity>,
+    /// Where the head bone rests, in the model's own space.
+    pub(crate) head_rest: Mat4,
+    /// How far the longer legs lift the body (model units).
+    pub(crate) lift: f32,
     weapons: Vec<Entity>,
     /// The class and specialization the look was built for.
     built_for: Option<CurrentClass>,
@@ -734,12 +788,25 @@ fn dress_body(
         },
     };
     let weapons = spawn_loadout(&mut commands, &assets, &models, &bones, &loadout);
+    // The head bone's resting place (before any animation has run).
+    let mut head_rest = Mat4::IDENTITY;
+    let mut at = bones.get("head").copied();
+    while let Some(e) = at
+        && e != root
+    {
+        if let Ok(t) = transforms.get(e) {
+            head_rest = t.to_matrix() * head_rest;
+        }
+        at = parents.get(e).ok().map(ChildOf::parent);
+    }
     let rig = Rig {
         root,
         body: model.body.clone(),
         file,
         player: animator,
         bones,
+        head_rest,
+        lift,
         weapons,
         built_for: class.cloned(),
         style: loadout.style,

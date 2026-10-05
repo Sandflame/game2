@@ -4,6 +4,9 @@
 //! Also the experience bar under the hotbar.
 
 use bevy::prelude::*;
+
+use crate::gear::rarity_color;
+use crate::models::ModelLibrary;
 use shared::classes::{CurrentClass, Secondaries, Stats};
 use shared::components::{CharacterName, Zone};
 use shared::gamedata::{GameData, Zones};
@@ -192,7 +195,7 @@ fn wearable(def: &ItemDef, class: &str, level: u32) -> bool {
 fn rebuild_panel(
     mut commands: Commands,
     mut panel: ResMut<CharacterPanel>,
-    data: Res<GameData>,
+    (data, models): (Res<GameData>, Res<ModelLibrary>),
     zones: Res<Zones>,
     player: Option<
         Single<
@@ -377,15 +380,16 @@ fn rebuild_panel(
                         .and_then(|id| bag.get(id).map(|owned| (id, owned)))
                     {
                         Some((id, owned)) => {
-                            let item = data
-                                .items
-                                .get(&owned.item)
-                                .map_or(owned.item.as_str(), |d| d.name.as_str());
+                            let def = data.items.get(&owned.item);
+                            let item = def.map_or(owned.item.as_str(), |d| d.name.as_str());
+                            let color = def
+                                .and_then(|d| rarity_color(&models, d.rarity))
+                                .unwrap_or(palette::TEXT);
                             item_button(
                                 row,
                                 ItemButton::Worn(slot, id),
                                 format!("{}: {item}", slot.label()),
-                                palette::TEXT,
+                                color,
                             );
                         }
                         None => {
@@ -437,10 +441,11 @@ fn rebuild_panel(
                         continue;
                     };
                     let other_weapon = worn.is_worn(owned.id);
+                    // Rarity colour if you can wear it now, else dimmed.
                     let color = if other_weapon || !wearable(def, class_id, level) {
                         palette::TEXT_DIM
                     } else {
-                        palette::HEAL
+                        rarity_color(&models, def.rarity).unwrap_or(palette::TEXT)
                     };
                     let mut label = def.name.clone();
                     if other_weapon {
@@ -536,8 +541,9 @@ fn show_item_details(
             .and_then(|c| data.classes.get(c))
             .map_or(String::new(), |c| format!(" ({} only)", c.name));
         detail.0 = format!(
-            "{}: level {} {}{class}. {}\n{}",
+            "{}: {} level {} {}{class}. {}\n{}",
             def.name,
+            def.rarity.label().to_lowercase(),
             def.level,
             def.slot.label().to_lowercase(),
             def.summary(),

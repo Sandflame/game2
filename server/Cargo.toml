@@ -20,6 +20,9 @@ shared.workspace = true
 bevy = { workspace = true, features = ["std", "bevy_log"] }
 anyhow.workspace = true
 rusqlite.workspace = true
+argon2.workspace = true
+ron.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 
 [lints]

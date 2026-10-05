@@ -3,6 +3,7 @@
 //! used by both, and nothing here knows about rendering.
 
 pub mod abilities;
+pub mod appearance;
 pub mod classes;
 pub mod combat;
 pub mod components;

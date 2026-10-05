@@ -9,6 +9,7 @@ use bevy::prelude::Resource;
 use serde::Deserialize;
 
 use crate::abilities::AbilityDef;
+use crate::appearance::{AccountRules, Races};
 use crate::classes::{ClassDef, SecondaryChoice};
 use crate::config::GameConfig;
 use crate::data::{DataError, Problems, Validate, load_ron};
@@ -168,6 +169,8 @@ pub struct GameData {
     pub rides: HashMap<String, RideDef>,
     pub quests: HashMap<String, QuestDef>,
     pub dialogues: HashMap<String, DialogueDef>,
+    pub races: Races,
+    pub accounts: AccountRules,
 }
 
 impl GameData {
@@ -219,6 +222,8 @@ impl GameData {
 
         let progression: ProgressionDef = load_ron(&data.join("progression.ron"))?;
         let synergy: SynergyDef = load_ron(&data.join("synergy.ron"))?;
+        let races: Races = load_ron(&data.join("races.ron"))?;
+        let accounts: AccountRules = load_ron(&data.join("accounts.ron"))?;
         let rides: HashMap<String, RideDef> = load_dir::<RideDef>(&data.join("rides"))?
             .into_iter()
             .map(|(path, ride)| (file_id(&path), ride))
@@ -261,6 +266,8 @@ impl GameData {
             rides,
             quests,
             dialogues,
+            races,
+            accounts,
         };
         game.check_references(&data)?;
         Ok(game)

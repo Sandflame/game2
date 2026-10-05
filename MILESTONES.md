@@ -171,13 +171,37 @@ connecting). Three stages, each tested, pushed and shown to the user before
 the next. See `docs/art-direction.md` for the agreed look.
 
 ### Stage 1 — Real characters, races, accounts, character creation
-Progress: **part 1 done (2026-10-05)** — players and townsfolk are KayKit
-models (longer and slimmer), with toon shading and outlines, weapons by
-class + spec, and animations (idle per weapon style, run, jump, cast, attack
-swings, spell release, the lantern raised in the hand while the flame
-changes, sitting on the root slide, falling when defeated). Until race,
-customization and gear looks arrive, each class wears its own outfit
-(`models.ron`). Next: races + customization, gear looks, accounts.
+Progress: **built (2026-10-05), waiting for the user's feedback.**
+- Part 1: players and townsfolk are KayKit models (longer and slimmer, the
+  body reshaped through its bind poses, never by scaling bones), with toon
+  shading and outlines, weapons by class + spec, and animations (idle per
+  weapon style, run, jump, cast, attack swings, spell release, the lantern
+  raised in the hand while the flame changes, sitting on the root slide,
+  falling when defeated).
+- Part 2: **races** (`races.ron`: Humans, Elves, Drakes, Demons, Lynari)
+  with **customization**: face + hairstyle (4, heads taken from the pack's
+  bodies), skin colour, hair colour, the race's feature style (ears or
+  horns; Drakes and Demons also get their tail, Drakes cheek scales) and
+  its colour, height. Skin and hair are recoloured by splitting the meshes
+  by texture colour (`shapes.rs`). Ears, horns and tails are built in code
+  (`looks.rs`); capes hide when a race has a tail.
+- **Accounts** (migration 5, argon2): log in or make an account, the
+  character list (play, new, delete with a second press to confirm, 8 at
+  most), and **character creation** (name, starting class, race and look,
+  with a turning 3D preview; arrow keys turn it). The first account made
+  takes over the characters already in the save file. Without a save file
+  (demos) the game skips the menus.
+- **Gear looks by rarity**: items have a `rarity` (Common to Legendary;
+  trial gear Uncommon, dungeon gear Rare; nothing drops Epic or Legendary
+  yet). The weapon's rarity tints and lights the weapon and adds a gem, a
+  ring of light and sparks; the Body piece's rarity adds shoulder plates,
+  spikes, a belt gem, floating lights, wings of blades and a halo
+  (`tiers` in `models.ron`, built in `gear.rs`). Item names are coloured
+  by rarity.
+- Not yet (later in M11 or after, as the user prefers): body type/build,
+  eye colour, outfit colours, ear/tail length sliders, Demon wings and
+  glowing eyes, Lynari fur patterns; one-of-a-kind looks for single items;
+  tiered weapon *shapes* per weapon type (the art samples' swords).
 - **Real character models** replace the capsule bodies for players (and
   townsfolk): KayKit Adventurers (CC0, in `assets/models/kaykit/`) with the
   longer, slimmer proportions from the art samples. Skeleton + animations

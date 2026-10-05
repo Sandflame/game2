@@ -20,9 +20,11 @@ Guide for working in this repository (for Claude and for humans).
   forest → dungeon, quest tracker and log; minimap + big map with N/E/S/W).
   **M10** (all 13 specializations; stacking statuses, slows, lunges, damage
   that heals; spec switching in the lantern panel, saved per class).
-- Next: **M11** in three stages (see `MILESTONES.md`): 1) real character
-  models (KayKit, longer and slimmer), five races (Humans, Elves, Drakes,
-  Demons, Lynari), customization, five gear tiers (Common to Legendary), accounts + character list + character creation; 2) networking;
+- **M11** in three stages (see `MILESTONES.md`). Stage 1 is **built,
+  waiting for the user's feedback**: real character models (KayKit, longer
+  and slimmer), five races (Humans, Elves, Drakes, Demons, Lynari) with
+  customization, gear looks for five rarities (Common to Legendary),
+  accounts + character list + character creation. Next: 2) networking;
   3) parties + chat. The art direction is agreed: `docs/art-direction.md`
   (samples in `docs/art/`, made by `client/examples/art_samples.rs`).
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
@@ -80,7 +82,8 @@ render.
   particles + sound), `particles.ron` (particle presets), `sounds.ron`
   (sound files, game event → sound), `models.ron` (character models: body
   proportions, bodies, weapons, what each class/spec wears and holds,
-  townsfolk, animation clips). Placeholder sounds in `assets/sounds/`
+  townsfolk, animation clips, player heads, race feature parts, gear
+  `tiers`). Placeholder sounds in `assets/sounds/`
   are made by `tools/make_sounds.py`.
 
 ## Pinned versions (verified on crates.io 2026-10-03)
@@ -111,7 +114,9 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   of game time and quits (`client/src/devtools.rs`).
 - `LANTERNFLAME_DB=<file>` — use this save file instead of the default
   (`%APPDATA%\Lanternflame\world.db` / `~/.local/share/lanternflame/world.db`).
-  Screenshot demos never use a save file.
+  Screenshot demos never use a save file (except `menus`). With a save
+  file the game starts at the login screen; without one it goes straight
+  into the world as "Adventurer".
 - `LANTERNFLAME_DEMO=trial` (with the above) — scripted scene: switch to
   Elementalist, walk through the portal, pull the Rootwarden, dodge a marker.
   `LANTERNFLAME_DEMO=classes` — lantern panel + sparring dummy.
@@ -125,6 +130,11 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   Scissors: five Snips and a Shear on a dummy.
   `LANTERNFLAME_DEMO=models` — each class's model up close from the front,
   the lantern held up while the flame changes.
+  `LANTERNFLAME_DEMO=races` — each race up close (cheats the look).
+  `LANTERNFLAME_DEMO=gear` — the five gear rarities on one character
+  (cheats with `gear::ShowRarity`).
+  `LANTERNFLAME_DEMO=menus` — the only demo with a save file (a fresh one
+  in the temp folder): make an account, two characters, play.
   Leave ~1.5 s after a `Shot` before changing what's on screen: software
   rendering is slow and the shot is taken at the end of the frame.
   Each demo starts in its own zone
@@ -166,7 +176,13 @@ extra beyond the Rust toolchain.
 - `shared/src/synergy.rs` — `SynergyDef` (`synergy.ron`): which bonus status a party
   missing each role gets; `coverage`/`bonuses`.
 - `shared/src/components.rs` — logic components (`PlayerId`, `Motion`, `Faction`, `Hotbar`…).
-- `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`.
+- `shared/src/protocol.rs` — `ClientRequest`, `ServerEvent`, `Link`
+  (incl. accounts: `Register`/`Login`/`Logout`/`CreateCharacter`/
+  `DeleteCharacter` → `LoggedIn`/`AccountError`/`Characters`).
+- `shared/src/appearance.rs` — `RaceDef`/`Races` (`races.ron`: faces, skins,
+  hair, features, feature colours, height range), the `Appearance`
+  component (choices are list positions; `check`), `AccountRules`
+  (`accounts.ron`: max characters, name rules, password length).
 - `shared/src/targeting.rs` — Tab-target ordering.
 - `shared/src/gamedata.rs` — `GameData`: loads config, abilities, statuses, classes,
   enemies, encounters, items, progression, synergy; checks every cross-file
@@ -182,7 +198,7 @@ extra beyond the Rust toolchain.
   `exit_portal`) and `Progress`.
 - `shared/src/progression.rs` — `ProgressionDef` (`progression.ron`: XP curve, per-level
   health/power), `ClassLevels` (per class level + xp), `effective_level` (level sync).
-- `shared/src/items.rs` — `ItemDef` (`items/*.ron`), `Slot`, `Bag`, `Equipment` (shared
+- `shared/src/items.rs` — `ItemDef` (`items/*.ron`, with a `Rarity`), `Slot`, `Bag`, `Equipment` (shared
   armour + one weapon per class), `equip`/`unequip`/`discard`, `character_stats`
   (class + level + gear → `Stats`), `roll_loot`.
 - `server/src/lib.rs` — `AuthorityPlugin`, tick order (`AuthoritySystems`).
@@ -217,14 +233,33 @@ extra beyond the Rust toolchain.
   statuses), new-character gear, save ↔ components, saving on change / every
   `autosave_every` / on exit.
 - `server/src/database.rs` — SQLite (`world.db`): background thread, numbered
-  `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save.
+  `MIGRATIONS` tracked in `user_version`, backup before upgrading, load/save;
+  accounts (migration 5: `accounts` table, characters get `account_id` +
+  `appearance`; `saved_at = 0` = never played), argon2 hashing, `AccountJob`s.
+- `server/src/accounts.rs` — `Sessions` (who is logged in), checks account
+  requests and sends them to the database thread, turns answers into events.
 - `server/src/characters.rs` — players: joining (a save inside a dungeon copy
   loads at its `exit`), movement, combat clock, defeat, revive (only where
   `revive_in_place`), `recover_wipes` (everyone down outside a boss fight → back
   to the entrance), regen, `interact` (portals, exit portals, talking),
   forgetting characters who left a zone.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
-- `client/src/session.rs` — local player id, joining, `Received` event messages.
+- `client/src/session.rs` — local player id, joining (only without a save
+  file; otherwise the character list joins), `Received` event messages.
+- `client/src/menus.rs` — the `Screen` state (Login → Characters → Create →
+  Playing): login/make account, the character list, character creation
+  (class, race, steppers for each choice) with a turning 3D preview on a
+  platform; hides the HUD and keeps game panels shut while showing.
+- `client/src/looks.rs` — a player's `Appearance` on its model: the chosen
+  head (face + hair from another KayKit body, moved onto the head bone),
+  skin and hair recoloured (meshes split by texture colour), race parts
+  (ears, horns, cheek scales, tails) built in code, height.
+- `client/src/shapes.rs` — mesh helpers (`blade`, `tube`, `curve`, `taper`),
+  `split_by_colour`, `is_skin`, `tint_towards`.
+- `client/src/gear.rs` — gear looks by rarity: the weapon's rarity tints and
+  lights the held weapons and adds grip pieces; the Body piece's rarity adds
+  armour pieces (`TierLook`s in `models.ron` `tiers`); `rarity_color` for
+  item names; `ShowRarity` (demo cheat).
 - `client/src/characters.rs` — bodies per `VisualKey` (players and townsfolk get
   a `ModelLook`; dummies and monsters are still built from shapes), interpolation,
   sending movement, hit wobble, lantern (hidden by default; held up while the
@@ -288,8 +323,8 @@ extra beyond the Rust toolchain.
 - `client/examples/art_samples.rs` — the approved art direction as a runnable
   scene (`cargo run -p client --example art_samples`): KayKit bodies with
   stretched bones, toon materials + skinned outlines, race parts, gear tiers,
-  `blade()`/`tube()` mesh helpers. Bodies are in the game now (`models.rs`);
-  race parts and gear tiers still only live here.
+  `blade()`/`tube()` mesh helpers. All of it is in the game now (`models.rs`,
+  `looks.rs`, `gear.rs`) except the tiered sword *shapes*.
 - `assets/models/kaykit/` — KayKit Adventurers (CC0, see `CREDITS.md`).
 - `docs/art-direction.md`, `docs/art/` — the agreed look, with pictures.
 
@@ -342,6 +377,12 @@ extra beyond the Rust toolchain.
   well as from the dungeon board (`listing`). Use `Zones::get` (it understands
   `zone#n` ids), never the map directly.
 - Use `std::path::PathBuf` for paths (Windows + Linux).
+- Accounts: with a `Database`, `Join` needs a logged-in account and only
+  loads that account's characters. Races, faces and colours are data
+  (`races.ron`); the client maps face/feature ids to looks in `models.ron`
+  (checked at start). Races are cosmetic only.
+- Gear looks come from `rarity` (client `tiers`); don't put looks in item
+  stats. Trial gear is Uncommon, dungeon gear Rare.
 - Database access goes through one module in `server/` (`database.rs`) and runs
   off the main game thread. Schema changes = a new entry in `MIGRATIONS`
   (never edit a released one). Without a `Database` resource nothing is saved

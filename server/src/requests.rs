@@ -10,6 +10,7 @@ use shared::gamedata::GameData;
 use shared::gamedata::Zones;
 use shared::protocol::{ClientRequest, Link};
 
+use crate::accounts::{AccountRequests, Sessions};
 use crate::actions::{self, Actors, Targets, UseContext};
 use crate::characters::{CombatClock, Defeated, PlayerIndex, clean_name, interact, spawn_player};
 use crate::classes;
@@ -34,7 +35,11 @@ pub fn receive_requests(
     mut index: ResMut<PlayerIndex>,
     mut effects: ResMut<PendingEffects>,
     mut queues: (ResMut<PendingGear>, ResMut<classes::PendingSpecs>),
-    mut joining: ResMut<PendingJoins>,
+    (mut joining, mut account_requests, sessions): (
+        ResMut<PendingJoins>,
+        ResMut<AccountRequests>,
+        Res<Sessions>,
+    ),
     mut instances: ResMut<Instances>,
     database: Option<Res<Database>>,
     riders: Query<(), With<Riding>>,
@@ -51,12 +56,23 @@ pub fn receive_requests(
         effects: &mut effects,
     };
     for (player, request) in requests {
+        if account_requests.take(player, &request) {
+            continue;
+        }
         if let ClientRequest::Join { name } = &request {
             match &database {
                 // Load their save first (the reply arrives in `finish_joins`).
+                // With a save file you play your own account's characters.
                 Some(database) if !index.0.contains_key(&player) => {
+                    let Some((account, _)) = sessions.0.get(&player) else {
+                        ctx.link.to_client.push(ServerEvent::AccountError {
+                            player,
+                            message: "Log in first.".into(),
+                        });
+                        continue;
+                    };
                     if joining.0.insert(player) {
-                        database.load(player, clean_name(name));
+                        database.load(player, clean_name(name), Some(*account));
                     }
                 }
                 _ => spawn_player(
@@ -90,7 +106,12 @@ pub fn receive_requests(
             continue;
         }
         match request {
-            ClientRequest::Join { .. } => {}
+            ClientRequest::Join { .. }
+            | ClientRequest::Register { .. }
+            | ClientRequest::Login { .. }
+            | ClientRequest::Logout
+            | ClientRequest::CreateCharacter { .. }
+            | ClientRequest::DeleteCharacter { .. } => {}
             ClientRequest::Interact => interactions.0.push((player, entity, None)),
             ClientRequest::ChangeSpec { spec } => queues.1.0.push((player, entity, spec)),
             ClientRequest::EnterFromBoard { zone } => {
@@ -170,6 +191,13 @@ pub fn finish_joins(
     };
     for loaded in database.take_loaded() {
         joining.0.remove(&loaded.player);
+        if let Some(message) = loaded.refused {
+            link.to_client.push(ServerEvent::AccountError {
+                player: loaded.player,
+                message,
+            });
+            continue;
+        }
         spawn_player(
             &mut commands,
             &mut index,

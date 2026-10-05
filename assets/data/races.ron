@@ -1,0 +1,159 @@
+// Races (cosmetic only for now) and the choices on the creation screen.
+//   faces: face + hair, each a head in client/models.ron `heads`
+//   skins / hair: colours (red, green, blue; 0-1)
+//   features: the race's own feature in several styles (a look in
+//     client/models.ron `features`); feature_colors colour horns and
+//     scales (ears and fur follow the skin or hair instead)
+//   height: shortest and tallest, as a multiple of normal height
+([
+    (
+        id: "human",
+        name: "Human",
+        description: "Folk of every land, at home anywhere a lantern burns.",
+        faces: [
+            (id: "long_hair", name: "Long hair"),
+            (id: "short_hair", name: "Short hair"),
+            (id: "cropped", name: "Cropped"),
+            (id: "bald_beard", name: "Bald, bearded"),
+        ],
+        skins: [
+            (name: "Fair", color: (0.98, 0.80, 0.68)),
+            (name: "Light", color: (0.93, 0.72, 0.58)),
+            (name: "Tan", color: (0.80, 0.58, 0.42)),
+            (name: "Brown", color: (0.58, 0.38, 0.26)),
+            (name: "Dark", color: (0.36, 0.23, 0.16)),
+        ],
+        hair: [
+            (name: "Black", color: (0.10, 0.09, 0.10)),
+            (name: "Dark brown", color: (0.30, 0.18, 0.11)),
+            (name: "Auburn", color: (0.55, 0.25, 0.15)),
+            (name: "Blonde", color: (0.90, 0.75, 0.45)),
+            (name: "Red", color: (0.75, 0.25, 0.12)),
+            (name: "Silver", color: (0.80, 0.80, 0.84)),
+        ],
+        height: (0.94, 1.06),
+    ),
+    (
+        id: "elf",
+        name: "Elf",
+        description: "Tall and graceful, with long pointed ears and old, bright blood.",
+        faces: [
+            (id: "long_hair", name: "Long hair"),
+            (id: "short_hair", name: "Short hair"),
+            (id: "cropped", name: "Cropped"),
+        ],
+        skins: [
+            (name: "Fair", color: (0.98, 0.84, 0.74)),
+            (name: "Pale", color: (0.96, 0.90, 0.86)),
+            (name: "Golden", color: (0.93, 0.76, 0.52)),
+            (name: "Moonlit", color: (0.85, 0.82, 0.95)),
+        ],
+        hair: [
+            (name: "Silver", color: (0.88, 0.88, 0.92)),
+            (name: "Gold", color: (0.95, 0.78, 0.40)),
+            (name: "Crimson", color: (0.70, 0.12, 0.12)),
+            (name: "Raven", color: (0.08, 0.08, 0.12)),
+            (name: "White", color: (0.98, 0.97, 0.95)),
+        ],
+        features: [
+            (id: "long_ears", name: "Long ears"),
+            (id: "swept_ears", name: "Swept-back ears"),
+        ],
+        height: (1.0, 1.1),
+    ),
+    (
+        id: "drake",
+        name: "Drake",
+        description: "Dragon-blooded, with horns swept back along the head, scales and a strong tail.",
+        faces: [
+            (id: "long_hair", name: "Long hair"),
+            (id: "short_hair", name: "Short hair"),
+            (id: "cropped", name: "Cropped"),
+            (id: "bald_beard", name: "Bald, bearded"),
+        ],
+        skins: [
+            (name: "Pale", color: (0.95, 0.88, 0.85)),
+            (name: "Fair", color: (0.98, 0.80, 0.68)),
+            (name: "Ash", color: (0.70, 0.70, 0.74)),
+            (name: "Dusk", color: (0.62, 0.66, 0.82)),
+        ],
+        hair: [
+            (name: "White", color: (0.95, 0.95, 0.97)),
+            (name: "Black", color: (0.08, 0.08, 0.10)),
+            (name: "Steel blue", color: (0.35, 0.45, 0.62)),
+            (name: "Crimson", color: (0.62, 0.12, 0.12)),
+        ],
+        features: [
+            (id: "swept_horns", name: "Swept-back horns"),
+            (id: "crowned_horns", name: "Crown of horns"),
+        ],
+        feature_colors: [
+            (name: "Obsidian", color: (0.14, 0.15, 0.24)),
+            (name: "Ivory", color: (0.92, 0.89, 0.80)),
+            (name: "Sapphire", color: (0.25, 0.42, 0.85)),
+            (name: "Crimson", color: (0.65, 0.12, 0.15)),
+        ],
+        height: (1.0, 1.12),
+    ),
+    (
+        id: "demon",
+        name: "Demon",
+        description: "Horned and fearless, with a long tail and skin in every shade of dusk.",
+        faces: [
+            (id: "long_hair", name: "Long hair"),
+            (id: "short_hair", name: "Short hair"),
+            (id: "cropped", name: "Cropped"),
+        ],
+        skins: [
+            (name: "Fair", color: (0.98, 0.82, 0.72)),
+            (name: "Rose", color: (0.96, 0.66, 0.68)),
+            (name: "Crimson", color: (0.78, 0.28, 0.28)),
+            (name: "Violet", color: (0.62, 0.45, 0.80)),
+            (name: "Azure", color: (0.45, 0.60, 0.88)),
+            (name: "Ash", color: (0.55, 0.55, 0.58)),
+        ],
+        hair: [
+            (name: "Black", color: (0.07, 0.06, 0.08)),
+            (name: "White", color: (0.95, 0.94, 0.95)),
+            (name: "Crimson", color: (0.70, 0.08, 0.12)),
+            (name: "Violet", color: (0.45, 0.20, 0.65)),
+        ],
+        features: [
+            (id: "rising_horns", name: "Rising horns"),
+            (id: "ram_horns", name: "Ram horns"),
+        ],
+        feature_colors: [
+            (name: "Obsidian", color: (0.10, 0.06, 0.09)),
+            (name: "Bone", color: (0.88, 0.84, 0.74)),
+            (name: "Crimson", color: (0.60, 0.08, 0.12)),
+        ],
+        height: (0.96, 1.08),
+    ),
+    (
+        id: "lynari",
+        name: "Lynari",
+        description: "Quick, curious cat folk with keen ears and a long, expressive tail.",
+        faces: [
+            (id: "long_hair", name: "Long hair"),
+            (id: "short_hair", name: "Short hair"),
+            (id: "cropped", name: "Cropped"),
+        ],
+        skins: [
+            (name: "Fair", color: (0.98, 0.82, 0.70)),
+            (name: "Tan", color: (0.85, 0.64, 0.46)),
+            (name: "Brown", color: (0.60, 0.40, 0.27)),
+        ],
+        hair: [
+            (name: "Ginger", color: (0.85, 0.45, 0.20)),
+            (name: "Black", color: (0.09, 0.08, 0.09)),
+            (name: "Grey", color: (0.55, 0.55, 0.58)),
+            (name: "Cream", color: (0.95, 0.88, 0.72)),
+            (name: "Brown", color: (0.42, 0.26, 0.15)),
+        ],
+        features: [
+            (id: "cat_ears", name: "Cat ears"),
+            (id: "lynx_ears", name: "Lynx ears"),
+        ],
+        height: (0.88, 0.98),
+    ),
+])

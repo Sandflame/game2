@@ -13,9 +13,11 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use rusqlite::{Connection, OptionalExtension, params};
+use shared::appearance::Appearance;
 use shared::classes::SecondaryChoice;
 use shared::components::PlayerId;
 use shared::progression::ClassProgress;
+use shared::protocol::CharacterSummary;
 
 /// Each step upgrades the file by one version. Never change a step that
 /// has been released: add a new one instead.
@@ -68,6 +70,17 @@ pub const MIGRATIONS: &[&str] = &[
         spec TEXT NOT NULL,
         PRIMARY KEY (character_id, class)
     );",
+    // 5: accounts (argon2-hashed passwords), which account owns each
+    // character, and what each character looks like (RON text).
+    // `saved_at` 0 marks a character created but never played.
+    "CREATE TABLE accounts (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+    ALTER TABLE characters ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;
+    ALTER TABLE characters ADD COLUMN appearance TEXT;",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -113,6 +126,11 @@ pub struct CharacterSave {
     pub quests: Vec<SavedQuest>,
     /// (class, its chosen specialization).
     pub specs: Vec<(String, String)>,
+    /// Chosen when the character was created (older saves have none).
+    pub appearance: Option<Appearance>,
+    /// Has it ever been in the world? A character only just created starts
+    /// fresh (starting gear, the starting zone).
+    pub played: bool,
 }
 
 /// A quest being done (its step and enemies counted) or finished.
@@ -284,7 +302,8 @@ pub fn save_character(conn: &mut Connection, save: &CharacterSave) -> rusqlite::
 pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<CharacterSave>> {
     let Some((id, mut save)) = conn
         .query_row(
-            "SELECT id, class, zone, x, y, z, yaw FROM characters WHERE name = ?1",
+            "SELECT id, class, zone, x, y, z, yaw, saved_at, appearance
+             FROM characters WHERE name = ?1",
             params![name],
             |row| {
                 Ok((
@@ -300,6 +319,8 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
                         secondaries: Vec::new(),
                         quests: Vec::new(),
                         specs: Vec::new(),
+                        played: row.get::<_, i64>(7)? > 0,
+                        appearance: read_appearance(row.get(8)?),
                     },
                 ))
             },
@@ -368,11 +389,300 @@ pub fn load_character(conn: &Connection, name: &str) -> rusqlite::Result<Option<
     Ok(Some(save))
 }
 
+fn read_appearance(text: Option<String>) -> Option<Appearance> {
+    text.and_then(|t| ron::from_str(&t).ok())
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
+
+/// Why an account or character request was refused (shown to the player).
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum AccountError {
+    #[error("That account name is taken.")]
+    NameTaken,
+    #[error("Wrong account name or password.")]
+    WrongLogin,
+    #[error("That character name is taken.")]
+    CharacterTaken,
+    #[error("You already have {0} characters, the most an account can have.")]
+    TooMany(usize),
+    #[error("You have no character called {0}.")]
+    NoSuchCharacter(String),
+    #[error("Something went wrong with the save file: {0}")]
+    Database(String),
+}
+
+impl From<rusqlite::Error> for AccountError {
+    fn from(error: rusqlite::Error) -> Self {
+        AccountError::Database(error.to_string())
+    }
+}
+
+/// Make an account. The first account made takes over any characters from
+/// before accounts existed. Returns its id.
+pub fn register(conn: &mut Connection, name: &str, password: &str) -> Result<i64, AccountError> {
+    let taken: bool = conn
+        .query_row(
+            "SELECT 1 FROM accounts WHERE name = ?1",
+            params![name],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if taken {
+        return Err(AccountError::NameTaken);
+    }
+    let hash = hash_password(password)?;
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO accounts (name, password, created_at) VALUES (?1, ?2, ?3)",
+        params![name, hash, now_seconds()],
+    )?;
+    let id = tx.last_insert_rowid();
+    tx.execute(
+        "UPDATE characters SET account_id = ?1 WHERE account_id IS NULL",
+        params![id],
+    )?;
+    tx.commit()?;
+    Ok(id)
+}
+
+fn hash_password(password: &str) -> Result<String, AccountError> {
+    use argon2::password_hash::PasswordHasher;
+    argon2::Argon2::default()
+        .hash_password(password.as_bytes())
+        .map(|hash| hash.to_string())
+        .map_err(|e| AccountError::Database(e.to_string()))
+}
+
+/// Check a login. Returns the account's id and its name as registered.
+pub fn login(conn: &Connection, name: &str, password: &str) -> Result<(i64, String), AccountError> {
+    use argon2::password_hash::PasswordVerifier;
+    use argon2::password_hash::phc::PasswordHash;
+    let Some((id, registered, stored)) = conn
+        .query_row(
+            "SELECT id, name, password FROM accounts WHERE name = ?1",
+            params![name],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()?
+    else {
+        return Err(AccountError::WrongLogin);
+    };
+    let hash = PasswordHash::new(&stored).map_err(|_| AccountError::WrongLogin)?;
+    argon2::Argon2::default()
+        .verify_password(password.as_bytes(), &hash)
+        .map_err(|_| AccountError::WrongLogin)?;
+    Ok((id, registered))
+}
+
+/// An account's characters, oldest first.
+pub fn list_characters(
+    conn: &Connection,
+    account: i64,
+) -> Result<Vec<CharacterSummary>, AccountError> {
+    let mut query = conn.prepare(
+        "SELECT c.name, c.class, c.zone, c.appearance,
+                COALESCE((SELECT level FROM class_levels l
+                          WHERE l.character_id = c.id AND l.class = c.class), 1)
+         FROM characters c WHERE c.account_id = ?1 ORDER BY c.id",
+    )?;
+    let list = query
+        .query_map(params![account], |row| {
+            Ok(CharacterSummary {
+                name: row.get(0)?,
+                class: row.get(1)?,
+                zone: row.get(2)?,
+                appearance: read_appearance(row.get(3)?),
+                level: row.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(list)
+}
+
+/// A brand-new character for an account (not played yet).
+pub struct NewCharacter<'a> {
+    pub name: &'a str,
+    pub class: &'a str,
+    pub appearance: &'a Appearance,
+    pub zone: &'a str,
+    pub position: Vec3,
+    pub yaw: f32,
+}
+
+pub fn create_character(
+    conn: &mut Connection,
+    account: i64,
+    new: &NewCharacter,
+    max_characters: usize,
+) -> Result<(), AccountError> {
+    let tx = conn.transaction()?;
+    let count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM characters WHERE account_id = ?1",
+        params![account],
+        |row| row.get(0),
+    )?;
+    if count as usize >= max_characters {
+        return Err(AccountError::TooMany(max_characters));
+    }
+    let taken = tx
+        .query_row(
+            "SELECT 1 FROM characters WHERE name = ?1 COLLATE NOCASE",
+            params![new.name],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if taken {
+        return Err(AccountError::CharacterTaken);
+    }
+    let appearance =
+        ron::to_string(new.appearance).map_err(|e| AccountError::Database(e.to_string()))?;
+    tx.execute(
+        "INSERT INTO characters (name, class, zone, x, y, z, yaw, saved_at, account_id, appearance)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)",
+        params![
+            new.name,
+            new.class,
+            new.zone,
+            new.position.x,
+            new.position.y,
+            new.position.z,
+            new.yaw,
+            account,
+            appearance
+        ],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Delete one of an account's characters (and everything it owns).
+pub fn delete_character(conn: &Connection, account: i64, name: &str) -> Result<(), AccountError> {
+    let deleted = conn.execute(
+        "DELETE FROM characters WHERE account_id = ?1 AND name = ?2",
+        params![account, name],
+    )?;
+    if deleted == 0 {
+        return Err(AccountError::NoSuchCharacter(name.to_owned()));
+    }
+    Ok(())
+}
+
+/// Does this account own a character with this name?
+pub fn owns(conn: &Connection, account: i64, name: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT 1 FROM characters WHERE account_id = ?1 AND name = ?2",
+        params![account, name],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|found| found.is_some())
+}
+
+/// Account and character work the database thread does for a player.
+pub enum AccountJob {
+    Register {
+        name: String,
+        password: String,
+    },
+    Login {
+        name: String,
+        password: String,
+    },
+    List {
+        account: i64,
+    },
+    Create {
+        account: i64,
+        new: NewCharacterOwned,
+        max: usize,
+    },
+    Delete {
+        account: i64,
+        name: String,
+    },
+}
+
+/// [`NewCharacter`], owned, to send to the database thread.
+pub struct NewCharacterOwned {
+    pub name: String,
+    pub class: String,
+    pub appearance: Appearance,
+    pub zone: String,
+    pub position: Vec3,
+    pub yaw: f32,
+}
+
+/// The answer to an [`AccountJob`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum AccountReply {
+    LoggedIn { account: i64, name: String },
+    Characters(Vec<CharacterSummary>),
+    Failed(String),
+}
+
+fn account_job(conn: &mut Connection, job: AccountJob) -> Vec<AccountReply> {
+    let characters = |conn: &Connection, account| match list_characters(conn, account) {
+        Ok(list) => AccountReply::Characters(list),
+        Err(e) => AccountReply::Failed(e.to_string()),
+    };
+    let result = match job {
+        AccountJob::Register { name, password } => {
+            register(conn, &name, &password).map(|account| {
+                vec![
+                    AccountReply::LoggedIn { account, name },
+                    characters(conn, account),
+                ]
+            })
+        }
+        AccountJob::Login { name, password } => {
+            login(conn, &name, &password).map(|(account, name)| {
+                vec![
+                    AccountReply::LoggedIn { account, name },
+                    characters(conn, account),
+                ]
+            })
+        }
+        AccountJob::List { account } => Ok(vec![characters(conn, account)]),
+        AccountJob::Create { account, new, max } => {
+            let borrowed = NewCharacter {
+                name: &new.name,
+                class: &new.class,
+                appearance: &new.appearance,
+                zone: &new.zone,
+                position: new.position,
+                yaw: new.yaw,
+            };
+            create_character(conn, account, &borrowed, max)
+                .map(|()| vec![characters(conn, account)])
+        }
+        AccountJob::Delete { account, name } => {
+            delete_character(conn, account, &name).map(|()| vec![characters(conn, account)])
+        }
+    };
+    result.unwrap_or_else(|e| vec![AccountReply::Failed(e.to_string())])
+}
+
 enum Job {
     Load {
         player: PlayerId,
         name: String,
+        /// Only load it if this account owns it.
+        account: Option<i64>,
     },
+    Account(PlayerId, AccountJob),
     Save(Box<CharacterSave>),
     /// Reply once everything sent before this is done.
     Flush(Sender<()>),
@@ -383,6 +693,8 @@ pub struct Loaded {
     pub player: PlayerId,
     pub name: String,
     pub save: Option<CharacterSave>,
+    /// Why it can't be played (it isn't this account's).
+    pub refused: Option<String>,
 }
 
 /// The save file, worked on by a background thread. Without this resource
@@ -391,6 +703,7 @@ pub struct Loaded {
 pub struct Database {
     jobs: Sender<Job>,
     loaded: Mutex<Receiver<Loaded>>,
+    replies: Mutex<Receiver<(PlayerId, AccountReply)>>,
 }
 
 /// How long the game waits for saving to finish when it closes.
@@ -402,6 +715,7 @@ impl Database {
         let mut conn = open(path)?;
         let (jobs, inbox) = channel::<Job>();
         let (outbox, loaded) = channel::<Loaded>();
+        let (reply_box, replies) = channel::<(PlayerId, AccountReply)>();
         // The thread ends by itself when this `Database` is dropped (its job
         // queue closes).
         std::thread::Builder::new()
@@ -409,13 +723,41 @@ impl Database {
             .spawn(move || {
                 for job in inbox {
                     match job {
-                        Job::Load { player, name } => {
-                            let save = load_character(&conn, &name).unwrap_or_else(|error| {
-                                error!("could not load character `{name}`: {error}");
+                        Job::Load {
+                            player,
+                            name,
+                            account,
+                        } => {
+                            let refused = match account.map(|a| owns(&conn, a, &name)) {
+                                Some(Ok(false)) => {
+                                    Some(AccountError::NoSuchCharacter(name.clone()).to_string())
+                                }
+                                Some(Err(e)) => Some(AccountError::from(e).to_string()),
+                                _ => None,
+                            };
+                            let save = if refused.is_some() {
                                 None
-                            });
-                            if outbox.send(Loaded { player, name, save }).is_err() {
+                            } else {
+                                load_character(&conn, &name).unwrap_or_else(|error| {
+                                    error!("could not load character `{name}`: {error}");
+                                    None
+                                })
+                            };
+                            let loaded = Loaded {
+                                player,
+                                name,
+                                save,
+                                refused,
+                            };
+                            if outbox.send(loaded).is_err() {
                                 break;
+                            }
+                        }
+                        Job::Account(player, job) => {
+                            for reply in account_job(&mut conn, job) {
+                                if reply_box.send((player, reply)).is_err() {
+                                    return;
+                                }
                             }
                         }
                         Job::Save(save) => {
@@ -436,14 +778,29 @@ impl Database {
         Ok(Self {
             jobs,
             loaded: Mutex::new(loaded),
+            replies: Mutex::new(replies),
         })
     }
 
-    pub fn load(&self, player: PlayerId, name: &str) {
+    /// Load a character to play. With an account, only one it owns.
+    pub fn load(&self, player: PlayerId, name: &str, account: Option<i64>) {
         let _ = self.jobs.send(Job::Load {
             player,
             name: name.to_owned(),
+            account,
         });
+    }
+
+    pub fn account(&self, player: PlayerId, job: AccountJob) {
+        let _ = self.jobs.send(Job::Account(player, job));
+    }
+
+    /// Answers to account jobs that have finished.
+    pub fn take_replies(&self) -> Vec<(PlayerId, AccountReply)> {
+        self.replies
+            .lock()
+            .map(|inbox| inbox.try_iter().collect())
+            .unwrap_or_default()
     }
 
     pub fn save(&self, save: CharacterSave) {
@@ -518,7 +875,121 @@ mod tests {
                 },
             ],
             specs: vec![("priest".into(), "judge".into())],
+            appearance: None,
+            played: true,
         }
+    }
+
+    fn look() -> Appearance {
+        Appearance {
+            race: "elf".into(),
+            face: 1,
+            skin: 2,
+            hair: 0,
+            feature: 1,
+            feature_color: 0,
+            height: 0.75,
+        }
+    }
+
+    fn new_character<'a>(name: &'a str, appearance: &'a Appearance) -> NewCharacter<'a> {
+        NewCharacter {
+            name,
+            class: "priest",
+            appearance,
+            zone: "hub",
+            position: Vec3::new(1.0, 0.0, 2.0),
+            yaw: 0.5,
+        }
+    }
+
+    #[test]
+    fn accounts_register_and_log_in() {
+        let mut conn = memory();
+        let id = register(&mut conn, "sandflame", "lantern").unwrap();
+        assert_eq!(
+            register(&mut conn, "SandFlame", "other"),
+            Err(AccountError::NameTaken)
+        );
+        assert_eq!(
+            login(&conn, "sandflame", "lantern").unwrap(),
+            (id, "sandflame".into())
+        );
+        // Names ignore case; passwords don't.
+        assert_eq!(login(&conn, "SANDFLAME", "lantern").unwrap().0, id);
+        assert_eq!(
+            login(&conn, "sandflame", "Lantern"),
+            Err(AccountError::WrongLogin)
+        );
+        assert_eq!(
+            login(&conn, "nobody", "lantern"),
+            Err(AccountError::WrongLogin)
+        );
+        // The password is not stored as it is.
+        let stored: String = conn
+            .query_row("SELECT password FROM accounts", [], |r| r.get(0))
+            .unwrap();
+        assert!(!stored.contains("lantern") && stored.starts_with("$argon2"));
+    }
+
+    #[test]
+    fn the_first_account_takes_over_older_characters() {
+        let mut conn = memory();
+        save_character(&mut conn, &example()).unwrap();
+        let first = register(&mut conn, "first", "pass").unwrap();
+        let second = register(&mut conn, "second", "pass").unwrap();
+        let list = list_characters(&conn, first).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "Ari");
+        assert_eq!(list[0].level, 7, "the current class's level");
+        assert!(list_characters(&conn, second).unwrap().is_empty());
+    }
+
+    #[test]
+    fn characters_are_made_listed_and_deleted() {
+        let mut conn = memory();
+        let account = register(&mut conn, "owner", "pass").unwrap();
+        let other = register(&mut conn, "other", "pass").unwrap();
+        let elf = look();
+        create_character(&mut conn, account, &new_character("Ari", &elf), 2).unwrap();
+        assert_eq!(
+            create_character(&mut conn, other, &new_character("ari", &elf), 2),
+            Err(AccountError::CharacterTaken),
+            "names are unique, ignoring case"
+        );
+        create_character(&mut conn, account, &new_character("Bryn", &elf), 2).unwrap();
+        assert_eq!(
+            create_character(&mut conn, account, &new_character("Cass", &elf), 2),
+            Err(AccountError::TooMany(2))
+        );
+        let list = list_characters(&conn, account).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].appearance, Some(elf.clone()));
+        assert_eq!(list[0].level, 1);
+        // A new character hasn't been played yet; saving it marks it played
+        // and keeps its look.
+        let ari = load_character(&conn, "Ari").unwrap().unwrap();
+        assert!(!ari.played);
+        assert_eq!(ari.appearance, Some(elf.clone()));
+        assert_eq!(ari.class, "priest");
+        save_character(
+            &mut conn,
+            &CharacterSave {
+                name: "Ari".into(),
+                ..example()
+            },
+        )
+        .unwrap();
+        let ari = load_character(&conn, "Ari").unwrap().unwrap();
+        assert!(ari.played);
+        assert_eq!(ari.appearance, Some(elf));
+        // Only the owner can delete (or play) it.
+        assert!(owns(&conn, account, "Ari").unwrap());
+        assert!(!owns(&conn, other, "Ari").unwrap());
+        assert!(delete_character(&conn, other, "Ari").is_err());
+        delete_character(&conn, account, "Ari").unwrap();
+        assert_eq!(list_characters(&conn, account).unwrap().len(), 1);
+        assert_eq!(load_character(&conn, "Ari").unwrap(), None);
     }
 
     fn memory() -> Connection {
@@ -614,7 +1085,7 @@ mod tests {
         let path = dir.join("world.db");
         let db = Database::start(&path).unwrap();
         db.save(example());
-        db.load(PlayerId(1), "Ari");
+        db.load(PlayerId(1), "Ari", None);
         db.flush();
         let loaded = db.take_loaded();
         assert_eq!(loaded.len(), 1);

@@ -1,28 +1,28 @@
 // Gear from the Tangled Burrow (dungeon, level 8).
 {
     // Armour and rings (any class).
-    "sporecap_hood": (name: "Sporecap Hood", slot: Head, level: 8, health: 550, guard: 2,
+    "sporecap_hood": (name: "Sporecap Hood", slot: Head, rarity: Rare, level: 8, health: 550, guard: 2,
         description: "Soft, spotted, and only slightly glowing."),
-    "burrowhide_coat": (name: "Burrowhide Coat", slot: Body, level: 8, health: 900, guard: 3,
+    "burrowhide_coat": (name: "Burrowhide Coat", slot: Body, rarity: Rare, level: 8, health: 900, guard: 3,
         description: "Warm enough for the coldest tunnels."),
-    "pupfur_gloves": (name: "Pupfur Gloves", slot: Hands, level: 8, power: 4, crit: 2,
+    "pupfur_gloves": (name: "Pupfur Gloves", slot: Hands, rarity: Rare, level: 8, power: 4, crit: 2,
         description: "The pups didn't mind. Probably."),
-    "tunneler_boots": (name: "Tunneler Boots", slot: Feet, level: 8, health: 400, power: 2,
+    "tunneler_boots": (name: "Tunneler Boots", slot: Feet, rarity: Rare, level: 8, health: 400, power: 2,
         description: "Made for creeping through roots."),
-    "rotheart_ring": (name: "Rotheart Ring", slot: Ring, level: 8, power: 5, crit: 2,
+    "rotheart_ring": (name: "Rotheart Ring", slot: Ring, rarity: Rare, level: 8, power: 5, crit: 2,
         description: "Cleansed of rot. Mostly."),
 
     // Weapons (one class each).
-    "matriarch_fang": (name: "Matriarch's Fang", slot: Weapon, level: 8,
+    "matriarch_fang": (name: "Matriarch's Fang", slot: Weapon, rarity: Rare, level: 8,
         class: Some("blademaster"), power: 11, crit: 1,
         description: "A greatsword with an edge like a wolf's tooth."),
-    "glowcap_rod": (name: "Glowcap Rod", slot: Weapon, level: 8,
+    "glowcap_rod": (name: "Glowcap Rod", slot: Weapon, rarity: Rare, level: 8,
         class: Some("elementalist"), power: 11, crit: 1,
         description: "A staff that lights the way and burns the rest."),
-    "rootbark_bulwark": (name: "Rootbark Bulwark", slot: Weapon, level: 8,
+    "rootbark_bulwark": (name: "Rootbark Bulwark", slot: Weapon, rarity: Rare, level: 8,
         class: Some("shield_knight"), power: 7, guard: 5, health: 400,
         description: "A shield of roots that grows back where it's struck."),
-    "lantern_of_spores": (name: "Lantern of Spores", slot: Weapon, level: 8,
+    "lantern_of_spores": (name: "Lantern of Spores", slot: Weapon, rarity: Rare, level: 8,
         class: Some("priest"), power: 11, crit: 1,
         description: "Its glowing spores mend more than they harm."),
 }

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use shared::appearance::Appearance;
 use shared::classes::{ChosenSpecs, CurrentClass, Secondaries};
 use shared::combat::Reject;
 use shared::combat::{ActionState, Health};
@@ -94,9 +95,16 @@ pub fn spawn_player(
         link.to_client.push(ServerEvent::Joined { player, entity });
         return;
     }
+    // A character only just made (never played) starts fresh, in its
+    // chosen class and look.
+    let appearance = save
+        .and_then(|s| s.appearance.clone())
+        .filter(|a| a.check(&data.races).is_ok())
+        .unwrap_or_else(|| Appearance::first(&data.races));
+    let chosen_class = save.map(|s| s.class.clone());
+    let save = save.filter(|s| s.played);
     // A saved class or zone that no longer exists falls back to the start.
-    let class_id = save
-        .map(|s| s.class.clone())
+    let class_id = chosen_class
         .filter(|c| data.classes.contains_key(c))
         .unwrap_or_else(|| data.player.start_class.clone());
     // Someone who quit in the middle of a ride arrives at its end.
@@ -178,6 +186,7 @@ pub fn spawn_player(
                 current,
             ),
             (levels, bag, worn, secondaries, quests, specs),
+            appearance,
         ))
         .id();
     index.0.insert(player, entity);

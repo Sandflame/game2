@@ -194,6 +194,9 @@ pub fn to_save(
         })
         .collect();
     CharacterSave {
+        // Not written by saving (set when the character is created).
+        appearance: None,
+        played: true,
         name: name.to_owned(),
         class: class.class.clone(),
         zone: zone.0.clone(),
@@ -803,6 +806,8 @@ mod tests {
             secondaries: Vec::new(),
             quests: Vec::new(),
             specs: Vec::new(),
+            appearance: None,
+            played: true,
             items: vec![
                 SavedItem {
                     item: "no_such_item".into(),

@@ -25,15 +25,18 @@ use shared::protocol::{ClientRequest, Link};
 
 use crate::camera::FollowCamera;
 use crate::characters::{LocalPlayer, ScriptedMove};
+use crate::gear::ShowRarity;
 use crate::hud::character::CharacterPanel;
 use crate::hud::dialogue::Conversation;
 use crate::hud::journal::QuestJournal;
 use crate::hud::lantern::LanternPanel;
 use crate::hud::map::WorldMap;
 use crate::hud::options::OptionsMenu;
+use crate::menus::{Choice, FieldId, MenuAction, MenuActions, TextField};
 use crate::session::{LocalPlayerId, send};
 use crate::targeting::CurrentTarget;
 use shared::classes::SecondaryChoice;
+use shared::items::Rarity;
 
 const SCREENSHOT_ENV: &str = "LANTERNFLAME_SCREENSHOT";
 
@@ -44,13 +47,29 @@ pub fn demo_start_zone() -> Option<&'static str> {
         return None;
     }
     match std::env::var(DEMO_ENV).as_deref() {
-        Ok("classes" | "progress" | "specs" | "models") => Some("sandbox"),
-        Ok("world" | "dungeon" | "quests") | Err(_) => None,
+        Ok("classes" | "progress" | "specs" | "models" | "races" | "gear") => Some("sandbox"),
+        Ok("world" | "dungeon" | "quests" | "menus") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
 }
 
-/// Is the game running a scripted screenshot (which never saves)?
+/// The menus demo's save file: a fresh one in the temporary folder (the
+/// other demos have none, so they never save).
+pub fn demo_save_file() -> Option<PathBuf> {
+    if std::env::var(DEMO_ENV).as_deref() != Ok("menus") {
+        return None;
+    }
+    let path = std::env::temp_dir().join("lanternflame-menus-demo.db");
+    for end in ["", "-wal", "-shm"] {
+        let mut file = path.clone().into_os_string();
+        file.push(end);
+        let _ = std::fs::remove_file(file);
+    }
+    Some(path)
+}
+
+/// Is the game running a scripted screenshot (which never saves, except
+/// the menus demo)?
 pub fn demo_mode() -> bool {
     std::env::var_os(SCREENSHOT_ENV).is_some()
 }
@@ -98,7 +117,97 @@ enum Step {
     SkipDialogue,
     /// Switch specialization.
     Spec(&'static str),
+    /// Cheat: change the player's look (race, face, skin, hair, feature,
+    /// feature colour, height 0-1).
+    Look(&'static str, usize, usize, usize, usize, usize, f32),
+    /// Cheat: show gear of this rarity whatever is worn.
+    Rarity(Rarity),
+    /// Type into a box on the menus.
+    Type(FieldId, &'static str),
+    /// Press a menu button.
+    Menu(fn() -> MenuAction),
 }
+
+/// Starts in the Training Grounds: the five gear rarities on a
+/// Blademaster, from the front, then Legendary from behind and on an
+/// Elementalist.
+const GEAR_DEMO: &[(f32, Step)] = &[
+    (0.5, Step::Teleport(0.0, 2.0, 0.0)),
+    (0.6, Step::Camera(0.12, 4.5)),
+    (0.7, Step::CameraYaw(PI * 0.85)),
+    (3.0, Step::Shot), // Common
+    (3.2, Step::Rarity(Rarity::Uncommon)),
+    (5.0, Step::Shot),
+    (5.2, Step::Rarity(Rarity::Rare)),
+    (7.0, Step::Shot),
+    (7.2, Step::Rarity(Rarity::Epic)),
+    (9.0, Step::Shot),
+    (9.2, Step::Rarity(Rarity::Legendary)),
+    (11.0, Step::Shot),
+    (11.2, Step::CameraYaw(0.0)),
+    (13.0, Step::Shot), // wings from behind
+    (13.2, Step::ChangeClass("elementalist")),
+    (13.3, Step::CameraYaw(PI * 0.85)),
+    (18.0, Step::Shot), // a Legendary staff
+];
+
+/// Starts at the login screen with an empty save file: make an account,
+/// make two characters, pick one and play.
+const MENUS_DEMO: &[(f32, Step)] = &[
+    (0.3, Step::Type(FieldId::Account, "sandflame")),
+    (0.3, Step::Type(FieldId::Password, "lantern")),
+    (2.0, Step::Shot), // the login screen
+    (2.2, Step::Menu(|| MenuAction::Register)),
+    (4.0, Step::Shot), // no characters yet
+    (4.2, Step::Menu(|| MenuAction::NewCharacter)),
+    (6.5, Step::Shot), // creation: the first choice of everything
+    (6.7, Step::Type(FieldId::Name, "ari")),
+    (6.7, Step::Menu(|| MenuAction::Race("drake".into()))),
+    (6.8, Step::Menu(|| MenuAction::Class("elementalist".into()))),
+    (6.9, Step::Menu(|| MenuAction::Step(Choice::Face, 1))),
+    (7.0, Step::Menu(|| MenuAction::Step(Choice::Skin, 2))),
+    (
+        7.1,
+        Step::Menu(|| MenuAction::Step(Choice::FeatureColor, 2)),
+    ),
+    (9.5, Step::Shot), // a drake elementalist
+    (9.7, Step::Menu(|| MenuAction::Create)),
+    (11.0, Step::Menu(|| MenuAction::NewCharacter)),
+    (11.5, Step::Type(FieldId::Name, "mira")),
+    (11.5, Step::Menu(|| MenuAction::Race("lynari".into()))),
+    (11.6, Step::Menu(|| MenuAction::Class("priest".into()))),
+    (11.7, Step::Menu(|| MenuAction::Step(Choice::Hair, 3))),
+    (14.0, Step::Shot), // a lynari priest
+    (14.2, Step::Menu(|| MenuAction::Create)),
+    (16.5, Step::Shot), // the list with both, the new one picked
+    (16.7, Step::Menu(|| MenuAction::Select(0))),
+    (18.5, Step::Shot), // the first one picked
+    (18.7, Step::Menu(|| MenuAction::Play)),
+    (23.0, Step::Shot), // in the game as Ari
+];
+
+/// Starts in the Training Grounds: each race up close, from the front and
+/// from behind.
+const RACES_DEMO: &[(f32, Step)] = &[
+    (0.5, Step::Teleport(0.0, 2.0, 0.0)),
+    (0.6, Step::Camera(0.12, 4.0)),
+    (0.7, Step::CameraYaw(PI)),
+    (1.0, Step::Look("human", 0, 1, 2, 0, 0, 0.5)),
+    (3.5, Step::Shot), // Human, long auburn hair
+    (3.7, Step::Look("elf", 1, 1, 0, 0, 0, 1.0)),
+    (6.0, Step::Shot), // Elf, short silver hair, long ears
+    (6.2, Step::Look("drake", 2, 2, 0, 0, 2, 0.6)),
+    (8.5, Step::Shot), // Drake, swept horns, sapphire
+    (8.7, Step::Look("demon", 0, 3, 2, 1, 0, 0.6)),
+    (11.0, Step::Shot), // Demon, violet skin, ram horns
+    (11.2, Step::Look("lynari", 1, 0, 0, 1, 0, 0.3)),
+    (13.5, Step::Shot), // Lynari, lynx ears
+    (13.7, Step::CameraYaw(PI * 0.75)),
+    (14.0, Step::Look("drake", 3, 0, 1, 1, 3, 0.8)),
+    (16.5, Step::Shot), // Drake from behind: crown of horns, tail
+    (16.7, Step::Look("lynari", 0, 1, 3, 0, 0, 0.5)),
+    (19.0, Step::Shot), // Lynari from behind: tail
+];
 
 /// Starts in the Training Grounds: each class's look up close (facing the
 /// camera), the lantern held up while the flame changes, and a cast.
@@ -316,6 +425,9 @@ impl Plugin for DevToolsPlugin {
             Ok("quests") => QUEST_DEMO.to_vec(),
             Ok("specs") => SPECS_DEMO.to_vec(),
             Ok("models") => MODELS_DEMO.to_vec(),
+            Ok("races") => RACES_DEMO.to_vec(),
+            Ok("menus") => MENUS_DEMO.to_vec(),
+            Ok("gear") => GEAR_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -379,7 +491,12 @@ fn run_script(
     mut camera: Single<&mut FollowCamera>,
     mut scripted: ResMut<ScriptedMove>,
     mut panels: (ResMut<WorldMap>, ResMut<QuestJournal>, ResMut<Conversation>),
-    mut exit: MessageWriter<AppExit>,
+    mut extra: (
+        MessageWriter<AppExit>,
+        ResMut<MenuActions>,
+        Query<&mut TextField>,
+    ),
+    me_entity: Option<Single<Entity, With<LocalPlayer>>>,
 ) {
     let now = fixed.elapsed_secs();
     let due: Vec<Step> = script
@@ -467,6 +584,34 @@ fn run_script(
             Step::Map(open) => panels.0.open = open,
             Step::Journal(open) => panels.1.open = open,
             Step::SkipDialogue => panels.2.skip(),
+            Step::Look(race, face, skin, hair, feature, feature_color, height) => {
+                if let Some(entity) = me_entity.as_deref() {
+                    commands
+                        .entity(*entity)
+                        .insert(shared::appearance::Appearance {
+                            race: race.into(),
+                            face,
+                            skin,
+                            hair,
+                            feature,
+                            feature_color,
+                            height,
+                        });
+                }
+            }
+            Step::Rarity(rarity) => {
+                if let Some(entity) = me_entity.as_deref() {
+                    commands.entity(*entity).insert(ShowRarity(rarity));
+                }
+            }
+            Step::Type(id, text) => {
+                for mut field in &mut extra.2 {
+                    if field.id == id {
+                        field.value = text.to_owned();
+                    }
+                }
+            }
+            Step::Menu(action) => extra.1.0.push(action()),
             Step::Spec(spec) => send(
                 &mut link,
                 *me,
@@ -495,7 +640,7 @@ fn run_script(
     }
     let last = script.steps.iter().map(|(at, _)| *at).fold(0.0, f32::max);
     if now >= last + EXIT_AFTER_LAST {
-        exit.write(AppExit::Success);
+        extra.0.write(AppExit::Success);
     }
     *previous = now;
 }

@@ -13,6 +13,10 @@ use crate::characters::{DisplayMotion, LocalPlayer};
 use crate::session::{LocalPlayerId, Received};
 use crate::world::ElsewhereZone;
 use shared::gamedata::GameData;
+use shared::items::Rarity;
+
+use crate::gear::rarity_color;
+use crate::models::ModelLibrary;
 
 /// Nameplates are hidden beyond this distance from the camera.
 const NAMEPLATE_RANGE: f32 = 45.0;
@@ -228,7 +232,7 @@ fn show_events(
     mut commands: Commands,
     mut received: MessageReader<Received>,
     me: Res<LocalPlayerId>,
-    data: Res<GameData>,
+    (data, models): (Res<GameData>, Res<ModelLibrary>),
     player: Option<Single<Entity, With<LocalPlayer>>>,
     characters: Query<&Transform>,
     mut message: Single<(&mut Text, &mut TextColor, &mut MessageLine)>,
@@ -362,18 +366,21 @@ fn show_events(
                 })
             }
             ServerEvent::ItemReceived { entity, item } if Some(*entity) == my_entity => {
-                let name = data
-                    .items
-                    .get(item)
-                    .map_or(item.as_str(), |i| i.name.as_str());
+                let def = data.items.get(item);
+                let name = def.map_or(item.as_str(), |i| i.name.as_str());
                 say(
                     format!("You received: {name}  (C to see your gear)"),
                     palette::BANNER,
                 );
+                // Rarer finds pop up in their rarity's colour.
+                let color = def
+                    .filter(|i| i.rarity > Rarity::Common)
+                    .and_then(|i| rarity_color(&models, i.rarity))
+                    .unwrap_or(palette::QUEUED);
                 Some(Popup {
                     target: *entity,
                     text: name.to_owned(),
-                    color: palette::QUEUED,
+                    color,
                     size: number_size(true, false),
                 })
             }

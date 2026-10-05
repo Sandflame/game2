@@ -1,28 +1,28 @@
 // Gear from the Rootwarden's Hollow (trial, level 5).
 {
     // Armour and rings (any class).
-    "bark_helm": (name: "Bark Helm", slot: Head, level: 5, health: 400, guard: 2,
+    "bark_helm": (name: "Bark Helm", slot: Head, rarity: Uncommon, level: 5, health: 400, guard: 2,
         description: "A helmet grown, not made."),
-    "rootwoven_vest": (name: "Rootwoven Vest", slot: Body, level: 5, health: 700, guard: 3,
+    "rootwoven_vest": (name: "Rootwoven Vest", slot: Body, rarity: Uncommon, level: 5, health: 700, guard: 3,
         description: "Living roots knotted into a vest."),
-    "thornbound_gloves": (name: "Thornbound Gloves", slot: Hands, level: 5, power: 3, crit: 2,
+    "thornbound_gloves": (name: "Thornbound Gloves", slot: Hands, rarity: Uncommon, level: 5, power: 3, crit: 2,
         description: "Thorns on the outside, thankfully."),
-    "mossy_boots": (name: "Mossy Boots", slot: Feet, level: 5, health: 300, power: 1,
+    "mossy_boots": (name: "Mossy Boots", slot: Feet, rarity: Uncommon, level: 5, health: 300, power: 1,
         description: "Soft, quiet, and a little damp."),
-    "heartwood_ring": (name: "Heartwood Ring", slot: Ring, level: 5, power: 4, crit: 2,
+    "heartwood_ring": (name: "Heartwood Ring", slot: Ring, rarity: Uncommon, level: 5, power: 4, crit: 2,
         description: "Carved from the Rootwarden's core."),
 
     // Weapons (one class each).
-    "rootcleaver": (name: "Rootcleaver", slot: Weapon, level: 5,
+    "rootcleaver": (name: "Rootcleaver", slot: Weapon, rarity: Uncommon, level: 5,
         class: Some("blademaster"), power: 8, crit: 1,
         description: "A greatsword with a grain like old wood."),
-    "verdant_staff": (name: "Verdant Staff", slot: Weapon, level: 5,
+    "verdant_staff": (name: "Verdant Staff", slot: Weapon, rarity: Uncommon, level: 5,
         class: Some("elementalist"), power: 8, crit: 1,
         description: "Its leaves catch fire and never burn away."),
-    "barkguard": (name: "Barkguard", slot: Weapon, level: 5,
+    "barkguard": (name: "Barkguard", slot: Weapon, rarity: Uncommon, level: 5,
         class: Some("shield_knight"), power: 5, guard: 4, health: 300,
         description: "A shield of living bark that heals its own scratches."),
-    "blossom_censer": (name: "Blossom Censer", slot: Weapon, level: 5,
+    "blossom_censer": (name: "Blossom Censer", slot: Weapon, rarity: Uncommon, level: 5,
         class: Some("priest"), power: 8, crit: 1,
         description: "It breathes out petals instead of smoke."),
 }

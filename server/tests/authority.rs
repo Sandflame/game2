@@ -10,6 +10,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use server::{AuthorityPlugin, CombatRng, Database, Defeated, EnemyKind, Returning, Riding};
+use shared::appearance::Appearance;
 use shared::classes::{ClassDef, CurrentClass, SecondaryChoice, Stats};
 use shared::combat::{Health, Reject};
 use shared::components::{CharacterName, ExitPortal, Hotbar, Motion, PlayerId, Zone};
@@ -249,8 +250,18 @@ fn test_data() -> GameData {
             ("next".to_owned(), parse::<QuestDef>(NEXT)),
         ]),
         dialogues: parse::<DialogueFile>(DIALOGUE).0,
+        races: parse(RACES),
+        accounts: parse(
+            "(max_characters: 8, character_name: (2, 16), account_name: (3, 16), password_min: 4)",
+        ),
     }
 }
+
+const RACES: &str = r#"([
+    (id: "human", name: "Human", description: "", faces: [(id: "a", name: "A")],
+     skins: [(name: "Fair", color: (1.0, 0.8, 0.7))], hair: [(name: "Brown", color: (0.4, 0.2, 0.1))],
+     height: (0.95, 1.05)),
+])"#;
 
 /// Two zones. "test" has the given enemies (players start at the origin)
 /// and a portal 6 m behind the start; "arena" holds the trial, with the
@@ -478,6 +489,27 @@ impl Game {
         Self::build(&[("dummy", Vec3::new(0.0, 0.0, -3.0))], None, data)
     }
 
+    /// A game where nobody has joined yet.
+    fn build_without_joining(save_file: Option<&Path>, data: GameData) -> Self {
+        let mut app = App::new();
+        if let Some(path) = save_file {
+            app.insert_resource(Database::start(path).unwrap());
+        }
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
+                TICK,
+            )))
+            .insert_resource(Time::<Fixed>::from_seconds(TICK))
+            .insert_resource(data)
+            .insert_resource(test_zones(&[]))
+            .insert_resource(CombatRng(Rng::new(1)))
+            .add_plugins(AuthorityPlugin);
+        Self {
+            app,
+            events: vec![],
+        }
+    }
+
     fn build(enemies: &[(&str, Vec3)], save_file: Option<&Path>, data: GameData) -> Self {
         let mut app = App::new();
         if let Some(path) = save_file {
@@ -496,6 +528,10 @@ impl Game {
             app,
             events: vec![],
         };
+        if save_file.is_some() {
+            // With a save file you log in and play your own character.
+            game.log_in_with_character("tester", "Tester");
+        }
         game.send(ClientRequest::Join {
             name: "Tester".into(),
         });
@@ -526,6 +562,65 @@ impl Game {
 
     fn send(&mut self, request: ClientRequest) {
         self.send_as(ME, request);
+    }
+
+    /// Run until an event matches (the save file works on another thread).
+    fn wait_for(&mut self, matches: impl Fn(&ServerEvent) -> bool) -> Option<ServerEvent> {
+        for _ in 0..400 {
+            if let Some(found) = self.events.iter().find(|e| matches(e)) {
+                return Some(found.clone());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            self.run(TICK);
+        }
+        None
+    }
+
+    fn account_error(&mut self) -> Option<String> {
+        self.events.iter().find_map(|e| match e {
+            ServerEvent::AccountError { message, .. } => Some(message.clone()),
+            _ => None,
+        })
+    }
+
+    /// Register (or, if taken, log in to) an account and make sure it has
+    /// a character with this name.
+    fn log_in_with_character(&mut self, account: &str, name: &str) {
+        let login = |register: bool| {
+            let (account, password) = (account.to_owned(), "secret".to_owned());
+            if register {
+                ClientRequest::Register { account, password }
+            } else {
+                ClientRequest::Login { account, password }
+            }
+        };
+        self.send(login(true));
+        let answer = self.wait_for(|e| {
+            matches!(
+                e,
+                ServerEvent::LoggedIn { .. } | ServerEvent::AccountError { .. }
+            )
+        });
+        if matches!(answer, Some(ServerEvent::AccountError { .. })) {
+            self.events.clear();
+            self.send(login(false));
+        }
+        let list = self
+            .wait_for(|e| matches!(e, ServerEvent::Characters { .. }))
+            .expect("logged in");
+        let has = matches!(&list, ServerEvent::Characters { characters, .. }
+            if characters.iter().any(|c| c.name == name));
+        self.events.clear();
+        if !has {
+            self.send(ClientRequest::CreateCharacter {
+                name: name.into(),
+                class: "fighter".into(),
+                appearance: Appearance::first(&test_data().races),
+            });
+            let made = self.wait_for(|e| matches!(e, ServerEvent::Characters { .. }));
+            assert!(made.is_some(), "{:?}", self.events);
+        }
+        self.events.clear();
     }
 
     fn send_as(&mut self, player: PlayerId, request: ClientRequest) {
@@ -1499,6 +1594,118 @@ fn characters_are_saved_and_loaded() {
     assert_eq!(game.worn().armour.len(), 1, "the cap is still worn");
     // Level 3 (+20%), the cap (+100), and a level 1 secondary class (+1%).
     assert_eq!(game.stats().max_health, 1310);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn with_a_save_file_you_log_in_to_play_your_own_characters() {
+    let path = temp_save_file("accounts");
+    let mut game = Game::with_save_file(&path);
+    // A second player can't play someone else's character, or play at all
+    // before logging in.
+    game.send_as(
+        FRIEND,
+        ClientRequest::Join {
+            name: "Tester".into(),
+        },
+    );
+    game.run(0.1);
+    assert_eq!(
+        game.events.iter().find_map(|e| match e {
+            ServerEvent::AccountError { player, message } if *player == FRIEND =>
+                Some(message.clone()),
+            _ => None,
+        }),
+        Some("Log in first.".into())
+    );
+    game.events.clear();
+    game.send_as(
+        FRIEND,
+        ClientRequest::Register {
+            account: "friend".into(),
+            password: "secret".into(),
+        },
+    );
+    game.wait_for(|e| matches!(e, ServerEvent::Characters { player, characters } if *player == FRIEND && characters.is_empty()))
+        .expect("an empty list for a new account");
+    game.events.clear();
+    game.send_as(
+        FRIEND,
+        ClientRequest::Join {
+            name: "Tester".into(),
+        },
+    );
+    let refused = game
+        .wait_for(|e| matches!(e, ServerEvent::AccountError { player, .. } if *player == FRIEND));
+    assert!(refused.is_some(), "{:?}", game.events);
+    // Bad requests are refused with a reason, before the save file is touched.
+    game.events.clear();
+    game.send_as(
+        FRIEND,
+        ClientRequest::CreateCharacter {
+            name: "x".into(),
+            class: "fighter".into(),
+            appearance: Appearance::first(&test_data().races),
+        },
+    );
+    game.run(0.1);
+    assert!(game.account_error().is_some_and(|m| m.contains("name")));
+    game.events.clear();
+    let mut look = Appearance::first(&test_data().races);
+    look.race = "dragon".into();
+    game.send_as(
+        FRIEND,
+        ClientRequest::CreateCharacter {
+            name: "Rowan".into(),
+            class: "fighter".into(),
+            appearance: look,
+        },
+    );
+    game.run(0.1);
+    assert!(game.account_error().is_some());
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn a_new_character_starts_with_its_chosen_class_and_look() {
+    let path = temp_save_file("new-character");
+    let mut game = Game::build_without_joining(Some(&path), test_data());
+    game.send(ClientRequest::Register {
+        account: "maker".into(),
+        password: "secret".into(),
+    });
+    game.wait_for(|e| matches!(e, ServerEvent::Characters { .. }))
+        .unwrap();
+    let mut look = Appearance::first(&test_data().races);
+    look.height = 0.9;
+    game.send(ClientRequest::CreateCharacter {
+        name: "  rowan  ".into(),
+        class: "guardian".into(),
+        appearance: look.clone(),
+    });
+    let list = game
+        .wait_for(
+            |e| matches!(e, ServerEvent::Characters { characters, .. } if !characters.is_empty()),
+        )
+        .unwrap();
+    let ServerEvent::Characters { characters, .. } = list else {
+        unreachable!()
+    };
+    assert_eq!(characters[0].name, "Rowan", "names are tidied");
+    assert_eq!(characters[0].class, "guardian");
+    game.events.clear();
+    game.send(ClientRequest::Join {
+        name: "Rowan".into(),
+    });
+    game.wait_for(|e| matches!(e, ServerEvent::Joined { .. }))
+        .unwrap();
+    let me = game.me();
+    assert_eq!(
+        game.app.world().get::<CurrentClass>(me).unwrap().class,
+        "guardian"
+    );
+    assert_eq!(game.app.world().get::<Appearance>(me), Some(&look));
+    drop(game);
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
 

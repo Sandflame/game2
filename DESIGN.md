@@ -183,6 +183,12 @@ With 4–8 players this all fits in one process with plenty of headroom.
   password. For a private game among friends this is a reasonable
   trade-off; doing proper TLS-style key exchange is much more work and
   can be added later if the game ever goes public.
+- Built in M11 stage 1 (`server/src/accounts.rs`, migration 5): accounts
+  (names unique ignoring case), up to `max_characters` characters each
+  (`accounts.ron`, 8 for now), name rules for accounts and characters, and
+  `Join` only for a character on the logged-in account. The first account
+  made takes over characters saved before accounts existed. Password
+  hashing runs on the database thread.
 - The server rejects clients whose game data files don't match its own
   (compared by a hash at connect time), so nobody accidentally plays with
   different ability numbers.
@@ -499,7 +505,9 @@ with one key; quest progress still records.
   longer and slimmer in code, races as attached parts, gear tiers that grow
   bigger, brighter and more alive. Full details, the user's references and
   the rejected options: `docs/art-direction.md` (pictures in `docs/art/`).
-  Until M11 stage 1 lands, the game still shows capsule placeholders.
+  In the game since M11 stage 1: bodies (`models.rs`), races and
+  customization (`races.ron`, `looks.rs`), gear looks by rarity
+  (`gear.rs`, `tiers` in `models.ron`). Monsters still use shape models.
 - **Effort goes into effects:** GPU particles (`bevy_hanabi`), animated
   ground-marker shaders (pulsing edges, filling sweep), bloom, coloured
   point lights on spells, screen shake on big hits.
@@ -515,7 +523,7 @@ with one key; quest progress still records.
 | Gathering & crafting classes | Class definitions already have a `kind` field (`Combat` now, `Gathering`/`Crafting` later). Items have an open-ended `category`. |
 | Pets (hatch, breed, talents) | Stats come from a list of sources (§5.4); a pet is another source plus an entity that can use abilities from data. |
 | Mounts | Movement speed is a stat; movement function already takes a "mode". |
-| Cosmetic appearance | Gear has separate `stats` and `appearance` fields from day one. |
+| Cosmetic appearance | Gear stats and looks are separate: an item's `rarity` picks its tier look on the client (`models.ron` `tiers`); a per-item `look` can be added beside it later without touching stats. |
 | Trading | Items are database rows with unique IDs (no copy bugs when moved). |
 | Duels / arena PvP | Hostility is a rule function (`can_harm(a, b)`), not hard-coded "players vs monsters". |
 | More classes | Classes are data. |

@@ -21,6 +21,7 @@ use shared::components::Motion;
 
 use crate::characters::{LocalPlayer, interpolate_transforms, send_movement};
 use crate::hud::options::OptionsMenu;
+use crate::menus::Screen;
 use crate::session::Received;
 use crate::world::CurrentZone;
 use shared::protocol::ServerEvent;
@@ -58,6 +59,7 @@ impl Plugin for CameraPlugin {
                         grab_cursor_while_dragging,
                     )
                         .chain()
+                        .run_if(in_state(Screen::Playing))
                         .before(send_movement)
                         .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
                     follow_player

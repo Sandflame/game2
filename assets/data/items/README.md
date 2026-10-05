@@ -4,6 +4,10 @@ Each file is a list of items: `"item_id": (...)`. Ids must be unique
 across all files.
 
 - `slot`: Weapon, Head, Body, Hands, Feet or Ring.
+- `rarity`: Common (if left out), Uncommon, Rare, Epic or Legendary. Rarer
+  gear looks grander: the weapon's rarity decides how the weapon looks, the
+  Body piece's rarity decides the armour look (`tiers` in
+  `client/models.ron`). Trial gear is Uncommon, dungeon gear Rare.
 - `level`: the class level needed to wear it. In a level-synced dungeon or trial,
   items above the sync level count for proportionally less.
 - `class`: weapons only — the class that uses it (a file name in

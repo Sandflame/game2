@@ -9,10 +9,38 @@ use crate::components::PlayerId;
 use crate::items::Slot;
 use crate::movement::MoveInput;
 
+/// One of an account's characters, for the character list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CharacterSummary {
+    pub name: String,
+    /// Current class id.
+    pub class: String,
+    /// The current class's level.
+    pub level: u32,
+    /// The zone it is in.
+    pub zone: String,
+    pub appearance: Option<crate::appearance::Appearance>,
+}
+
 /// Something a player asks the authority to do.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientRequest {
-    /// Enter the world with this character name.
+    /// Make an account (and log in to it).
+    Register { account: String, password: String },
+    /// Log in to an account.
+    Login { account: String, password: String },
+    /// Log out (back to the login screen).
+    Logout,
+    /// Make a new character on the logged-in account.
+    CreateCharacter {
+        name: String,
+        class: String,
+        appearance: crate::appearance::Appearance,
+    },
+    /// Delete one of the logged-in account's characters.
+    DeleteCharacter { name: String },
+    /// Enter the world with this character name (one of the logged-in
+    /// account's; without a save file, any name).
     Join { name: String },
     /// Latest movement keys. Sent every frame.
     Move(MoveInput),
@@ -42,6 +70,15 @@ pub enum ClientRequest {
 /// Something the authority tells clients about.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerEvent {
+    /// Logged in to this account.
+    LoggedIn { player: PlayerId, account: String },
+    /// An account or character request was refused (shown as it is).
+    AccountError { player: PlayerId, message: String },
+    /// The logged-in account's characters.
+    Characters {
+        player: PlayerId,
+        characters: Vec<CharacterSummary>,
+    },
     /// Your character entered the world.
     Joined { player: PlayerId, entity: Entity },
     /// An ability started (instant or the start of a cast).

@@ -10,6 +10,7 @@
 //! [`GameData`]: shared::gamedata::GameData
 //! [`Level`]: shared::level::Level
 
+pub mod accounts;
 mod actions;
 mod characters;
 mod classes;
@@ -73,6 +74,8 @@ impl Plugin for AuthorityPlugin {
             .init_resource::<encounters::EncounterChanges>()
             .init_resource::<requests::PendingInteractions>()
             .init_resource::<requests::PendingJoins>()
+            .init_resource::<accounts::Sessions>()
+            .init_resource::<accounts::AccountRequests>()
             .init_resource::<progression::PendingRewards>()
             .init_resource::<progression::PendingGear>()
             .init_resource::<progression::LastAutosave>()
@@ -95,6 +98,8 @@ impl Plugin for AuthorityPlugin {
                 (
                     (
                         requests::receive_requests,
+                        accounts::handle_account_requests,
+                        accounts::finish_account_jobs,
                         requests::finish_joins,
                         requests::handle_interactions,
                         progression::handle_gear,

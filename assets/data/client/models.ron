@@ -82,6 +82,77 @@
         "townsfolk_ranger":      (body: "ranger"),
     },
 
+    // Players' faces with hair (races.ron `faces`): a head taken from one of
+    // the pack's bodies (the node holding its mesh). Skin and hair are
+    // recoloured to the player's choice.
+    heads: {
+        "long_hair":  (file: "models/kaykit/Rogue.glb", mesh: "Rogue_Head"),
+        "short_hair": (file: "models/kaykit/Mage.glb", mesh: "Mage_Head"),
+        "cropped":    (file: "models/kaykit/Knight.glb", mesh: "Knight_Head"),
+        "bald_beard": (file: "models/kaykit/Barbarian.glb", mesh: "Barbarian_Head"),
+    },
+
+    // What each race feature style (races.ron `features`) adds. Pieces:
+    // long_ears, swept_ears, cat_ears, lynx_ears (skin / hair coloured),
+    // swept_horns, crowned_horns, rising_horns, ram_horns, cheek_scales,
+    // dragon_tail, demon_tail (feature coloured), cat_tail (hair coloured).
+    features: {
+        "long_ears":     ["long_ears"],
+        "swept_ears":    ["swept_ears"],
+        "swept_horns":   ["swept_horns", "cheek_scales", "dragon_tail"],
+        "crowned_horns": ["crowned_horns", "cheek_scales", "dragon_tail"],
+        "rising_horns":  ["rising_horns", "demon_tail"],
+        "ram_horns":     ["ram_horns", "demon_tail"],
+        "cat_ears":      ["cat_ears", "cat_tail"],
+        "lynx_ears":     ["lynx_ears", "cat_tail"],
+    },
+
+    // Body parts players never show (any node whose name contains one of
+    // these): their face and hair come from their look, and hats would hide
+    // them.
+    player_hides: ["_Head", "_Hat", "_Helmet"],
+
+    // Gear rarity looks (built in `client/src/gear.rs`). The weapon's
+    // rarity decides `weapon` pieces, the tint (multiplies the weapon's
+    // colours) and its glow (in the trim colour); the Body piece's rarity
+    // decides the `armour` pieces. `name_color` colours item names.
+    // Armour: RoundPauldrons, Pauldrons, Spikes, LongSpikes, BeltGem,
+    // Motes(count), Wings, Halo. Weapon: GripGem, GripRing, Sparks(count).
+    tiers: {
+        Common: (name_color: (0.92, 0.9, 0.85)),
+        Uncommon: (
+            name_color: (0.45, 0.9, 0.45),
+            plate: (0.7, 0.74, 0.7), trim: (0.3, 0.75, 0.35), trim_glow: 0.4,
+            weapon_glow: 0.12,
+            armour: [RoundPauldrons, BeltGem],
+            weapon: [GripGem],
+        ),
+        Rare: (
+            name_color: (0.4, 0.65, 1.0),
+            plate: (0.75, 0.82, 0.95), trim: (0.3, 0.6, 1.0), trim_glow: 1.5,
+            accent: (0.95, 0.75, 0.3),
+            weapon_tint: (0.95, 1.0, 1.1), weapon_glow: 0.3,
+            armour: [Pauldrons, BeltGem],
+            weapon: [GripGem, Sparks(3)],
+        ),
+        Epic: (
+            name_color: (0.78, 0.45, 1.0),
+            plate: (0.25, 0.18, 0.36), trim: (0.85, 0.3, 1.0), trim_glow: 3.0,
+            accent: (0.75, 0.75, 0.85),
+            weapon_tint: (0.55, 0.45, 0.8), weapon_glow: 0.6,
+            armour: [Pauldrons, Spikes, BeltGem, Motes(6)],
+            weapon: [GripGem, Sparks(5)],
+        ),
+        Legendary: (
+            name_color: (1.0, 0.75, 0.3),
+            plate: (0.97, 0.95, 0.9), trim: (0.35, 0.95, 1.0), trim_glow: 5.0,
+            accent: (1.0, 0.8, 0.35), accent_glow: 0.4,
+            weapon_tint: (1.15, 1.1, 0.95), weapon_glow: 0.8,
+            armour: [Pauldrons, LongSpikes, BeltGem, Wings, Halo, Motes(10)],
+            weapon: [GripGem, GripRing, Sparks(6)],
+        ),
+    },
+
     // Animation clips (names inside the KayKit files) for each action.
     animations: (
         idle: { OneHanded: "Idle", TwoHanded: "2H_Melee_Idle", DualWield: "Idle", Caster: "Idle" },

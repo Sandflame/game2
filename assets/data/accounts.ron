@@ -1,0 +1,9 @@
+// Accounts and characters.
+(
+    // Characters each account can have.
+    max_characters: 8,
+    // Shortest and longest names (letters).
+    character_name: (2, 16),
+    account_name: (3, 16),
+    password_min: 4,
+)

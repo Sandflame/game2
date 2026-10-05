@@ -10,12 +10,16 @@ mod camera;
 mod characters;
 mod creatures;
 mod devtools;
+mod gear;
 mod hud;
+mod looks;
+mod menus;
 mod models;
 mod particles;
 mod props;
 mod session;
 mod settings;
+mod shapes;
 mod targeting;
 mod telegraphs;
 mod toon;
@@ -50,20 +54,24 @@ fn main() -> AppExit {
     if let Some(zone) = devtools::demo_start_zone() {
         data.player.start_zone = zone.to_owned();
     }
-    // The save file. Scripted screenshot demos always start fresh.
-    let database = if devtools::demo_mode() {
-        None
+    // The save file. Scripted screenshot demos start fresh: most have
+    // none, the menus demo gets an empty one of its own.
+    let save_file = if devtools::demo_mode() {
+        devtools::demo_save_file()
     } else {
-        match settings::save_file_path().map(|path| server::Database::start(&path)) {
-            Some(Ok(database)) => Some(database),
-            Some(Err(error)) => {
-                eprintln!("Lanternflame could not start: {error}");
-                return AppExit::error();
-            }
-            None => {
+        settings::save_file_path()
+    };
+    let database = match save_file.map(|path| server::Database::start(&path)) {
+        Some(Ok(database)) => Some(database),
+        Some(Err(error)) => {
+            eprintln!("Lanternflame could not start: {error}");
+            return AppExit::error();
+        }
+        None => {
+            if !devtools::demo_mode() {
                 eprintln!("No place to keep a save file was found; progress won't be saved.");
-                None
             }
+            None
         }
     };
     let mut problems = vfx.check_references(&data, &zones, &particles, &sounds);
@@ -77,6 +85,13 @@ fn main() -> AppExit {
     }
 
     let mut app = App::new();
+    // With a save file you log in and pick a character first; without one
+    // (demos) you start playing straight away.
+    let first_screen = if database.is_some() {
+        menus::Screen::Login
+    } else {
+        menus::Screen::Playing
+    };
     if let Some(database) = database {
         app.insert_resource(database);
     }
@@ -94,6 +109,7 @@ fn main() -> AppExit {
                 ..default()
             }),
     )
+    .insert_state(first_screen)
     .insert_resource(Time::<Fixed>::from_hz(data.config.simulation.tick_hz))
     .insert_resource(data)
     .insert_resource(zones)
@@ -121,5 +137,6 @@ fn main() -> AppExit {
         hud::HudPlugin,
         devtools::DevToolsPlugin,
     ))
+    .add_plugins((looks::LooksPlugin, menus::MenusPlugin, gear::GearPlugin))
     .run()
 }
