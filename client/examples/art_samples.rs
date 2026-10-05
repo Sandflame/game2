@@ -19,61 +19,17 @@ use bevy::asset::RenderAssetUsages;
 use bevy::camera::Hdr;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::light::{CascadeShadowConfigBuilder, NotShadowCaster};
-use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::mesh::skinning::SkinnedMesh;
 use bevy::mesh::{Indices, PrimitiveTopology};
-use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    AsBindGroup, Face, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
-};
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
-use bevy::shader::ShaderRef;
 use bevy::world_serialization::WorldInstanceReady;
 use toon::{ToonExtension, ToonMaterial, ToonPlugin};
 
 const DIR: &str = "models/kaykit";
 /// Stretch level for the race and gear groups.
 const LEVEL: usize = 3;
-
-// ---------- skinned outline ----------
-
-#[derive(ShaderType, Debug, Clone, Copy)]
-struct SkinOutlineSettings {
-    color: LinearRgba,
-    params: Vec4,
-}
-
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
-struct SkinOutline {
-    #[uniform(0)]
-    settings: SkinOutlineSettings,
-}
-
-impl Material for SkinOutline {
-    fn vertex_shader() -> ShaderRef {
-        "shaders/outline_skinned.wgsl".into()
-    }
-    fn fragment_shader() -> ShaderRef {
-        "shaders/outline_skinned.wgsl".into()
-    }
-    fn enable_prepass() -> bool {
-        false
-    }
-    fn enable_shadows() -> bool {
-        false
-    }
-    fn specialize(
-        _p: &MaterialPipeline,
-        d: &mut RenderPipelineDescriptor,
-        _l: &MeshVertexBufferLayoutRef,
-        _k: MaterialPipelineKey<Self>,
-    ) -> Result<(), SpecializedMeshPipelineError> {
-        d.primitive.cull_mode = Some(Face::Front);
-        Ok(())
-    }
-}
 
 // ---------- characters ----------
 
@@ -83,7 +39,7 @@ enum Race {
     Elf,
     Drake,
     Demon,
-    Felari,
+    Lynari,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -177,7 +133,7 @@ fn main() {
             file_path: assets,
             ..default()
         }))
-        .add_plugins((ToonPlugin, MaterialPlugin::<SkinOutline>::default()))
+        .add_plugins((ToonPlugin,))
         .insert_resource(Script(
             vec![
                 s(0.0, [0.0, 1.45, 5.6], [0.0, 1.0, 0.0], false),
@@ -371,7 +327,7 @@ fn setup(
         &assets,
         14.4,
         Hero {
-            race: Race::Felari,
+            race: Race::Lynari,
             hide: &["Rogue_Cape"],
             show: &["1H_Crossbow"],
             ..base("Rogue.glb", "Idle")
@@ -488,7 +444,7 @@ fn dress(
     assets: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     standard: Res<Assets<StandardMaterial>>,
-    mut outlines: ResMut<Assets<SkinOutline>>,
+    mut outlines: ResMut<Assets<toon::OutlineMaterial>>,
     mut toon: toon::ToonAssets,
 ) {
     let Ok(hero) = heroes.get(ready.entity) else {
@@ -536,8 +492,8 @@ fn dress(
         }
     }
     // Toon materials + outlines.
-    let outline = outlines.add(SkinOutline {
-        settings: SkinOutlineSettings {
+    let outline = outlines.add(toon::OutlineMaterial {
+        settings: toon::OutlineSettings {
             color: LinearRgba::new(0.02, 0.015, 0.03, 1.0),
             params: Vec4::new(0.0016, 0.0, 0.0, 0.0),
         },
@@ -903,7 +859,7 @@ fn race_parts(
                 }
             }
         }
-        Race::Felari => {
+        Race::Lynari => {
             // Cat ears on top of the head and a long, swishing tail, in the
             // hair colour.
             let fur = mat(toon, Color::srgb(0.55, 0.28, 0.18), 0.0);

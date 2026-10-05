@@ -11,6 +11,7 @@ mod characters;
 mod creatures;
 mod devtools;
 mod hud;
+mod models;
 mod particles;
 mod props;
 mod session;
@@ -35,9 +36,10 @@ fn main() -> AppExit {
         let vfx = vfx::VfxLibrary::load(&assets)?;
         let particles = particles::ParticleLibrary::load(&assets)?;
         let sounds = audio::SoundLibrary::load(&assets)?;
-        Ok((assets, data, zones, vfx, particles, sounds))
+        let models = models::ModelLibrary::load(&assets)?;
+        Ok((assets, data, zones, vfx, particles, sounds, models))
     });
-    let (assets_dir, mut data, zones, vfx, particles, sounds) = match loaded {
+    let (assets_dir, mut data, zones, vfx, particles, sounds, models) = match loaded {
         Ok(loaded) => loaded,
         Err(error) => {
             eprintln!("Lanternflame could not start: {error}");
@@ -64,7 +66,8 @@ fn main() -> AppExit {
             }
         }
     };
-    let problems = vfx.check_references(&data, &zones, &particles, &sounds);
+    let mut problems = vfx.check_references(&data, &zones, &particles, &sounds);
+    problems.extend(models.check_references(&assets_dir, &data, &zones));
     if !problems.is_empty() {
         eprintln!(
             "Lanternflame could not start: problems in assets/data/client:\n  {}",
@@ -97,6 +100,7 @@ fn main() -> AppExit {
     .insert_resource(vfx)
     .insert_resource(particles)
     .insert_resource(sounds)
+    .insert_resource(models)
     // The rules half, running in-process for now.
     .add_plugins(AuthorityPlugin)
     // The screen half.
@@ -105,6 +109,7 @@ fn main() -> AppExit {
         toon::ToonPlugin,
         world::WorldPlugin,
         characters::CharactersPlugin,
+        models::ModelsPlugin,
         camera::CameraPlugin,
         targeting::TargetingPlugin,
         telegraphs::TelegraphsPlugin,

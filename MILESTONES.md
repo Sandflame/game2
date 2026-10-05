@@ -171,6 +171,13 @@ connecting). Three stages, each tested, pushed and shown to the user before
 the next. See `docs/art-direction.md` for the agreed look.
 
 ### Stage 1 — Real characters, races, accounts, character creation
+Progress: **part 1 done (2026-10-05)** — players and townsfolk are KayKit
+models (longer and slimmer), with toon shading and outlines, weapons by
+class + spec, and animations (idle per weapon style, run, jump, cast, attack
+swings, spell release, the lantern raised in the hand while the flame
+changes, sitting on the root slide, falling when defeated). Until race,
+customization and gear looks arrive, each class wears its own outfit
+(`models.ron`). Next: races + customization, gear looks, accounts.
 - **Real character models** replace the capsule bodies for players (and
   townsfolk): KayKit Adventurers (CC0, in `assets/models/kaykit/`) with the
   longer, slimmer proportions from the art samples. Skeleton + animations
@@ -179,14 +186,14 @@ the next. See `docs/art-direction.md` for the agreed look.
   sword and shield, censer…); the lantern on the belt or held up.
   Toon shading + skinned outlines. Proportion numbers in a data file.
 - **Races as data** (cosmetic only for now; a very minor bonus may come
-  later): Humans, Elves, Drakes, Demons, Felari (cat folk). Race parts attach to bones (ears,
+  later): Humans, Elves, Drakes, Demons, Lynari (cat folk). Race parts attach to bones (ears,
   horns, cheek scales, tails); horns must touch the head; capes must make
   room for tails.
 - **Customization as data:** body type, height, build, skin tone, face,
   eye colour, hairstyle, hair colour, outfit colour; per race: ear length
   and angle (Elves); horn style, scale colour, tail length (Drakes); horn
   style, skin tones incl. red/purple/blue/grey, tail, optional small wings,
-  glowing eyes (Demons); ear shape, tail length, fur pattern (Felari). Sliders reshape, parts attach, recolours change
+  glowing eyes (Demons); ear shape, tail length, fur pattern (Lynari). Sliders reshape, parts attach, recolours change
   materials.
 - **Gear looks by tier** (the user's top priority): Common / Uncommon /
   Rare / Epic / Legendary — bigger, brighter, more alive per tier (glow, floating and

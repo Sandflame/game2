@@ -576,7 +576,7 @@ with one key; quest progress still records.
    Character creation: starting class, race, MMO-style customization.
 10. **Races** (cosmetic for now, maybe a very minor bonus later): Humans,
     Elves (elegant, blood/high elf), Drakes (like FFXIV's Au Ra), Demons
-    (succubi / TERA's Castanic), Felari (cat folk like FFXIV's Miqo'te).
+    (succubi / TERA's Castanic), Lynari (cat folk like FFXIV's Miqo'te).
 11. **Art:** see §9 and `docs/art-direction.md`. VRoid/VRM anime models
     were rejected. Blender modelling is the user's side project.
 12. **Gear tiers:** Common, Uncommon, Rare, Epic, Legendary.

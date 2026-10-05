@@ -12,7 +12,7 @@
 //! Demos may cheat (move the player, defeat enemies) by writing logic
 //! components directly; normal play never does.
 
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, PI};
 use std::path::PathBuf;
 
 use bevy::prelude::*;
@@ -44,7 +44,7 @@ pub fn demo_start_zone() -> Option<&'static str> {
         return None;
     }
     match std::env::var(DEMO_ENV).as_deref() {
-        Ok("classes" | "progress" | "specs") => Some("sandbox"),
+        Ok("classes" | "progress" | "specs" | "models") => Some("sandbox"),
         Ok("world" | "dungeon" | "quests") | Err(_) => None,
         Ok(_) => Some("trial_rootwarden"),
     }
@@ -81,6 +81,9 @@ enum Step {
     Interact,
     /// Camera pitch (radians) and distance (metres).
     Camera(f32, f32),
+    /// Turn the camera to look from this direction (radians; 0 = from behind
+    /// a character facing -Z, π = from the front).
+    CameraYaw(f32),
     Shot,
     /// Cheat: move the player to (x, z), facing this way (radians).
     Teleport(f32, f32, f32),
@@ -96,6 +99,24 @@ enum Step {
     /// Switch specialization.
     Spec(&'static str),
 }
+
+/// Starts in the Training Grounds: each class's look up close (facing the
+/// camera), the lantern held up while the flame changes, and a cast.
+const MODELS_DEMO: &[(f32, Step)] = &[
+    (0.5, Step::Teleport(0.0, 2.0, 0.0)),
+    (0.6, Step::Camera(0.12, 4.5)),
+    (0.7, Step::CameraYaw(PI)),
+    (3.0, Step::Shot), // Blademaster with a greatsword
+    (3.2, Step::Spec("dual_blades")),
+    (5.0, Step::Shot), // two swords
+    (5.2, Step::ChangeClass("shield_knight")),
+    (6.0, Step::Shot), // the lantern held up while the flame changes
+    (9.5, Step::Shot), // Shield Knight: sword and shield
+    (9.7, Step::ChangeClass("elementalist")),
+    (14.0, Step::Shot), // Elementalist with a staff
+    (14.2, Step::ChangeClass("priest")),
+    (18.5, Step::Shot), // Priest with a wand and a book
+];
 
 /// Starts in the Training Grounds: pick the Scissors specialization in the
 /// lantern panel, then snip a dummy five times and Shear.
@@ -223,6 +244,7 @@ const WORLD_DEMO: &[(f32, Step)] = &[
     (2.5, Step::Walk(None)),
     (2.7, Step::Interact), // talk to Lamplighter Ilsa
     (3.4, Step::Shot),     // her speech box
+    (3.45, Step::SkipDialogue),
     (3.5, Step::Walk(Some((0.0, -1.0)))),
     (10.7, Step::Walk(Some((-1.0, 0.0)))),
     (11.3, Step::Walk(None)),
@@ -290,6 +312,7 @@ impl Plugin for DevToolsPlugin {
             Ok("dungeon") => DUNGEON_DEMO.to_vec(),
             Ok("quests") => QUEST_DEMO.to_vec(),
             Ok("specs") => SPECS_DEMO.to_vec(),
+            Ok("models") => MODELS_DEMO.to_vec(),
             Ok(_) => TRIAL_DEMO.to_vec(),
             Err(_) => vec![(PLAIN_SHOT_AT, Step::Shot)],
         };
@@ -394,6 +417,7 @@ fn run_script(
                 camera.pitch = pitch;
                 camera.target_distance = distance;
             }
+            Step::CameraYaw(yaw) => camera.yaw = yaw,
             Step::Target(kind) => {
                 let Some(player) = player.as_ref() else {
                     continue;

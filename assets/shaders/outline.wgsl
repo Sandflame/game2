@@ -8,6 +8,9 @@
     view_transformations::position_world_to_clip,
     mesh_view_bindings::view,
 }
+#ifdef SKINNED
+#import bevy_pbr::skinning
+#endif
 
 struct OutlineSettings {
     color: vec4<f32>,
@@ -22,7 +25,12 @@ struct OutlineSettings {
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
+#ifdef SKINNED
+    // Animated models: follow the skeleton.
+    let world_from_local = skinning::skin_model(vertex.joint_indices, vertex.joint_weights, vertex.instance_index);
+#else
     let world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
+#endif
 
     // Direction to push this vertex outwards, in the mesh's own space.
     // Flat-shaded boxes and cylinders have split normals at their edges,

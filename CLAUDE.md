@@ -22,7 +22,7 @@ Guide for working in this repository (for Claude and for humans).
   that heals; spec switching in the lantern panel, saved per class).
 - Next: **M11** in three stages (see `MILESTONES.md`): 1) real character
   models (KayKit, longer and slimmer), five races (Humans, Elves, Drakes,
-  Demons, Felari), customization, five gear tiers (Common to Legendary), accounts + character list + character creation; 2) networking;
+  Demons, Lynari), customization, five gear tiers (Common to Legendary), accounts + character list + character creation; 2) networking;
   3) parties + chat. The art direction is agreed: `docs/art-direction.md`
   (samples in `docs/art/`, made by `client/examples/art_samples.rs`).
 - Order: single-player content first; multiplayer is **M11** (user's choice, 2026-10-04).
@@ -78,7 +78,9 @@ render.
 - `assets/data/` — RON data files with every tunable number.
 - `assets/data/client/` — client-only looks: `vfx.ron` (named looks: shape +
   particles + sound), `particles.ron` (particle presets), `sounds.ron`
-  (sound files, game event → sound). Placeholder sounds in `assets/sounds/`
+  (sound files, game event → sound), `models.ron` (character models: body
+  proportions, bodies, weapons, what each class/spec wears and holds,
+  townsfolk, animation clips). Placeholder sounds in `assets/sounds/`
   are made by `tools/make_sounds.py`.
 
 ## Pinned versions (verified on crates.io 2026-10-03)
@@ -121,6 +123,8 @@ LANTERNFLAME_SCREENSHOT=shot.png xvfb-run -a -s "-screen 0 1280x720x24" ./target
   `LANTERNFLAME_DEMO=quests` — take Ilsa's quest, the map, Fen, the quest log.
   `LANTERNFLAME_DEMO=specs` — specializations in the lantern panel, then
   Scissors: five Snips and a Shear on a dummy.
+  `LANTERNFLAME_DEMO=models` — each class's model up close from the front,
+  the lantern held up while the flame changes.
   Leave ~1.5 s after a `Shot` before changing what's on screen: software
   rendering is slow and the shot is taken at the end of the frame.
   Each demo starts in its own zone
@@ -221,7 +225,8 @@ extra beyond the Rust toolchain.
   forgetting characters who left a zone.
 - `server/tests/authority.rs` — headless end-to-end rules tests with their own data.
 - `client/src/session.rs` — local player id, joining, `Received` event messages.
-- `client/src/characters.rs` — placeholder bodies per `VisualKey`, interpolation,
+- `client/src/characters.rs` — bodies per `VisualKey` (players and townsfolk get
+  a `ModelLook`; dummies and monsters are still built from shapes), interpolation,
   sending movement, hit wobble, lantern (hidden by default; held up while the
   flame changes; `LanternSettings::always_show`), flame colours.
 - `client/src/targeting.rs` — Tab/click/Esc targeting, target ring.
@@ -237,7 +242,18 @@ extra beyond the Rust toolchain.
   (`journal.rs`), minimap + big map M with compass, quest-gold doorways and
   people (`map.rs`). Mute is Ctrl+M.
 - `client/src/toon.rs` — `ToonMaterial` (extends StandardMaterial), outline
-  material, `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
+  material (also follows skeletons of animated models),
+  `ToonAssets::spawn_part()` helper. Shaders in `assets/shaders/`.
+- `client/src/models.rs` — real character models (`models.ron`): loads a KayKit
+  body under the character (turned to face -Z), swaps in toon materials (one set
+  per character, for hit flashes) + outlines, hides the pack's hand items and
+  listed parts, `Stretch` bones after animation (longer, slimmer; the head undoes
+  the stretch below it), weapons on `handslot.r/.l` by class + spec, one
+  `AnimationGraph` per file, animation from logic state (defeated, riding,
+  attack/release one-shots from `AbilityUsed`/`AbilityLanded`, flame change,
+  casting, airborne, running, idle per weapon `Style`). Body swaps on class
+  change keep the old model a couple of frames (`OldModel`) so the lantern can
+  move hands. `ModelPending` holds back hit-flash material collection.
 - `client/src/world.rs` — `CurrentZone`, rebuilds scenery on zone change (sky/fog
   per `ground`; `"none"` = no floor), portals and exit portals, decorations, zone
   `border` dressing and `ambience` particles, hides things in other zones
@@ -269,10 +285,9 @@ extra beyond the Rust toolchain.
 - `client/examples/art_samples.rs` — the approved art direction as a runnable
   scene (`cargo run -p client --example art_samples`): KayKit bodies with
   stretched bones, toon materials + skinned outlines, race parts, gear tiers,
-  `blade()`/`tube()` mesh helpers. Not part of the game yet (M11 stage 1).
+  `blade()`/`tube()` mesh helpers. Bodies are in the game now (`models.rs`);
+  race parts and gear tiers still only live here.
 - `assets/models/kaykit/` — KayKit Adventurers (CC0, see `CREDITS.md`).
-- `assets/shaders/outline_skinned.wgsl` — the outline shader with skinning
-  (for animated models); to be merged into `outline.wgsl`.
 - `docs/art-direction.md`, `docs/art/` — the agreed look, with pictures.
 
 ## Conventions

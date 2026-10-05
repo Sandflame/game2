@@ -12,6 +12,7 @@ use shared::components::VisualKey;
 use shared::protocol::ServerEvent;
 
 use crate::hud::game_now;
+use crate::models::ModelPending;
 use crate::session::Received;
 use crate::toon::ToonMaterial;
 
@@ -47,7 +48,7 @@ pub struct NoFlash;
 
 /// Every toon material on a character's body with its normal glow.
 #[derive(Component)]
-struct BodyMaterials(Vec<(Handle<ToonMaterial>, LinearRgba)>);
+pub struct BodyMaterials(Vec<(Handle<ToonMaterial>, LinearRgba)>);
 
 /// How much a character is flashing right now (0–1).
 #[derive(Component)]
@@ -99,7 +100,15 @@ impl BossRig {
 /// parts, remember their materials.
 fn collect_body_materials(
     mut commands: Commands,
-    new: Query<Entity, (With<VisualKey>, With<Children>, Without<BodyMaterials>)>,
+    new: Query<
+        Entity,
+        (
+            With<VisualKey>,
+            With<Children>,
+            Without<BodyMaterials>,
+            Without<ModelPending>,
+        ),
+    >,
     children: Query<&Children>,
     parts: Query<&MeshMaterial3d<ToonMaterial>, Without<NoFlash>>,
     materials: Res<Assets<ToonMaterial>>,

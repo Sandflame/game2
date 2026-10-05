@@ -35,9 +35,9 @@ How characters, races and gear should look. Sample pictures are in
      (Blender is the user's side project). Everything below is built so a body
      swap doesn't throw any of it away.
 2. **The game's toon shading on everything**, plus outlines on animated
-   (skinned) meshes: `assets/shaders/outline_skinned.wgsl` is the game's
-   outline shader with skinning support. Merge it into `outline.wgsl` when
-   this is built for real.
+   (skinned) meshes: `assets/shaders/outline.wgsl` follows the skeleton.
+   In the game since M11 stage 1 part 1 (`client/src/models.rs`, numbers in
+   `assets/data/client/models.ron`).
 3. **Races are cosmetic parts on top of the same body** (`docs/art/races-*.png`):
    - **Humans:** no extra parts.
    - **Elves** (elegant, blood/high elf style): long pointed ears.
@@ -46,7 +46,7 @@ How characters, races and gear should look. Sample pictures are in
      of spines that curls up at the end.
    - **Demons** (like succubi / TERA's Castanic): horns that rise and curve
      forward; a long, thin S-shaped tail ending in a heart-shaped spade.
-   - **Felari** (cat folk, like FFXIV's Miqo'te; the name was chosen on
+   - **Lynari** (cat folk, like FFXIV's Miqo'te; the name was chosen on
      2026-10-05 so it is our own): cat ears on top of the head (fur outside,
      pink inside) and a long tail that curls upward, both in the hair colour,
      with a pale tail tip.

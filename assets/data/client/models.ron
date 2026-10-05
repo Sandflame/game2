@@ -1,0 +1,95 @@
+// Character models (looks only; the game rules never read this).
+// The look was agreed in docs/art-direction.md.
+(
+    // Bone stretch that turns the chunky KayKit bodies into longer, slimmer
+    // ones: the whole model's scale, the head's size, how much longer the
+    // legs / arms / spine / chest are, and how much narrower the hips,
+    // waist and chest are (1 = unchanged).
+    proportions: (scale: 0.7, head: 0.5, legs: 3.1, arms: 1.75, spine: 1.35, chest: 1.12, slim: 0.84),
+
+    // Body files. Everything the pack puts in the hands is hidden (weapons
+    // come from `weapons` below); `hide` lists extra parts to hide, `tint`
+    // recolours the clothes (red, green, blue; 1 = unchanged).
+    bodies: {
+        "knight":    (file: "models/kaykit/Knight.glb"),
+        "mage":      (file: "models/kaykit/Mage.glb"),
+        "mage_bare": (file: "models/kaykit/Mage.glb", hide: ["Mage_Hat"]),
+        "priest":    (file: "models/kaykit/Mage.glb", hide: ["Mage_Hat"], tint: (0.8, 0.95, 1.5)),
+        "rogue":     (file: "models/kaykit/Rogue.glb"),
+        "ranger":    (file: "models/kaykit/Rogue_Hooded.glb"),
+        "barbarian": (file: "models/kaykit/Barbarian.glb", hide: ["Barbarian_Hat"]),
+        "lamplighter": (file: "models/kaykit/Mage.glb", hide: ["Mage_Hat"], tint: (1.3, 0.95, 0.6)),
+    },
+
+    // Hand-held items. They hang from the hand bones; `offset` moves them
+    // within the hand (metres, before the model's scale).
+    weapons: {
+        "sword":      (file: "models/kaykit/sword_1handed.gltf"),
+        "greatsword": (file: "models/kaykit/sword_2handed.gltf"),
+        "axe":        (file: "models/kaykit/axe_1handed.gltf"),
+        "dagger":     (file: "models/kaykit/dagger.gltf"),
+        "staff":      (file: "models/kaykit/staff.gltf"),
+        "wand":       (file: "models/kaykit/wand.gltf"),
+        "spellbook":  (file: "models/kaykit/spellbook_open.gltf", offset: (0.0, 0.15, 0.0), rotation: Some((0.0, -0.7071, -0.7071, 0.0))),
+        "shield":     (file: "models/kaykit/shield_badge.gltf", offset: (0.0, 0.0, 0.16)),
+    },
+
+    // What each class wears (until gear has looks) and holds, by
+    // specialization. `style` picks the idle pose and attack swings:
+    // OneHanded, TwoHanded, DualWield or Caster.
+    classes: {
+        "blademaster": (body: "rogue", specs: {
+            "greatsword":  (right: Some("greatsword"), style: TwoHanded),
+            "scissors":    (right: Some("dagger"), left: Some("dagger"), style: DualWield),
+            "one_handed":  (right: Some("sword"), style: OneHanded),
+            "dual_blades": (right: Some("sword"), left: Some("sword"), style: DualWield),
+        }),
+        "elementalist": (body: "mage", specs: {
+            "fire":  (right: Some("staff"), style: Caster),
+            "ice":   (right: Some("staff"), style: Caster),
+            "storm": (right: Some("staff"), style: Caster),
+        }),
+        "shield_knight": (body: "knight", specs: {
+            "bulwark":  (right: Some("sword"), left: Some("shield"), style: OneHanded),
+            "oath":     (right: Some("sword"), left: Some("shield"), style: OneHanded),
+            "vanguard": (right: Some("axe"), left: Some("shield"), style: OneHanded),
+        }),
+        "priest": (body: "priest", specs: {
+            "mender":    (right: Some("wand"), left: Some("spellbook"), style: Caster),
+            "enchanter": (right: Some("staff"), style: Caster),
+            "judge":     (right: Some("wand"), left: Some("spellbook"), style: Caster),
+        }),
+    },
+
+    // Townsfolk, by their `visual` in zone data.
+    people: {
+        "townsfolk_lamplighter": (body: "lamplighter"),
+        "townsfolk_keeper":      (body: "barbarian"),
+        "townsfolk_guard":       (body: "knight", right: Some("sword"), left: Some("shield")),
+        "townsfolk_ranger":      (body: "ranger"),
+    },
+
+    // Animation clips (names inside the KayKit files) for each action.
+    animations: (
+        idle: { OneHanded: "Idle", TwoHanded: "2H_Melee_Idle", DualWield: "Idle", Caster: "Idle" },
+        attacks: {
+            OneHanded: ["1H_Melee_Attack_Chop", "1H_Melee_Attack_Slice_Diagonal", "1H_Melee_Attack_Slice_Horizontal"],
+            TwoHanded: ["2H_Melee_Attack_Chop", "2H_Melee_Attack_Slice", "2H_Melee_Attack_Spin"],
+            DualWield: ["Dualwield_Melee_Attack_Chop", "Dualwield_Melee_Attack_Slice", "Dualwield_Melee_Attack_Stab"],
+            Caster:    ["Spellcast_Shoot"],
+        },
+        run: "Running_A",
+        jump: "Jump_Idle",
+        cast: "Spellcasting",
+        release: "Spellcast_Shoot",
+        lantern: "Spellcast_Raise",
+        ride: "Sit_Floor_Idle",
+        defeated: "Death_A",
+        // Faster than this (metres per second) counts as running.
+        run_above: 0.5,
+        // Seconds to blend from one animation into the next.
+        blend: 0.15,
+        // Attack swings play this much faster than the files' own speed.
+        attack_speed: 1.4,
+    ),
+)

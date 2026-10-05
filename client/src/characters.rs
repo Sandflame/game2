@@ -17,6 +17,7 @@ use crate::creatures::{
     self, BURROW_PUP, MATRIARCH, MOTHER_SPORECAP, ROT_SPORE, SPORE_CAP, THORNWOLF,
 };
 use crate::hud::dialogue::Conversation;
+use crate::models::{ModelLibrary, ModelLook, ModelPending, Rig};
 use crate::session::{LocalPlayerId, Received, send};
 use crate::toon::{Outline, ToonAssets, ToonMaterial};
 
@@ -79,10 +80,8 @@ const LANTERN_AT_SIDE: Vec3 = Vec3::new(0.48, 0.75, -0.12);
 /// the face, with the bottom of the lantern at about eye level.
 /// (Eyes are at ~1.51 m; the held lantern's bottom is ~0.22 m below its centre.)
 const LANTERN_HELD_OUT: Vec3 = Vec3::new(0.0, 1.74, -0.55);
-/// How far the head tilts up to look at the held lantern (radians).
-const LOOK_UP: f32 = 0.35;
-/// Where the head sits on the body.
-const HEAD_POSITION: Vec3 = Vec3::new(0.0, 1.48, 0.0);
+/// Where the lantern hangs from a model's hand (in the hand's space).
+const LANTERN_IN_HAND: Vec3 = Vec3::new(0.0, 0.25, 0.0);
 /// The lantern looks a bit bigger while held up.
 const LANTERN_HELD_SCALE: f32 = 1.5;
 /// How long the lantern stays out after the new flame catches.
@@ -94,9 +93,6 @@ const LANTERN_SPEED: f32 = 4.0;
 #[derive(Component)]
 struct Lantern {
     owner: Entity,
-    hands: Entity,
-    /// The owner's head, which tilts up to look at the held lantern.
-    head: Entity,
     /// 0 = put away, 1 = fully visible.
     shown: f32,
     /// 0 = at the side, 1 = held out in front.
@@ -139,6 +135,7 @@ fn spawn_visuals(
     mut commands: Commands,
     new: Query<(Entity, &VisualKey, &Motion, Option<&PlayerId>), Added<VisualKey>>,
     me: Res<LocalPlayerId>,
+    models: Res<ModelLibrary>,
     mut toon: ToonAssets,
 ) {
     for (entity, key, motion, player) in &new {
@@ -155,7 +152,17 @@ fn spawn_visuals(
             commands.entity(entity).insert(LocalPlayer);
         }
         match key.0.as_str() {
-            "player" => build_player(&mut commands, &mut toon, entity),
+            "player" => {
+                commands
+                    .entity(entity)
+                    .insert((ModelLook::Player, ModelPending));
+                build_lantern(&mut commands, &mut toon, entity);
+            }
+            person if models.people.contains_key(person) => {
+                commands
+                    .entity(entity)
+                    .insert((ModelLook::Person(person.to_owned()), ModelPending));
+            }
             "training_dummy" => build_training_dummy(
                 &mut commands,
                 &mut toon,
@@ -205,44 +212,13 @@ fn spawn_visuals(
     }
 }
 
-/// Placeholder adventurer: capsule body, head, eyes and a glowing lantern.
-fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) {
-    let cloth = toon.material(Color::srgb(0.30, 0.38, 0.70));
-    let skin = toon.material(Color::srgb(1.0, 0.86, 0.74));
-    let hand_skin = skin.clone();
-    let eye = toon.material(Color::srgb(0.08, 0.06, 0.12));
+/// A character's lantern: hidden until the flame is changed (or always
+/// shown, if the player chose that in the lantern panel). The body itself
+/// is a model (`models.rs`).
+fn build_lantern(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) {
     let brass = toon.material(Color::srgb(0.80, 0.62, 0.25));
     let flame = toon.glowing(Color::srgb(1.0, 0.7, 0.3), FLAME_GLOW);
 
-    toon.spawn_part(
-        commands,
-        player,
-        Capsule3d::new(0.35, 0.6),
-        cloth,
-        Outline::Smooth,
-        Transform::from_xyz(0.0, 0.65, 0.0),
-    );
-    let head = toon.spawn_part(
-        commands,
-        player,
-        Sphere::new(0.3).mesh().uv(32, 18),
-        skin,
-        Outline::Smooth,
-        Transform::from_translation(HEAD_POSITION),
-    );
-    for side in [-1.0, 1.0] {
-        toon.spawn_part(
-            commands,
-            head,
-            Sphere::new(0.045).mesh().uv(12, 8),
-            eye.clone(),
-            Outline::None,
-            Transform::from_xyz(0.1 * side, 0.03, -0.27),
-        );
-    }
-
-    // The lantern: hidden until the flame is changed (or always shown, if
-    // the player chose that in the lantern panel).
     let lantern = commands
         .spawn((
             Transform::from_translation(LANTERN_AT_SIDE).with_scale(Vec3::ZERO),
@@ -250,24 +226,8 @@ fn build_player(commands: &mut Commands, toon: &mut ToonAssets, player: Entity) 
             ChildOf(player),
         ))
         .id();
-    // Placeholder hands, shown while the lantern is held out.
-    let hands = commands
-        .spawn((Transform::default(), Visibility::Hidden, ChildOf(lantern)))
-        .id();
-    for side in [-1.0, 1.0] {
-        toon.spawn_part(
-            commands,
-            hands,
-            Sphere::new(0.075).mesh().uv(12, 8),
-            hand_skin.clone(),
-            Outline::Smooth,
-            Transform::from_xyz(0.15 * side, -0.02, 0.06),
-        );
-    }
     commands.entity(lantern).insert(Lantern {
         owner: player,
-        hands,
-        head,
         shown: 0.0,
         held: 0.0,
         linger: 0.0,
@@ -693,17 +653,24 @@ fn animate_lanterns(
 /// The lantern appears in the character's hands while the flame changes,
 /// stays a moment after the new flame catches, then is put away.
 fn animate_lantern_holding(
+    mut commands: Commands,
     time: Res<Time>,
     settings: Res<LanternSettings>,
-    owners: Query<Has<FlameChange>>,
-    mut lanterns: Query<(&mut Lantern, &mut Transform, &mut Visibility)>,
-    mut hands: Query<&mut Visibility, Without<Lantern>>,
-    mut heads: Query<&mut Transform, Without<Lantern>>,
+    models: Res<ModelLibrary>,
+    owners: Query<(Has<FlameChange>, Option<&Rig>)>,
+    mut lanterns: Query<(
+        Entity,
+        &mut Lantern,
+        &mut Transform,
+        &mut Visibility,
+        &ChildOf,
+    )>,
+    mut weapons: Query<&mut Visibility, Without<Lantern>>,
 ) {
     let dt = time.delta_secs();
     let step = dt * LANTERN_SPEED;
-    for (mut lantern, mut transform, mut visibility) in &mut lanterns {
-        let changing = owners.get(lantern.owner).unwrap_or(false);
+    for (entity, mut lantern, mut transform, mut visibility, parent) in &mut lanterns {
+        let (changing, rig) = owners.get(lantern.owner).unwrap_or((false, None));
         lantern.linger = (lantern.linger - dt).max(0.0);
         let holding = changing || lantern.linger > 0.0;
         let want_shown = holding || settings.always_show;
@@ -711,25 +678,41 @@ fn animate_lantern_holding(
         lantern.held = approach(lantern.held, if holding { 1.0 } else { 0.0 }, step);
 
         let held = smooth(lantern.held);
-        let bob = Vec3::Y * 0.03 * held * (time.elapsed_secs() * 3.0).sin();
-        transform.translation = LANTERN_AT_SIDE.lerp(LANTERN_HELD_OUT, held) + bob;
-        transform.scale =
-            Vec3::splat(smooth(lantern.shown) * (1.0 + (LANTERN_HELD_SCALE - 1.0) * held));
+        // A model holds it up in its hand (its weapons put away meanwhile).
+        let hand = rig
+            .and_then(Rig::lantern_hand)
+            .filter(|_| lantern.held > 0.5);
+        if let Some(rig) = rig {
+            for weapon in rig.weapons() {
+                if let Ok(mut shown) = weapons.get_mut(*weapon) {
+                    *shown = if hand.is_some() {
+                        Visibility::Hidden
+                    } else {
+                        Visibility::Inherited
+                    };
+                }
+            }
+        }
+        let want_parent = hand.unwrap_or(lantern.owner);
+        if parent.parent() != want_parent {
+            commands.entity(entity).insert(ChildOf(want_parent));
+        }
+        if hand.is_some() {
+            // In the hand's own space, which the model's scale shrinks.
+            transform.translation = LANTERN_IN_HAND;
+            transform.scale =
+                Vec3::splat(smooth(lantern.shown) * LANTERN_HELD_SCALE / models.proportions.scale);
+        } else {
+            let bob = Vec3::Y * 0.03 * held * (time.elapsed_secs() * 3.0).sin();
+            transform.translation = LANTERN_AT_SIDE.lerp(LANTERN_HELD_OUT, held) + bob;
+            transform.scale =
+                Vec3::splat(smooth(lantern.shown) * (1.0 + (LANTERN_HELD_SCALE - 1.0) * held));
+        }
         *visibility = if lantern.shown > 0.01 {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
-        if let Ok(mut head) = heads.get_mut(lantern.head) {
-            head.rotation = Quat::from_rotation_x(LOOK_UP * held);
-        }
-        if let Ok(mut hands_visibility) = hands.get_mut(lantern.hands) {
-            *hands_visibility = if lantern.held > 0.5 {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            };
-        }
     }
 }
 
@@ -747,7 +730,9 @@ fn smooth(t: f32) -> f32 {
 }
 
 /// Defeated characters lie down (bosses sink instead; see `animation.rs`).
-fn show_defeated(mut fallen: Query<&mut Transform, (With<Defeated>, Without<BossRig>)>) {
+fn show_defeated(
+    mut fallen: Query<&mut Transform, (With<Defeated>, Without<BossRig>, Without<Rig>)>,
+) {
     for mut transform in &mut fallen {
         transform.rotation *= Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
         transform.translation.y += 0.35;

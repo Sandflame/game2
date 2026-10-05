@@ -15,8 +15,8 @@ const TOON_SHADER: &str = "shaders/toon.wgsl";
 const OUTLINE_SHADER: &str = "shaders/outline.wgsl";
 
 /// Outline thickness as a fraction of the distance to the camera.
-const OUTLINE_THICKNESS: f32 = 0.0022;
-const OUTLINE_COLOR: LinearRgba = LinearRgba::new(0.02, 0.015, 0.03, 1.0);
+pub const OUTLINE_THICKNESS: f32 = 0.0022;
+pub const OUTLINE_COLOR: LinearRgba = LinearRgba::new(0.02, 0.015, 0.03, 1.0);
 
 pub type ToonMaterial = ExtendedMaterial<StandardMaterial, ToonExtension>;
 
