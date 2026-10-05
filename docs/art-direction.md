@@ -26,10 +26,14 @@ How characters, races and gear should look. Sample pictures are in
      and longer legs.
    - The head must stay round: the head bone undoes the squash and stretch of
      the bones below it (see `stretch_for` in the sample).
-   - The numbers (sample `LEVELS[3]`): model scale 0.7, head 0.5, legs ×3.1,
-     arms ×1.75, spine ×1.35, chest ×1.12, slim 0.84. Apply them after
-     animation each frame, as fixed bone scales. They go in a data file when
-     this is built for real; no magic numbers.
+   - The numbers live in `assets/data/client/models.ron` (`proportions`):
+     each bone's part of the body gets a (width, length, depth) size.
+   - How it is done matters: scaling the skeleton's bones (the first try,
+     and what the sample scene still does) skews the body whenever a bone
+     turns, so moving characters looked flat. The game instead resizes each
+     bone's part of the mesh through its bind pose and moves the joints
+     below it out to match; nothing is scaled, so poses never distort it
+     (2026-10-05, after the user's feedback).
    - Honest limit: stretching can't reach true FFXIV bodies, because KayKit's
      clothes keep their chunky shapes. Better bodies can be swapped in later
      (Blender is the user's side project). Everything below is built so a body

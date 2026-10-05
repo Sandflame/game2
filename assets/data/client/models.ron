@@ -1,11 +1,24 @@
 // Character models (looks only; the game rules never read this).
 // The look was agreed in docs/art-direction.md.
 (
-    // Bone stretch that turns the chunky KayKit bodies into longer, slimmer
-    // ones: the whole model's scale, the head's size, how much longer the
-    // legs / arms / spine / chest are, and how much narrower the hips,
-    // waist and chest are (1 = unchanged).
-    proportions: (scale: 0.7, head: 0.5, legs: 3.1, arms: 1.75, spine: 1.35, chest: 1.12, slim: 0.84),
+    // The body shape that turns the chunky KayKit bodies into taller,
+    // slimmer ones: the whole model's size, then how much bigger each
+    // bone's part of the body is as (width, length, depth); 1 = unchanged.
+    // A name without .l/.r covers both sides. Only the mesh is reshaped (the
+    // skeleton's bones keep their size), so poses never skew it.
+    proportions: (
+        scale: 0.56,
+        bones: {
+            "head":     (0.5, 0.5, 0.5),
+            "hips":     (0.88, 1.0, 0.88),
+            "spine":    (0.88, 1.35, 0.88),
+            "chest":    (0.94, 1.15, 0.94),
+            "upperarm": (0.95, 1.7, 0.95),
+            "lowerarm": (0.95, 1.7, 0.95),
+            "upperleg": (0.95, 3.0, 0.95),
+            "lowerleg": (0.95, 3.0, 0.95),
+        },
+    ),
 
     // Body files. Everything the pack puts in the hands is hidden (weapons
     // come from `weapons` below); `hide` lists extra parts to hide, `tint`

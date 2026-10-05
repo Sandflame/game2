@@ -116,6 +116,9 @@ const MODELS_DEMO: &[(f32, Step)] = &[
     (14.0, Step::Shot), // Elementalist with a staff
     (14.2, Step::ChangeClass("priest")),
     (18.5, Step::Shot), // Priest with a wand and a book
+    (18.7, Step::CameraYaw(FRAC_PI_2)),
+    (18.8, Step::Walk(Some((0.0, -1.0)))),
+    (20.5, Step::Shot), // running, seen from the side
 ];
 
 /// Starts in the Training Grounds: pick the Scissors specialization in the

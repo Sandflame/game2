@@ -247,8 +247,11 @@ extra beyond the Rust toolchain.
 - `client/src/models.rs` — real character models (`models.ron`): loads a KayKit
   body under the character (turned to face -Z), swaps in toon materials (one set
   per character, for hit flashes) + outlines, hides the pack's hand items and
-  listed parts, `Stretch` bones after animation (longer, slimmer; the head undoes
-  the stretch below it), weapons on `handslot.r/.l` by class + spec, one
+  listed parts, reshapes the body without scaling any bone (each reshaped bone's
+  part of the mesh is resized through its inverse bind pose, once per mesh; bones
+  and rigid pieces hanging from it move out to match after animation —
+  `OnShapedBone`; scaling bones skewed the mesh when they turned and made
+  characters look flat), weapons on `handslot.r/.l` by class + spec, one
   `AnimationGraph` per file, animation from logic state (defeated, riding,
   attack/release one-shots from `AbilityUsed`/`AbilityLanded`, flame change,
   casting, airborne, running, idle per weapon `Style`). Body swaps on class

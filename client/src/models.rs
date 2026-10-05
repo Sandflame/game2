@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use bevy::animation::RepeatAnimation;
 use bevy::app::AnimationSystems;
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::light::NotShadowCaster;
-use bevy::mesh::skinning::SkinnedMesh;
+use bevy::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
 use bevy::prelude::*;
 use bevy::world_serialization::WorldInstanceReady;
 use serde::Deserialize;
@@ -48,7 +49,7 @@ impl Plugin for ModelsPlugin {
             .add_systems(
                 PostUpdate,
                 (
-                    stretch_bones
+                    place_on_shaped_bones
                         .after(AnimationSystems)
                         .before(TransformSystems::Propagate),
                     remove_old_models,
@@ -68,16 +69,14 @@ pub enum Style {
     Caster,
 }
 
-/// The bone stretch that makes bodies longer and slimmer.
-#[derive(Debug, Clone, Copy, Deserialize)]
+/// The body shape: the whole model's size, and how much bigger each bone's
+/// part of the body is (width, length, depth). Bones farther along move
+/// with it; nothing is squashed or skewed, whatever the pose.
+#[derive(Debug, Clone, Deserialize)]
 pub struct Proportions {
     pub scale: f32,
-    pub head: f32,
-    pub legs: f32,
-    pub arms: f32,
-    pub spine: f32,
-    pub chest: f32,
-    pub slim: f32,
+    /// By bone name; a name without `.l`/`.r` covers both sides.
+    pub bones: HashMap<String, (f32, f32, f32)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,17 +162,11 @@ const STYLES: [Style; 4] = [
 impl Validate for ModelLibrary {
     fn validate(&self) -> Vec<String> {
         let mut p = Problems::default();
-        let pr = &self.proportions;
-        for (name, value) in [
-            ("scale", pr.scale),
-            ("head", pr.head),
-            ("legs", pr.legs),
-            ("arms", pr.arms),
-            ("spine", pr.spine),
-            ("chest", pr.chest),
-            ("slim", pr.slim),
-        ] {
-            p.positive(&format!("proportions.{name}"), value);
+        p.positive("proportions.scale", self.proportions.scale);
+        for (bone, (x, y, z)) in &self.proportions.bones {
+            for value in [x, y, z] {
+                p.positive(&format!("proportions.bones.{bone}"), *value);
+            }
         }
         p.non_negative("animations.run_above", self.animations.run_above);
         p.non_negative("animations.blend", self.animations.blend);
@@ -292,36 +285,16 @@ impl ModelLibrary {
         Some((look.body.as_str(), loadout))
     }
 
-    /// How much each named bone is stretched (`None`: not at all).
-    fn stretch(&self, bone: &str) -> Option<Vec3> {
-        let p = &self.proportions;
-        // Hips, spine and chest stack up (their rest poses are all
-        // upright), so the head undoes their squash and stretch to stay
-        // round.
-        let chest_slim = p.slim + (1.0 - p.slim) * 0.4;
-        let below_head = Vec3::new(
-            p.slim * p.slim * chest_slim,
-            p.spine * p.chest,
-            p.slim * p.slim * chest_slim,
-        );
-        Some(match bone {
-            "head" => p.head / below_head,
-            "hips" => Vec3::new(p.slim, 1.0, p.slim),
-            "spine" => Vec3::new(p.slim, p.spine, p.slim),
-            "chest" => Vec3::new(chest_slim, p.chest, chest_slim),
-            "upperleg.l" | "upperleg.r" => Vec3::new(1.0, p.legs, 1.0),
-            "foot.l" | "foot.r" => Vec3::new(1.0, 1.0 / p.legs, 1.0),
-            "upperarm.l" | "upperarm.r" => Vec3::new(1.0, p.arms, 1.0),
-            "hand.l" | "hand.r" => Vec3::new(1.0, 1.0 / p.arms, 1.0),
-            _ => return None,
-        })
-    }
-
-    /// How far the longer legs lift the body (model units, before scale).
-    fn lift(&self) -> f32 {
-        // KayKit legs are this long from hip to ankle.
-        const LEG_LENGTH: f32 = 0.31;
-        LEG_LENGTH * (self.proportions.legs - 1.0)
+    /// How much bigger a bone's part of the body is (`None`: unchanged).
+    fn bone_shape(&self, bone: &str) -> Option<Vec3> {
+        let bones = &self.proportions.bones;
+        let (x, y, z) = bones.get(bone).or_else(|| {
+            let side_free = bone
+                .strip_suffix(".l")
+                .or_else(|| bone.strip_suffix(".r"))?;
+            bones.get(side_free)
+        })?;
+        Some(Vec3::new(*x, *y, *z))
     }
 }
 
@@ -366,9 +339,16 @@ pub struct Rig {
     next_attack: usize,
 }
 
-/// A bone with a fixed stretch, applied after animation every frame.
+/// A part that sits on a reshaped bone: it moves out with the bone's new
+/// size (and rigid pieces such as helmets and hats grow with it). Applied
+/// after animation every frame.
 #[derive(Component)]
-struct Stretch(Vec3);
+struct OnShapedBone {
+    rest: Vec3,
+    parent_shape: Vec3,
+    /// Rigid pieces take the bone's shape too; bones and hand slots don't.
+    grows: bool,
+}
 
 /// The model root waiting to be dressed; points back at its character.
 #[derive(Component)]
@@ -394,6 +374,8 @@ struct AnimationLibrary {
     sets: HashMap<String, ClipSet>,
     /// Model files kept loaded (their animations are read from them).
     files: HashMap<String, Handle<Gltf>>,
+    /// Bind poses already reshaped.
+    reshaped: std::collections::HashSet<AssetId<SkinnedMeshInverseBindposes>>,
 }
 
 struct ClipSet {
@@ -434,8 +416,7 @@ fn spawn_body(
         .spawn((
             WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(body.file.clone()))),
             // The pack's models face +Z; the game's characters face -Z.
-            Transform::from_xyz(0.0, models.lift() * scale, 0.0)
-                .with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
+            Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI))
                 .with_scale(Vec3::splat(scale)),
             ModelOf {
                 character,
@@ -551,6 +532,10 @@ fn dress_body(
         ResMut<Assets<ToonMaterial>>,
         ResMut<Assets<OutlineMaterial>>,
     ),
+    (transforms, mut bindposes): (
+        Query<&Transform>,
+        ResMut<Assets<SkinnedMeshInverseBindposes>>,
+    ),
 ) {
     let root = ready.entity;
     let Ok(model) = roots.get(root) else {
@@ -578,6 +563,46 @@ fn dress_body(
         if let Some(&e) = bones.get(part) {
             commands.entity(e).insert(Visibility::Hidden);
         }
+    }
+    // The body shape: each reshaped bone's part of the mesh is resized in
+    // the bone's own space (through its bind pose), and whatever hangs from
+    // it moves out to match. No bone is scaled, so nothing gets skewed when
+    // bones turn.
+    let shapes: HashMap<Entity, Vec3> = bones
+        .iter()
+        .filter_map(|(name, &e)| Some((e, models.bone_shape(name)?)))
+        .collect();
+    let mut joints = std::collections::HashSet::new();
+    for e in children.iter_descendants(root) {
+        if let Ok((_, _, Some(skin))) = meshes.get(e) {
+            joints.extend(skin.joints.iter().copied());
+        }
+    }
+    for (name, &e) in &bones {
+        let Ok(parent) = parents.get(e) else { continue };
+        let Some(&parent_shape) = shapes.get(&parent.parent()) else {
+            continue;
+        };
+        let rest = transforms.get(e).map_or(Vec3::ZERO, |t| t.translation);
+        commands.entity(e).insert(OnShapedBone {
+            rest,
+            parent_shape,
+            grows: !joints.contains(&e) && !name.starts_with("handslot"),
+        });
+    }
+    // Longer legs lift the body so the feet stay on the ground.
+    let mut lift = 0.0;
+    for (bone, child) in [("upperleg.l", "lowerleg.l"), ("lowerleg.l", "foot.l")] {
+        if let (Some(&b), Some(&c)) = (bones.get(bone), bones.get(child))
+            && let (Some(shape), Ok(t)) = (shapes.get(&b), transforms.get(c))
+        {
+            lift += (*shape * t.translation).length() - t.translation.length();
+        }
+    }
+    if let Ok(t) = transforms.get(root) {
+        let mut placed = *t;
+        placed.translation.y = lift * models.proportions.scale;
+        commands.entity(root).insert(placed);
     }
     // Toon materials (one set per character, so hit flashes stay on the
     // character that was hit) and outlines that follow the skeleton.
@@ -622,6 +647,31 @@ fn dress_body(
             .entity(e)
             .remove::<MeshMaterial3d<StandardMaterial>>()
             .insert(MeshMaterial3d(handle));
+        if let Some(skin) = skin {
+            // Reshape the pack's own bind poses, once per mesh (every
+            // character shares the same proportions).
+            let id = skin.inverse_bindposes.id();
+            if library.reshaped.insert(id)
+                && let Some(poses) = bindposes.get(id)
+            {
+                let reshaped: Vec<Mat4> = poses
+                    .iter()
+                    .zip(&skin.joints)
+                    .map(|(pose, joint)| match shapes.get(joint) {
+                        Some(shape) => Mat4::from_scale(*shape) * *pose,
+                        None => *pose,
+                    })
+                    .collect();
+                if bindposes
+                    .insert(id, SkinnedMeshInverseBindposes::from(reshaped))
+                    .is_err()
+                {
+                    warn!("could not reshape a character mesh");
+                }
+            }
+            // The pack's bounds don't know about the new shape.
+            commands.entity(e).insert(NoFrustumCulling);
+        }
         let mut hull = commands.spawn((
             Mesh3d(mesh.0.clone()),
             MeshMaterial3d(outline.clone()),
@@ -629,13 +679,7 @@ fn dress_body(
             ChildOf(e),
         ));
         if let Some(skin) = skin {
-            hull.insert(skin.clone());
-        }
-    }
-    // Longer, slimmer proportions.
-    for (name, &e) in &bones {
-        if let Some(s) = models.stretch(name) {
-            commands.entity(e).insert(Stretch(s));
+            hull.insert((skin.clone(), NoFrustumCulling));
         }
     }
     // Animations: the graph for this file is built once and shared.
@@ -844,9 +888,12 @@ fn remove_old_models(mut commands: Commands, mut old: Query<(Entity, &mut OldMod
     }
 }
 
-fn stretch_bones(mut bones: Query<(&Stretch, &mut Transform)>) {
-    for (stretch, mut transform) in &mut bones {
-        transform.scale = stretch.0;
+fn place_on_shaped_bones(mut parts: Query<(&OnShapedBone, &mut Transform)>) {
+    for (part, mut transform) in &mut parts {
+        transform.translation = part.parent_shape * part.rest;
+        if part.grows {
+            transform.scale = part.parent_shape;
+        }
     }
 }
 
@@ -988,19 +1035,27 @@ mod tests {
     }
 
     #[test]
-    fn the_head_stays_round_after_the_body_is_stretched() {
+    fn a_shape_without_a_side_covers_both_sides() {
         let assets = find_assets_dir().unwrap();
-        let models = ModelLibrary::load(&assets).unwrap();
-        // Hips, spine and chest stack; the head undoes them.
-        let mut total = Vec3::ONE;
-        for bone in ["hips", "spine", "chest", "head"] {
-            total *= models.stretch(bone).unwrap();
-        }
-        let head = models.proportions.head;
-        assert!(
-            (total - Vec3::splat(head)).abs().max_element() < 1e-4,
-            "{total}"
+        let mut models = ModelLibrary::load(&assets).unwrap();
+        models.proportions.bones.clear();
+        models
+            .proportions
+            .bones
+            .insert("upperleg".into(), (1.0, 2.0, 1.0));
+        models
+            .proportions
+            .bones
+            .insert("upperleg.r".into(), (1.0, 3.0, 1.0));
+        assert_eq!(
+            models.bone_shape("upperleg.l"),
+            Some(Vec3::new(1.0, 2.0, 1.0))
         );
+        assert_eq!(
+            models.bone_shape("upperleg.r"),
+            Some(Vec3::new(1.0, 3.0, 1.0))
+        );
+        assert_eq!(models.bone_shape("head"), None);
     }
 
     #[test]
@@ -1008,6 +1063,10 @@ mod tests {
         let assets = find_assets_dir().unwrap();
         let mut models = ModelLibrary::load(&assets).unwrap();
         models.weapons.remove("staff");
+        models
+            .proportions
+            .bones
+            .insert("head".into(), (0.0, 1.0, 1.0));
         models.bodies.remove("knight");
         let problems = models.validate();
         assert!(
@@ -1019,6 +1078,11 @@ mod tests {
             problems
                 .iter()
                 .any(|p| p.contains("no body called `knight`"))
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("proportions.bones.head"))
         );
     }
 }
